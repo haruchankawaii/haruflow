@@ -1,7 +1,6 @@
 import {
   ArrowDownLeft,
   ArrowRight,
-  ArrowUpRight,
   Banknote,
   Boxes,
   CircleDollarSign,
@@ -18,6 +17,8 @@ import {
   PageHeader,
   Status,
 } from "./components";
+import DashboardCharts from "./DashboardCharts";
+import { exactMoney } from "./dashboard-charts";
 import { date, money, number } from "./format";
 import { useResource } from "./hooks";
 import type { Dashboard as DashboardData, Session } from "./types";
@@ -46,17 +47,17 @@ export default function Dashboard({
   if (error || !data) return <ErrorState message={error} onRetry={reload} />;
   const metrics = [
     {
-      title: "Total penjualan",
+      title: "Pendapatan tercatat",
       amount: data.revenue,
       icon: CircleDollarSign,
-      note: "Dari invoice yang diterbitkan",
+      note: "Akumulasi pendapatan bersih · seluruh waktu",
       tone: "green",
     },
     {
       title: "Piutang usaha",
       amount: data.outstanding,
       icon: Wallet,
-      note: "Invoice yang belum lunas",
+      note: "Sisa invoice aktif saat ini · seluruh waktu",
       tone: "amber",
     },
     {
@@ -70,18 +71,10 @@ export default function Dashboard({
       title: "Kas & bank",
       amount: data.cash,
       icon: Banknote,
-      note: "Saldo kas dari pembukuan",
+      note: "Saldo pembukuan saat ini · seluruh waktu",
       tone: "blue",
     },
   ];
-  const maxSales = Math.max(
-    ...data.monthly_sales.map((item) => Number(item.total)),
-    1,
-  );
-  const totalSales = data.monthly_sales.reduce(
-    (total, item) => total + Number(item.total),
-    0,
-  );
   const canSell = ["admin", "sales"].includes(session.user.role);
   return (
     <>
@@ -100,76 +93,15 @@ export default function Dashboard({
                 <metric.icon size={19} strokeWidth={1.7} />
               </span>
             </div>
-            <strong>{money(metric.amount)}</strong>
+            <strong>{exactMoney(metric.amount)}</strong>
             <small>{metric.note}</small>
           </article>
         ))}
       </div>
-      <div className="dashboard-middle">
-        <section className="panel sales-chart">
-          <div className="panel-heading">
-            <div>
-              <h2>Alur penjualan</h2>
-              <p>Nilai invoice per bulan</p>
-            </div>
-            <span className="subtle-chip">6 bulan terakhir</span>
-          </div>
-          <div className="chart-summary">
-            <strong>{money(totalSales)}</strong>
-            <span>
-              <span className="legend-dot" /> Penjualan tercatat
-            </span>
-          </div>
-          {data.monthly_sales.length ? (
-            <div
-              className="bar-chart"
-              role="img"
-              aria-label={`Penjualan enam bulan terakhir ${money(totalSales)}`}
-            >
-              <div className="chart-grid">
-                <span>{money(maxSales)}</span>
-                <span>{money(maxSales / 2)}</span>
-                <span>Rp0</span>
-              </div>
-              <div className="chart-bars">
-                {data.monthly_sales.map((item, index) => (
-                  <div className="chart-column" key={item.month}>
-                    <div className="bar-track">
-                      <div
-                        className={`chart-bar ${index === data.monthly_sales.length - 1 ? "current" : ""}`}
-                        style={{
-                          height: `${(Number(item.total) / maxSales) * 100}%`,
-                          minHeight: Number(item.total) > 0 ? 6 : 0,
-                        }}
-                        title={`${item.month}: ${money(item.total)}`}
-                      />
-                    </div>
-                    <span>
-                      {new Intl.DateTimeFormat("id-ID", {
-                        month: "short",
-                      }).format(new Date(`${item.month}-01T12:00:00`))}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="chart-no-data">
-              <span>Belum ada penjualan tercatat</span>
-              <p>Grafik akan terisi setelah invoice pertama diterbitkan.</p>
-            </div>
-          )}
-        </section>
+      <DashboardCharts revision={revision} />
+      <div className="dashboard-action-row">
         <section className="quick-start">
           <span className="eyebrow">LANGKAH KECIL, DAMPAK BESAR</span>
-          <div className="quick-illustration" aria-hidden="true">
-            <div>
-              <Package size={31} strokeWidth={1.5} />
-            </div>
-            <span>
-              <ArrowUpRight size={22} />
-            </span>
-          </div>
           <h2>
             Hari yang produktif
             <br />
