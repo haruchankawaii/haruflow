@@ -20,7 +20,7 @@ Misalnya kas awal Rp100.000 dan persediaan 10 unit dengan biaya Rp50.000 per uni
 5. Simpan draf, lalu periksa: total debit dan kredit masing-masing Rp600.000. Draf boleh belum seimbang; menyimpan draf belum mengubah stok atau laporan.
 6. Setelah rinciannya benar dan seimbang, tinjau dan posting draf tersimpan. Haruflow memperbarui stok, biaya rata-rata, jurnal, dan audit dalam satu transaksi.
 
-Jangan memasukkan akun persediaan `1300` lagi pada saldo akun; nilainya berasal dari rincian barang. Akun piutang `1200` juga tidak dapat diisi langsung karena harus cocok dengan rincian tagihan pelanggan. Pembukaan piutang per pelanggan/tagihan belum tersedia. Akun pendapatan dan beban tidak digunakan pada proses saldo awal ini.
+Jangan memasukkan akun persediaan `1300` lagi pada saldo akun; nilainya berasal dari rincian barang. Akun piutang `1200` juga tidak dapat diisi langsung karena harus cocok dengan rincian tagihan pelanggan. Pembukaan piutang per pelanggan/tagihan belum tersedia. Akun kontrol **barang diterima belum ditagih** juga tidak dapat diisi langsung; saldonya berasal dari penerimaan PO. Kode akun penampung dipilih sistem dari kode kosong saat upgrade agar akun pengguna tetap utuh. Akun pendapatan dan beban tidak digunakan pada proses saldo awal ini.
 
 Jumlah barang mendukung tiga angka desimal, biaya satuan empat, dan nominal akun dua. Gunakan titik untuk desimal, tanpa pemisah ribuan. Nilai setiap baris stok dibulatkan ke dua desimal sebelum dijumlahkan. Draf menolak barang atau akun yang sama dua kali dan mendukung maksimal 100 baris barang serta 100 baris saldo akun.
 

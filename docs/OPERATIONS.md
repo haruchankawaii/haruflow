@@ -54,11 +54,11 @@ Jika lupa password semua administrator, jalankan `haruflow admin reset-password 
 
 Penerimaan stok manual tetap tersedia dan mengkredit modal awal; jangan gunakan sebagai pengganti purchasing/utang supplier. Hindari memasukkan barang awal dua kali melalui saldo awal dan penerimaan stok.
 
-Menu Pembelian menyediakan supplier serta PO draf/edit/konfirmasi/pembatalan. PO tidak mengubah stok atau jurnal dan dapat disiapkan meskipun periode akuntansi tertutup. Supplier aktif diperlukan saat membuat/mengubah draf atau mengonfirmasi PO. Dokumen dikonfirmasi dikunci; pembatalan memerlukan alasan dan tidak menghapus riwayat. Penerimaan dari PO, tagihan, dan pembayaran supplier menyusul; lihat [panduan pembelian](./PURCHASING.md).
+Menu Pembelian menyediakan supplier, PO, serta penerimaan penuh. Pembuatan/konfirmasi PO tidak mengubah stok/jurnal dan dapat dilakukan saat periode akuntansi tertutup. Supplier aktif diperlukan saat membuat/mengubah draf atau mengonfirmasi PO. PO dikonfirmasi dikunci; penerimaan memakai seluruh jumlah/biaya tersimpan dan dapat diproses walaupun supplier kemudian nonaktif. Penerimaan memposting stok serta jurnal debit persediaan/kredit barang diterima belum ditagih, tanpa kas. Tagihan dan pembayaran supplier menyusul; lihat [panduan pembelian](./PURCHASING.md).
 
 Produk berjenis jasa/nonstok tidak memiliki saldo persediaan, biaya rata-rata, atau HPP stok. Pesanan yang seluruh isinya jasa dapat dibuatkan invoice sesudah konfirmasi. Pesanan campuran barang dan jasa tetap memerlukan pengiriman barang sebelum invoice, dan hanya baris barang yang mengurangi stok. Penerimaan dan penyesuaian persediaan menolak produk jasa. Jenis produk tidak dapat diganti setelah digunakan pada pesanan penjualan, PO, atau mutasi stok; jenis pada dokumen lama disimpan sebagai snapshot.
 
-Jurnal manual tidak boleh langsung mengubah akun kontrol piutang (1200) atau persediaan (1300). Gunakan alur invoice/pembayaran dan mutasi stok agar saldo subledger tetap cocok.
+Jurnal manual tidak boleh langsung mengubah akun kontrol piutang (1200), persediaan (1300), atau barang diterima belum ditagih. Akun penampung penerimaan PO dipilih dari kode bebas pada migrasi dan juga tidak dapat diisi lewat saldo awal. Gunakan dokumen operasional agar saldo subledger tetap cocok.
 
 ## Koreksi transaksi dan penutupan periode
 
@@ -67,6 +67,8 @@ Dokumen posted, jurnal, pembayaran, audit, dan pergerakan stok tidak dihapus dar
 Reversal pengiriman mengembalikan biaya historis pengiriman ke nilai persediaan saat ini dan menghitung ulang biaya rata-rata. Reversal berbeda dari retur penjualan komersial; retur belum tersedia.
 
 Finance dapat membalik jurnal manual melalui Jurnal umum; seluruh baris dibalik persis dan jurnal asal tetap terhubung ke jurnal pembalik. Warehouse dapat membatalkan penerimaan yang memiliki snapshot biaya sebelum penerimaan dan belum diikuti mutasi stok apa pun pada produk yang sama. Pembatalan mengembalikan jumlah, nilai, dan biaya rata-rata sebelum penerimaan. Penerimaan lama tanpa snapshot tidak ditebak biaya historisnya; gunakan penyesuaian stok setelah memeriksa transaksi terkait. Lihat [panduan koreksi dan chart](./CORRECTIONS_AND_CHARTS.md).
+
+Penerimaan PO dikoreksi melalui riwayat Pembelian, bukan tombol pembatalan penerimaan stok manual. Seluruh barang harus belum memiliki mutasi lanjutan; snapshot jumlah/nilai/biaya, versi PO, serta periode terbuka diperiksa bersama. Pembalikan menambah mutasi/jurnal lawan, memulihkan biaya persis, dan mengembalikan PO ke Dikonfirmasi. Penerimaan asal tetap tersimpan dan dapat digantikan dokumen GR baru. PO dengan penerimaan aktif tidak dapat dibatalkan langsung. Penyesuaian stok tidak otomatis membalik kewajiban penerimaan PO.
 
 Saldo awal hanya dapat dibalik sebelum ada jurnal atau pergerakan stok lain. Pembalikan memulihkan saldo ke nol, menyimpan alasan serta snapshot posting, dan mengembalikan dokumen menjadi draf untuk koreksi. Dokumen pembukaan hanya satu per perusahaan; posting ulang setelah pembalikan tetap memakai konteks yang sama. Setelah transaksi operasional berjalan, koreksi pembukaan tidak dilakukan dengan mereset saldo.
 
@@ -108,6 +110,8 @@ Migrasi `0008_opening_balances.sql` menambahkan dokumen/snapshot saldo awal dan 
 Migrasi `0009_document_corrections.sql` menambahkan urutan mutasi yang monoton dan snapshot posisi sebelum penerimaan baru. Pengisian urutan riwayat lama tidak mengubah jumlah atau nilai transaksi. Penerimaan yang sudah ada tetap memiliki snapshot kosong dan tidak dapat dibatalkan melalui fasilitas baru. Setelah jenis pembalikan baru dipakai, versi sebelum migrasi ini memerlukan restore backup yang sesuai untuk penurunan versi.
 
 Migrasi `0010_purchasing.sql` menambahkan supplier, PO, baris snapshot, serta urutan nomor pembelian. Migrasi ini tidak memposting stok atau jurnal. Setelah dipakai, referensi PO ikut mengunci jenis produk dan mencegah penghapusannya. Gunakan executable yang mengenali referensi pembelian tersebut; untuk penurunan versi, pulihkan backup beserta versi aplikasi yang cocok.
+
+Migrasi `0011_purchase_receipts.sql` menambahkan penerimaan PO, snapshot biaya, status Diterima, metadata akun kontrol, dan fungsi riwayat/koreksi. Akun barang diterima belum ditagih dibuat pada kode kosong 2110–2199, atau kode sepuluh digit kosong bila rentang tersebut penuh; akun pengguna tidak diubah. Migrasi tidak memposting ulang transaksi lama. Jalankan setelah menghentikan aplikasi dan backup. Setelah penerimaan baru dipakai, downgrade memerlukan restore backup serta versi aplikasi yang cocok. Uji restore menyertakan snapshot penerimaan dan saldo akun penampung.
 
 ## Health, log, dan troubleshooting
 

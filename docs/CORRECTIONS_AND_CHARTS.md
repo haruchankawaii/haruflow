@@ -21,7 +21,7 @@ Batas pembatalan:
 - Saldo saat ini harus cocok dengan posisi hasil penerimaan. Permintaan yang tidak cocok ditolak tanpa mengubah stok atau jurnal.
 - Penerimaan yang sudah dibatalkan tidak dapat dibatalkan lagi. Periode pembukuan saat ini harus masih terbuka, sama seperti pembalikan jurnal manual.
 
-Alasan pemblokiran ditampilkan pada riwayat. Untuk selisih stok yang sudah melewati batas ini, gunakan **Sesuaikan stok** dengan alasan dan biaya yang benar setelah memeriksa transaksi terkait. Pembatalan penerimaan bukan retur pembelian kepada supplier; purchasing dan utang supplier belum tersedia.
+Alasan pemblokiran ditampilkan pada riwayat. Untuk selisih stok yang sudah melewati batas ini, periksa transaksi terkait sebelum memakai **Sesuaikan stok** dengan alasan dan biaya yang benar. Alur di atas berlaku untuk penerimaan stok manual yang mengkredit modal awal. Penerimaan dari PO dikoreksi melalui riwayat **Pembelian** dan membalik akun barang diterima belum ditagih; lihat [panduan pembelian](./PURCHASING.md). Penyesuaian stok saja tidak otomatis membalik kewajiban PO. Pembatalan penerimaan bukan retur komersial kepada supplier; tagihan dan pembayaran supplier belum tersedia.
 
 ## Membaca dashboard
 

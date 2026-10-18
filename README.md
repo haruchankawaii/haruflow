@@ -18,9 +18,9 @@ Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa paja
 - Dashboard, pencarian, ekspor CSV, dan tampilan cetak invoice.
 - Chart pendapatan/HPP dan mutasi kas dengan pilihan 3/6/12 bulan, serta posisi invoice terbayar/piutang saat ini.
 
-Master supplier serta PO draf/edit/konfirmasi/pembatalan tersedia pada menu Pembelian. PO mencatat rencana pembelian dan belum memengaruhi stok, utang, atau kas; lihat [panduan pembelian](./docs/PURCHASING.md).
+Menu Pembelian menyediakan supplier, PO draf/edit/konfirmasi/pembatalan, penerimaan barang penuh, koreksi penerimaan beralasan, serta chart status seluruh PO. Penerimaan memperbarui stok, biaya rata-rata, dan jurnal persediaan/barang diterima belum ditagih. Pembuatan atau konfirmasi PO belum memposting stok; lihat [panduan pembelian](./docs/PURCHASING.md).
 
-Penerimaan dari PO, tagihan/utang supplier, retur komersial, pengiriman sebagian, multicurrency, multi-company, payroll, dan integrasi pajak belum tersedia. Detail lingkup dan tahap selanjutnya ada di [rencana Community](./docs/COMMUNITY_PLAN.md).
+Tagihan/jatuh tempo/pembayaran supplier, penerimaan sebagian, retur komersial, pengiriman sebagian, multicurrency, multi-company, payroll, dan integrasi pajak belum tersedia. Detail lingkup dan tahap selanjutnya ada di [rencana Community](./docs/COMMUNITY_PLAN.md).
 
 ## Menjalankan dengan Docker Compose
 

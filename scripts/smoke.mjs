@@ -113,8 +113,18 @@ if (mode === 'seed') {
     items: [{ product_id: product.id, quantity: '3', unit_cost: '60000' }],
     idempotency_key: crypto.randomUUID(),
   });
-  await api(`/purchase-orders/${reviewedPurchase.id}/confirm`, 'POST', {
+  const readyPurchase = await api(`/purchase-orders/${reviewedPurchase.id}/confirm`, 'POST', {
     version: reviewedPurchase.version, idempotency_key: crypto.randomUUID(),
+  });
+  const receiveInput = { version: readyPurchase.version, reference: 'CI goods receipt before review', idempotency_key: crypto.randomUUID() };
+  const firstReceived = await api(`/purchase-orders/${reviewedPurchase.id}/receive`, 'POST', receiveInput);
+  assert.deepEqual(await api(`/purchase-orders/${reviewedPurchase.id}/receive`, 'POST', receiveInput), firstReceived, 'Retry cannot duplicate PO goods receipts');
+  const purchaseCorrection = { version: firstReceived.version, reason: 'CI checks PO receipt correction', idempotency_key: crypto.randomUUID() };
+  const receiptReversedPurchase = await api(`/purchase-receipts/${firstReceived.active_receipt_id}/reverse`, 'POST', purchaseCorrection);
+  assert.deepEqual(await api(`/purchase-receipts/${firstReceived.active_receipt_id}/reverse`, 'POST', purchaseCorrection), receiptReversedPurchase);
+  assert.equal(receiptReversedPurchase.status, 'confirmed');
+  await api(`/purchase-orders/${reviewedPurchase.id}/receive`, 'POST', {
+    version: receiptReversedPurchase.version, reference: 'CI reviewed goods receipt', idempotency_key: crypto.randomUUID(),
   });
 } else {
   await login();
@@ -132,6 +142,11 @@ if (mode === 'mutate') {
   await api('/purchase-orders', 'POST', {
     supplier_id: supplier.id, items: [{ product_id: product.id, quantity: '1', unit_cost: '100' }],
     idempotency_key: crypto.randomUUID(),
+  });
+  const receivedPurchase = (await api('/purchase-orders')).items.find(item => item.status === 'received');
+  assert.ok(receivedPurchase);
+  await api(`/purchase-receipts/${receivedPurchase.active_receipt_id}/reverse`, 'POST', {
+    version: receivedPurchase.version, reason: 'Must disappear after backup restore', idempotency_key: crypto.randomUUID(),
   });
   console.log('Post-backup mutation created on disposable instance.');
 } else {
@@ -153,26 +168,26 @@ if (mode === 'mutate') {
     await login();
   }
   const dashboard = await api('/dashboard');
-  for (const [key, expected] of Object.entries({ revenue: 170000, outstanding: 0, inventory_value: 580000, cash: 270000, customers_count: 1, products_count: 2, orders_count: 2 })) {
+  for (const [key, expected] of Object.entries({ revenue: 170000, outstanding: 0, inventory_value: 760000, cash: 270000, customers_count: 1, products_count: 2, orders_count: 2 })) {
     assert.equal(Number(dashboard[key]), expected, `Dashboard ${key}`);
   }
   const trial = await api('/accounting/trial-balance');
   assert.equal(trial.balanced, true);
-  assert.equal(Number(trial.total_debit), 950000);
-  assert.equal(Number(trial.total_credit), 950000);
+  assert.equal(Number(trial.total_debit), 1130000);
+  assert.equal(Number(trial.total_credit), 1130000);
   const products = await api('/products');
-  assert.equal(Number(products.items.find(product => product.sku === 'CI-001').quantity), 11);
+  assert.equal(Number(products.items.find(product => product.sku === 'CI-001').quantity), 14);
   const service = products.items.find(product => product.sku === 'CI-SERVICE');
   assert.equal(service.kind, 'service');
   assert.equal(Number(service.quantity), 0);
   assert.equal(Number(service.inventory_value), 0);
   const movements = await api('/inventory/movements');
-  assert.equal(movements.items.length, 7, 'Opening, stock shipping, and receipt corrections retain their history');
+  assert.equal(movements.items.length, 10, 'Opening, shipping, manual receipts and PO receipts retain their correction history');
   const correctedReceipt = movements.items.find(movement => movement.reference === 'CI wrong receipt');
   assert.equal(correctedReceipt.reversal.reason, 'CI corrects the receipt quantity and cost');
   assert.equal(correctedReceipt.can_reverse, false);
   const reviewedReceipt = movements.items.find(movement => movement.reference === 'CI reviewed receipt');
-  assert.equal(reviewedReceipt.can_reverse, true);
+  assert.equal(reviewedReceipt.can_reverse, false, 'Later PO receipts block reversal of an earlier manual receipt');
   const opening = await api('/accounting/opening');
   assert.equal(opening.document.status, 'posted');
   assert.equal(opening.eligible, false);
@@ -186,7 +201,7 @@ if (mode === 'mutate') {
   const orders = await api('/orders');
   assert.ok(orders.items.some(order => order.number === 'SO-000001'), 'Existing numbers survive prefix edits');
   const journals = await api('/accounting/journals');
-  assert.equal(journals.items.length, 13);
+  assert.equal(journals.items.length, 16);
   const correctedJournal = journals.items.find(journal => journal.description === 'CI wrong manual cash');
   assert.equal(correctedJournal.reversal.reason, 'CI removes incorrect manual cash');
   assert.equal(correctedJournal.can_reverse, false);
@@ -209,12 +224,38 @@ if (mode === 'mutate') {
   assert.equal(cancelledPurchase.total, '150000.31');
   assert.equal(cancelledPurchase.cancellation_reason, 'CI supplier changed delivery terms');
   assert.equal(cancelledPurchase.items[0].unit_cost, '60000.1234');
-  const activePurchase = purchases.items.find(purchase => purchase.status === 'confirmed');
+  const activePurchase = purchases.items.find(purchase => purchase.status === 'received');
   assert.ok(activePurchase);
   assert.equal(activePurchase.total, '180000.00');
   assert.equal(activePurchase.supplier_name, 'CI Supplier');
   assert.equal(activePurchase.expected_date, '2027-01-15');
+  assert.equal(activePurchase.receipts.length, 2);
+  assert.equal(activePurchase.receipts.filter(receipt => receipt.reversal === null).length, 1);
+  const firstGoodsReceipt = activePurchase.receipts.find(receipt => receipt.reversal !== null);
+  assert.equal(firstGoodsReceipt.reversal.reason, 'CI checks PO receipt correction');
+  assert.equal(firstGoodsReceipt.can_reverse, false);
+  const currentGoodsReceipt = activePurchase.receipts.find(receipt => receipt.id === activePurchase.active_receipt_id);
+  assert.ok(currentGoodsReceipt);
+  assert.equal(currentGoodsReceipt.reference, 'CI reviewed goods receipt');
+  assert.equal(currentGoodsReceipt.can_reverse, true);
+  assert.equal(currentGoodsReceipt.total, '180000.00');
+  const accounts = await api('/accounting/accounts');
+  const accrual = accounts.items.find(account => account.system_role === 'purchase_receipt_accrual');
+  assert.ok(accrual);
+  assert.equal(accrual.kind, 'liability');
+  assert.equal(accrual.is_control, true);
+  const accrualTrial = trial.items.find(account => account.code === accrual.code);
+  assert.equal(Number(accrualTrial.credit), 180000);
+  const receiptJournal = await api(`/accounting/journals/${currentGoodsReceipt.journal_id}`);
+  assert.equal(receiptJournal.source_type, 'purchase_receipt');
+  assert.equal(Number(receiptJournal.lines.find(line => line.account_code === '1300').debit), 180000);
+  assert.equal(Number(receiptJournal.lines.find(line => line.account_code === accrual.code).credit), 180000);
+  const summary = await api('/purchasing/summary');
+  assert.deepEqual(summary.counts, { draft: 0, confirmed: 0, received: 1, cancelled: 1 });
+  assert.equal(Number(summary.pending_receipt_total), 0);
+  assert.equal(Number(summary.received_unbilled_total), 180000);
+  assert.equal(Number(summary.values.received), 180000);
   const purchaseDetail = await api(`/purchase-orders/${activePurchase.id}`);
   assert.deepEqual(purchaseDetail, activePurchase, 'PO detail and list retain the same snapshots after restore');
-  console.log(`Disposable-instance ${mode} check passed: suppliers, PO history, corrections, charts, stock, sales, payments, and restored ledger balances.`);
+  console.log(`Disposable-instance ${mode} check passed: PO goods receipts, accruals, safe corrections, purchase charts, and restored stock and ledger balances.`);
 }
