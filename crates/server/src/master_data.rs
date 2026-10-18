@@ -152,12 +152,13 @@ async fn delete_customer(
 struct ProductInput {
     sku: String,
     name: String,
+    kind: Option<String>,
     unit: Option<String>,
     price: String,
 }
 
-const PRODUCT_RETURNING: &str = "UPDATE products SET sku=$2,name=$3,unit=$4,price=$5 WHERE id=$1 RETURNING \
-    jsonb_build_object('id',id,'sku',sku,'name',name,'unit',unit,'price',price::text, \
+const PRODUCT_RETURNING: &str = "UPDATE products SET sku=$2,name=$3,unit=$4,price=$5,kind=$6 WHERE id=$1 RETURNING \
+    jsonb_build_object('id',id,'sku',sku,'name',name,'kind',kind,'unit',unit,'price',price::text, \
     'quantity',quantity::text,'average_cost',average_cost::text,'inventory_value',inventory_value::text,'created_at',created_at)";
 
 async fn update_product(
@@ -173,8 +174,23 @@ async fn update_product(
     let price = domain::decimal(&body.price, 2, "Price").map_err(AppError::bad_request)?;
     let mut tx = state.db.begin().await?;
     let before: Value = sqlx::query_scalar(
-        "SELECT jsonb_build_object('sku',sku,'name',name,'unit',unit,'price',price::text) FROM products WHERE id=$1 FOR UPDATE",
+        "SELECT jsonb_build_object('sku',sku,'name',name,'kind',kind,'unit',unit,'price',price::text) FROM products WHERE id=$1 FOR UPDATE",
     ).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(AppError::not_found)?;
+    let kind = crate::business::product_kind(
+        body.kind
+            .as_deref()
+            .unwrap_or_else(|| before["kind"].as_str().unwrap()),
+    )?;
+    if before["kind"] != kind {
+        let used: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sales_order_lines WHERE product_id=$1) OR EXISTS(SELECT 1 FROM inventory_movements WHERE product_id=$1)",
+        ).bind(id).fetch_one(&mut *tx).await?;
+        if used {
+            return Err(AppError::conflict(
+                "Product kind cannot change after use in a sales or stock document",
+            ));
+        }
+    }
     // Inventory balances are deliberately absent from both input and UPDATE columns.
     // Existing sales lines retain their product_sku/product_name/unit_price snapshots.
     let result: Value = sqlx::query_scalar(PRODUCT_RETURNING)
@@ -183,9 +199,10 @@ async fn update_product(
         .bind(name)
         .bind(unit)
         .bind(price)
+        .bind(kind)
         .fetch_one(&mut *tx)
         .await?;
-    let after = json!({"sku":result["sku"],"name":result["name"],"unit":result["unit"],"price":result["price"]});
+    let after = json!({"sku":result["sku"],"name":result["name"],"kind":result["kind"],"unit":result["unit"],"price":result["price"]});
     audit(
         &mut tx,
         &user,

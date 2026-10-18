@@ -15,6 +15,7 @@ import {
 } from "./components";
 import { usePagination, useResource } from "./hooks";
 import { downloadCsv } from "./export";
+import { dateTime, getCompanyTimezone } from "./format";
 
 interface AuditEvent {
   id: string;
@@ -30,6 +31,8 @@ interface AuditEvent {
 
 const actionNames: Record<string, string> = {
   "company.setup": "Perusahaan disiapkan",
+  "company.profile_updated": "Profil perusahaan diperbarui",
+  "user.password_reset_local": "Kata sandi direset melalui server",
   "auth.login": "Pengguna masuk",
   "auth.logout": "Pengguna keluar",
   "user.create": "Pengguna ditambahkan",
@@ -72,21 +75,6 @@ const resourceNames: Record<string, string> = {
   account: "Akun pembukuan",
 };
 
-const timeFormatter = new Intl.DateTimeFormat("id-ID", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZone: "Asia/Jakarta",
-  timeZoneName: "short",
-});
-
-function eventTime(value: string): string {
-  const time = new Date(value);
-  return Number.isNaN(time.getTime()) ? "—" : timeFormatter.format(time);
-}
-
 function detailsText(details: unknown): string {
   return JSON.stringify(details ?? {}, null, 2) ?? "{}";
 }
@@ -126,7 +114,7 @@ export default function Audit() {
     downloadCsv(
       "haruflow-aktivitas",
       [
-        "Waktu (WIB)",
+        `Waktu (${getCompanyTimezone()})`,
         "Pengguna",
         "Email",
         "Aktivitas",
@@ -136,7 +124,7 @@ export default function Audit() {
         "Detail",
       ],
       filtered.map((event) => [
-        eventTime(event.created_at),
+        dateTime(event.created_at),
         event.actor_name || "Sistem",
         event.actor_email,
         actionNames[event.action] ?? event.action,
@@ -206,7 +194,7 @@ export default function Audit() {
                     {resourceNames[event.resource_type] ?? event.resource_type}{" "}
                     ·{" "}
                     <time dateTime={event.created_at}>
-                      {eventTime(event.created_at)}
+                      {dateTime(event.created_at)}
                     </time>
                   </small>
                 </span>
@@ -238,7 +226,7 @@ export default function Audit() {
                       <dt>Waktu</dt>
                       <dd>
                         <time dateTime={event.created_at}>
-                          {eventTime(event.created_at)}
+                          {dateTime(event.created_at)}
                         </time>
                       </dd>
                     </div>

@@ -8,7 +8,19 @@ export interface User {
 }
 export interface Session {
   user: User;
-  company: { id: string; name: string; currency: string; timezone: string };
+  company: Company;
+}
+export interface Company {
+  id: string;
+  name: string;
+  currency: string;
+  timezone: string;
+  address?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  tax_id?: string | null;
+  order_prefix?: string;
+  invoice_prefix?: string;
 }
 export interface Customer {
   id: string;
@@ -27,6 +39,7 @@ export interface Product {
   quantity: string;
   average_cost: string;
   inventory_value?: string;
+  kind?: "stock" | "service";
 }
 export interface OrderLine {
   product_id: string;
@@ -35,6 +48,7 @@ export interface OrderLine {
   quantity: string;
   unit_price: string;
   total?: string;
+  product_kind?: "stock" | "service";
 }
 export interface Order {
   id: string;
@@ -46,6 +60,7 @@ export interface Order {
   paid?: string;
   created_at: string;
   items?: OrderLine[];
+  has_stock_items?: boolean;
 }
 export interface Invoice {
   id: string;

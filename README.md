@@ -7,8 +7,10 @@ Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa paja
 ## Fitur
 
 - Setup perusahaan dan admin, login lokal, role, pengelolaan pengguna, penggantian password, pencabutan sesi, dan audit aktivitas.
+- Profil perusahaan, kontak, zona waktu sebelum posting pertama, serta awalan nomor pesanan dan invoice yang dapat dikonfigurasi. Mata uang tetap IDR.
 - Pelanggan, produk, penerimaan stok, biaya rata-rata bergerak, penyesuaian, dan riwayat stok.
 - Sales order → konfirmasi → pengiriman penuh → invoice → pembayaran sebagian/penuh.
+- Produk jasa/nonstok dapat ditagih langsung setelah konfirmasi, tanpa pergerakan stok; pesanan campuran tetap mengirim barang terlebih dahulu.
 - Jurnal otomatis, jurnal manual seimbang, neraca saldo, dan penutupan periode.
 - Koreksi pembayaran, invoice, dan pengiriman melalui reversal dengan alasan; riwayat posted dipertahankan.
 - Dashboard, pencarian, ekspor CSV, dan tampilan cetak invoice.
@@ -65,6 +67,17 @@ bun run build:web
 Tes mencakup perhitungan decimal, setup bersamaan, permission dan pencabutan sesi, alur ERP, idempotensi, perebutan stok, jurnal seimbang, ledger yang tidak bisa diedit, reversal, dan periode tutup. Workflow GitHub Actions menjalankan pemeriksaan backend, frontend, serta build container.
 
 ## Backup dan restore
+
+Jika seluruh akses admin hilang karena lupa password, operator lokal dapat memulihkan administrator aktif dari terminal:
+
+```sh
+docker compose --env-file .env -f deploy/community/compose.yml exec app haruflow admin reset-password admin@example.com
+# Native: cargo run --locked -- admin reset-password admin@example.com
+```
+
+Password diminta dua kali melalui prompt tersembunyi. Perintah ini memerlukan akses server/database, mencabut seluruh sesi admin tersebut, dan tidak dapat menaikkan role pengguna biasa atau mengaktifkan akun nonaktif. Untuk otomasi yang memakai input terlindungi tersedia `--password-stdin`; jangan menulis password sebagai argumen command atau ke shell history.
+
+## Backup dan restore data
 
 ```sh
 node scripts/database.mjs backup

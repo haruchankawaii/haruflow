@@ -147,7 +147,8 @@ async fn dashboard(State(state): State<AppState>, _user: AuthUser) -> AppResult<
             'customers_count',(SELECT count(*) FROM customers),
             'recent_orders',COALESCE((SELECT jsonb_agg(x.item ORDER BY x.created_at DESC) FROM (
                 SELECT o.created_at,jsonb_build_object('id',o.id,'number',o.number,'customer_id',o.customer_id,
-                'customer_name',c.name,'status',o.status,'total',o.total::text,'paid',COALESCE(i.paid,0)::text,'created_at',o.created_at) item
+                'customer_name',c.name,'status',o.status,'total',o.total::text,'paid',COALESCE(i.paid,0)::text,'created_at',o.created_at,
+                'has_stock_items',EXISTS(SELECT 1 FROM sales_order_lines sl WHERE sl.order_id=o.id AND sl.product_kind='stock')) item
                 FROM sales_orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN invoices i ON i.order_id=o.id AND i.status<>'void'
                 ORDER BY o.created_at DESC LIMIT 6) x),'[]'::jsonb),
             'monthly_sales',COALESCE((SELECT jsonb_agg(jsonb_build_object('month',x.sales_month,'total',x.total::text) ORDER BY x.sales_month) FROM (
@@ -200,7 +201,7 @@ async fn create_customer(
 
 async fn products(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
     let items: Value = sqlx::query_scalar(r#"SELECT COALESCE(jsonb_agg(jsonb_build_object(
-        'id',id,'sku',sku,'name',name,'unit',unit,'price',price::text,'quantity',quantity::text,
+        'id',id,'sku',sku,'name',name,'kind',kind,'unit',unit,'price',price::text,'quantity',quantity::text,
         'average_cost',average_cost::text,'inventory_value',inventory_value::text,'created_at',created_at) ORDER BY name),'[]'::jsonb) FROM products"#)
         .fetch_one(&state.db).await?;
     Ok(Json(json!({"items":items})))
@@ -210,8 +211,18 @@ async fn products(State(state): State<AppState>, _user: AuthUser) -> AppResult<J
 struct ProductInput {
     sku: String,
     name: String,
+    kind: Option<String>,
     unit: Option<String>,
     price: String,
+}
+
+pub(crate) fn product_kind(value: &str) -> AppResult<&str> {
+    match value {
+        "stock" | "service" => Ok(value),
+        _ => Err(AppError::bad_request(
+            "Product kind must be stock or service",
+        )),
+    }
 }
 
 async fn create_product(
@@ -222,17 +233,19 @@ async fn create_product(
     user.require(&["warehouse"])?;
     let sku = text(&body.sku.trim().to_uppercase(), 64, "SKU")?;
     let name = text(&body.name, 200, "Name")?;
+    let kind = product_kind(body.kind.as_deref().unwrap_or("stock"))?;
     let unit = text(body.unit.as_deref().unwrap_or("pcs"), 32, "Unit")?;
     let price = parse(&body.price, 2, "Price")?;
     let id = Uuid::new_v4();
     let mut tx = state.db.begin().await?;
     let inserted =
-        sqlx::query("INSERT INTO products(id,sku,name,unit,price) VALUES($1,$2,$3,$4,$5)")
+        sqlx::query("INSERT INTO products(id,sku,name,unit,price,kind) VALUES($1,$2,$3,$4,$5,$6)")
             .bind(id)
             .bind(&sku)
             .bind(&name)
             .bind(&unit)
             .bind(price)
+            .bind(kind)
             .execute(&mut *tx)
             .await;
     if let Err(error) = inserted {
@@ -251,12 +264,12 @@ async fn create_product(
         "product.created",
         "product",
         id,
-        json!({"sku":sku}),
+        json!({"sku":sku,"kind":kind}),
     )
     .await?;
     tx.commit().await?;
     Ok(Json(
-        json!({"id":id,"sku":sku,"name":name,"unit":unit,"price":price.to_string(),"quantity":"0.000","average_cost":"0.0000","inventory_value":"0.00"}),
+        json!({"id":id,"sku":sku,"name":name,"kind":kind,"unit":unit,"price":price.to_string(),"quantity":"0.000","average_cost":"0.0000","inventory_value":"0.00"}),
     ))
 }
 
@@ -293,11 +306,14 @@ async fn receive_stock(
         return Err(AppError::bad_request("Receipt value limit exceeded"));
     }
     let product =
-        sqlx::query("SELECT quantity,inventory_value FROM products WHERE id=$1 FOR UPDATE")
+        sqlx::query("SELECT kind,quantity,inventory_value FROM products WHERE id=$1 FOR UPDATE")
             .bind(body.product_id)
             .fetch_optional(&mut *tx)
             .await?
             .ok_or_else(|| AppError::bad_request("Product not found"))?;
+    if product.get::<String, _>("kind") != "stock" {
+        return Err(AppError::bad_request("Services cannot receive stock"));
+    }
     let new_quantity = product.get::<Decimal, _>("quantity") + quantity;
     if new_quantity > Decimal::from(1_000_000_000u64) {
         return Err(AppError::bad_request("Stock quantity limit exceeded"));
@@ -356,15 +372,17 @@ async fn movements(State(state): State<AppState>, _user: AuthUser) -> AppResult<
 
 pub(crate) const ORDER_SELECT: &str = r#"SELECT jsonb_build_object('id',o.id,'number',o.number,'customer_id',o.customer_id,
     'customer_name',c.name,'status',o.status,'total',o.total::text,'paid',COALESCE(i.paid,0)::text,
+    'has_stock_items',EXISTS(SELECT 1 FROM sales_order_lines sl WHERE sl.order_id=o.id AND sl.product_kind='stock'),
     'invoice_id',i.id,'created_at',o.created_at,'items',COALESCE((SELECT jsonb_agg(jsonb_build_object(
-    'id',l.id,'product_id',l.product_id,'sku',l.product_sku,'name',l.product_name,'quantity',l.quantity::text,
+    'id',l.id,'product_id',l.product_id,'sku',l.product_sku,'name',l.product_name,'product_kind',l.product_kind,'quantity',l.quantity::text,
     'unit_price',l.unit_price::text,'total',l.total::text) ORDER BY l.product_sku) FROM sales_order_lines l WHERE l.order_id=o.id),'[]'::jsonb))
     FROM sales_orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN invoices i ON i.order_id=o.id AND i.status<>'void' WHERE o.id=$1"#;
 
 async fn orders(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
     let items: Value = sqlx::query_scalar(r#"SELECT COALESCE(jsonb_agg(x.item ORDER BY x.created_at DESC),'[]'::jsonb) FROM (
         SELECT o.created_at,jsonb_build_object('id',o.id,'number',o.number,'customer_id',o.customer_id,'customer_name',c.name,
-        'status',o.status,'total',o.total::text,'paid',COALESCE(i.paid,0)::text,'invoice_id',i.id,'created_at',o.created_at) item
+        'status',o.status,'total',o.total::text,'paid',COALESCE(i.paid,0)::text,'invoice_id',i.id,'created_at',o.created_at,
+        'has_stock_items',EXISTS(SELECT 1 FROM sales_order_lines sl WHERE sl.order_id=o.id AND sl.product_kind='stock')) item
         FROM sales_orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN invoices i ON i.order_id=o.id AND i.status<>'void'
         ORDER BY o.created_at DESC LIMIT 500) x"#).fetch_one(&state.db).await?;
     Ok(Json(json!({"items":items})))
@@ -421,6 +439,12 @@ async fn create_order(
     let mut seen = BTreeSet::new();
     let mut lines = Vec::new();
     let mut total = Decimal::ZERO;
+    // Lock in a stable order so product edits cannot change kind during snapshotting.
+    let product_ids: Vec<Uuid> = body.items.iter().map(|line| line.product_id).collect();
+    sqlx::query("SELECT id FROM products WHERE id=ANY($1) ORDER BY id FOR UPDATE")
+        .bind(&product_ids)
+        .fetch_all(&mut *tx)
+        .await?;
     for line in &body.items {
         if !seen.insert(line.product_id) {
             return Err(AppError::bad_request(
@@ -439,7 +463,7 @@ async fn create_order(
         if total > Decimal::from(1_000_000_000_000u64) {
             return Err(AppError::bad_request("Order value limit exceeded"));
         }
-        let product = sqlx::query("SELECT sku,name FROM products WHERE id=$1")
+        let product = sqlx::query("SELECT sku,name,kind FROM products WHERE id=$1")
             .bind(line.product_id)
             .fetch_optional(&mut *tx)
             .await?
@@ -448,16 +472,18 @@ async fn create_order(
             line.product_id,
             product.get::<String, _>("sku"),
             product.get::<String, _>("name"),
+            product.get::<String, _>("kind"),
             quantity,
             price,
             line_total,
         ));
     }
     let id = Uuid::new_v4();
-    let number: String =
-        sqlx::query_scalar("SELECT 'SO-'||lpad(nextval('sales_order_number')::text,6,'0')")
-            .fetch_one(&mut *tx)
-            .await?;
+    let number: String = sqlx::query_scalar(
+        "SELECT order_prefix||'-'||lpad(nextval('sales_order_number')::text,6,'0') FROM company",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
     sqlx::query(
         "INSERT INTO sales_orders(id,number,customer_id,total,created_by) VALUES($1,$2,$3,$4,$5)",
     )
@@ -468,9 +494,9 @@ async fn create_order(
     .bind(user.id)
     .execute(&mut *tx)
     .await?;
-    for (product_id, sku, name, quantity, price, line_total) in lines {
-        sqlx::query("INSERT INTO sales_order_lines(id,order_id,product_id,product_sku,product_name,quantity,unit_price,total) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
-            .bind(Uuid::new_v4()).bind(id).bind(product_id).bind(sku).bind(name).bind(quantity).bind(price).bind(line_total)
+    for (product_id, sku, name, kind, quantity, price, line_total) in lines {
+        sqlx::query("INSERT INTO sales_order_lines(id,order_id,product_id,product_sku,product_name,product_kind,quantity,unit_price,total) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)")
+            .bind(Uuid::new_v4()).bind(id).bind(product_id).bind(sku).bind(name).bind(kind).bind(quantity).bind(price).bind(line_total)
             .execute(&mut *tx).await?;
     }
     audit(
@@ -562,6 +588,18 @@ async fn ship_order(
     if order.get::<String, _>("status") != "confirmed" {
         return Err(AppError::conflict("Only confirmed orders can be shipped"));
     }
+    // Services are fulfilled without an inventory posting; mixed orders move stock only.
+    let lines = sqlx::query(
+        "SELECT product_id,quantity FROM sales_order_lines WHERE order_id=$1 AND product_kind='stock' ORDER BY product_id",
+    )
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await?;
+    if lines.is_empty() {
+        return Err(AppError::conflict(
+            "Service-only orders can be invoiced directly without shipment",
+        ));
+    }
     let posting_id = Uuid::new_v4();
     sqlx::query("INSERT INTO shipment_postings(id,order_id) VALUES($1,$2)")
         .bind(posting_id)
@@ -569,12 +607,6 @@ async fn ship_order(
         .execute(&mut *tx)
         .await?;
     // Every shipment locks products in the same order, avoiding cross-order deadlocks.
-    let lines = sqlx::query(
-        "SELECT product_id,quantity FROM sales_order_lines WHERE order_id=$1 ORDER BY product_id",
-    )
-    .bind(id)
-    .fetch_all(&mut *tx)
-    .await?;
     let mut cost_total = Decimal::ZERO;
     for line in lines {
         let product_id: Uuid = line.get("product_id");
@@ -667,14 +699,24 @@ async fn invoice_order(
             .fetch_optional(&mut *tx)
             .await?
             .ok_or_else(|| AppError::bad_request("Order not found"))?;
-    if order.get::<String, _>("status") != "shipped" {
-        return Err(AppError::conflict("Only shipped orders can be invoiced"));
+    let has_stock_items: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM sales_order_lines WHERE order_id=$1 AND product_kind='stock')",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let status: String = order.get("status");
+    if status != "shipped" && !(status == "confirmed" && !has_stock_items) {
+        return Err(AppError::conflict(
+            "Confirm service orders or ship stock orders before invoicing",
+        ));
     }
     let invoice_id = Uuid::new_v4();
-    let number: String =
-        sqlx::query_scalar("SELECT 'INV-'||lpad(nextval('invoice_number')::text,6,'0')")
-            .fetch_one(&mut *tx)
-            .await?;
+    let number: String = sqlx::query_scalar(
+        "SELECT invoice_prefix||'-'||lpad(nextval('invoice_number')::text,6,'0') FROM company",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
     let total: Decimal = order.get("total");
     sqlx::query(
         "INSERT INTO invoices(id,number,order_id,customer_id,total) VALUES($1,$2,$3,$4,$5)",

@@ -13,7 +13,7 @@ import {
 } from "./components";
 import { date, lineTotal, money, number } from "./format";
 import { useResource } from "./hooks";
-import type { Customer, Invoice, Order, Session } from "./types";
+import type { Company, Customer, Invoice, Order, Session } from "./types";
 
 interface Payment {
   id: string;
@@ -39,6 +39,7 @@ export default function InvoiceDetail({
 }) {
   const order = useResource<Order>(`/orders/${invoice.order_id}`);
   const customers = useResource<{ items: Customer[] }>("/customers");
+  const company = useResource<Company>("/company");
   const payments = useResource<{ items: Payment[] }>(
     `/invoices/${invoice.id}/payments`,
   );
@@ -52,7 +53,8 @@ export default function InvoiceDetail({
       customer.id === order.data?.customer_id,
   );
   const canManage = ["admin", "finance"].includes(session.user.role);
-  const error = order.error || customers.error || payments.error;
+  const error =
+    order.error || customers.error || payments.error || company.error;
   return (
     <Modal
       title={invoice.number}
@@ -60,7 +62,10 @@ export default function InvoiceDetail({
       onClose={onClose}
       wide
     >
-      {order.loading || customers.loading || payments.loading ? (
+      {order.loading ||
+      customers.loading ||
+      payments.loading ||
+      company.loading ? (
         <Loading />
       ) : error ? (
         <ErrorState
@@ -69,6 +74,7 @@ export default function InvoiceDetail({
             order.reload();
             customers.reload();
             payments.reload();
+            company.reload();
           }}
         />
       ) : (
@@ -77,8 +83,15 @@ export default function InvoiceDetail({
             <div className="invoice-document-heading">
               <div>
                 <span className="eyebrow">HARUFLOW COMMUNITY</span>
-                <h2>{session.company.name}</h2>
-                <p>Invoice penjualan</p>
+                <h2>{company.data?.name ?? session.company.name}</h2>
+                {company.data?.address && (
+                  <p className="preserve-lines">{company.data.address}</p>
+                )}
+                {company.data?.email && <p>{company.data.email}</p>}
+                {company.data?.phone && <p>{company.data.phone}</p>}
+                {company.data?.tax_id && (
+                  <p>NPWP / ID Pajak: {company.data.tax_id}</p>
+                )}
               </div>
               <div className="invoice-document-number">
                 <h3>INVOICE</h3>

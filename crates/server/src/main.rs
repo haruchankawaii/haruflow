@@ -2,12 +2,20 @@ mod auth;
 #[cfg(test)]
 mod auth_integration_tests;
 mod business;
+mod cli;
+mod company;
+#[cfg(test)]
+mod company_tests;
 mod corrections;
 mod domain;
 mod error;
 mod master_data;
 #[cfg(test)]
+mod service_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod upgrade_tests;
 
 use anyhow::{Context, Result, bail};
 use axum::{
@@ -42,14 +50,12 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "haruflow=info,tower_http=info".into()),
         )
         .init();
-    let command = env::args().nth(1).unwrap_or_else(|| "serve".into());
-    if command == "--help" || command == "help" {
-        println!(
-            "Haruflow Community\n\n  haruflow migrate  Apply database migrations (run once before serving)\n  haruflow serve    Serve the ERP and frontend\n\nConfiguration: DATABASE_URL, HARUFLOW_SETUP_TOKEN, HARUFLOW_BIND, HARUFLOW_STATIC_DIR, HARUFLOW_SECURE_COOKIES\nSee README.md for setup and backup instructions."
-        );
+    let command = cli::parse(&env::args().skip(1).collect::<Vec<_>>())?;
+    if command == cli::Command::Help {
+        println!("{}", cli::HELP);
         return Ok(());
     }
-    if command == "healthcheck" {
+    if command == cli::Command::Healthcheck {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let port = env::var("HARUFLOW_BIND")
             .unwrap_or_else(|_| "0.0.0.0:8080".into())
@@ -74,9 +80,6 @@ async fn main() -> Result<()> {
         .context("Healthcheck timed out")??;
         return Ok(());
     }
-    if command != "migrate" && command != "serve" {
-        bail!("Unknown command. Use haruflow --help.");
-    }
     let database_url =
         env::var("DATABASE_URL").context("DATABASE_URL is required; see .env.example")?;
     let db = PgPoolOptions::new()
@@ -85,12 +88,24 @@ async fn main() -> Result<()> {
         .connect(&database_url)
         .await
         .context("Cannot connect to PostgreSQL")?;
-    if command == "migrate" {
+    if command == cli::Command::Migrate {
         sqlx::migrate!("../../migrations")
             .run(&db)
             .await
             .context("Database migration failed")?;
         tracing::info!("database migrations complete");
+        return Ok(());
+    }
+    if let cli::Command::ResetAdmin {
+        email,
+        password_stdin,
+    } = command
+    {
+        let password = cli::read_recovery_password(password_stdin)?;
+        company::reset_admin_password(&db, &email, password)
+            .await
+            .map_err(|error| anyhow::anyhow!("{}", error.message))?;
+        println!("Password administrator diperbarui dan seluruh sesi lamanya dicabut.");
         return Ok(());
     }
     let setup_token = env::var("HARUFLOW_SETUP_TOKEN")
@@ -128,6 +143,7 @@ async fn main() -> Result<()> {
 
 fn app_router(state: AppState, static_dir: PathBuf) -> Router {
     let api = auth::router()
+        .merge(company::router())
         .merge(master_data::router())
         .merge(business::router())
         .merge(corrections::router())

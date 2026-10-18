@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { api, ApiError, errorMessage } from "./api";
 import { Brand, ErrorState, Loading, Modal } from "./components";
-import { roleNames } from "./format";
+import { roleNames, setCompanyTimezone } from "./format";
 import { ResourceRevisionContext } from "./hooks";
 import Auth from "./Auth";
 import Dashboard from "./Dashboard";
@@ -58,6 +58,11 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
 
+  function updateSession(next: Session) {
+    setCompanyTimezone(next.company.timezone);
+    setSession(next);
+  }
+
   async function initialize() {
     setLoading(true);
     setError("");
@@ -66,7 +71,7 @@ export default function App() {
       setSetup(state.needs_setup);
       if (!state.needs_setup) {
         try {
-          setSession(await api<Session>("/auth/me"));
+          updateSession(await api<Session>("/auth/me"));
         } catch (error) {
           if (error instanceof ApiError && error.status === 401)
             setSession(null);
@@ -147,7 +152,7 @@ export default function App() {
         <Auth
           setup={setup}
           onAuthenticated={(next) => {
-            setSession(next);
+            updateSession(next);
             setSetup(false);
             setNotice("Selamat datang di Haruflow.");
           }}
@@ -326,7 +331,7 @@ export default function App() {
             ) : page === "accounting" ? (
               <Accounting role={session.user.role} changed={changed} />
             ) : (
-              <Settings session={session} onSession={setSession} />
+              <Settings session={session} onSession={updateSession} />
             )}
           </main>
         </ResourceRevisionContext.Provider>

@@ -19,15 +19,42 @@ export const costMoney = (value: string | number | undefined) =>
   costFormatter.format(Number(value ?? 0));
 export const number = (value: string | number | undefined) =>
   numberFormatter.format(Number(value ?? 0));
+let companyTimezone = "Asia/Jakarta";
+export function setCompanyTimezone(timezone: string) {
+  companyTimezone = timezone;
+}
+export const getCompanyTimezone = () => companyTimezone;
 export const date = (value: string) =>
   value
     ? new Intl.DateTimeFormat("id-ID", {
         day: "numeric",
         month: "short",
         year: "numeric",
-        timeZone: "Asia/Jakarta",
+        timeZone: companyTimezone,
       }).format(new Date(value))
     : "—";
+export function dateTime(value: string) {
+  const time = new Date(value);
+  return Number.isNaN(time.getTime())
+    ? "—"
+    : new Intl.DateTimeFormat("id-ID", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: companyTimezone,
+        timeZoneName: "short",
+      }).format(time);
+}
+export function companyToday(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: companyTimezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
 export const roleNames = {
   admin: "Administrator",
   sales: "Penjualan",

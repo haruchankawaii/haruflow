@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
   costMoney,
+  companyToday,
+  date,
+  dateTime,
   lineTotal,
   money,
   number,
   orderTotal,
+  setCompanyTimezone,
   toMinorUnits,
 } from "./format";
 
@@ -44,4 +48,20 @@ test("money preserves cents, cost preserves four decimals, quantity preserves th
     "Rp 1.000,1234",
   );
   expect(number("1.125")).toBe("1,125");
+});
+
+test("dates and period cutoff follow the company's timezone around midnight", () => {
+  const instant = "2026-10-18T16:30:00Z";
+  try {
+    setCompanyTimezone("Asia/Jakarta");
+    expect(companyToday(new Date(instant))).toBe("2026-10-18");
+    expect(date(instant)).toContain("18");
+    setCompanyTimezone("Asia/Jayapura");
+    expect(companyToday(new Date(instant))).toBe("2026-10-19");
+    expect(date(instant)).toContain("19");
+    expect(dateTime(instant)).toContain("01.30");
+    expect(dateTime("invalid")).toBe("—");
+  } finally {
+    setCompanyTimezone("Asia/Jakarta");
+  }
 });

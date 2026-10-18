@@ -1797,6 +1797,9 @@ tfoot td:first-child svg {
 .workspace-details {
   margin: 0 0 28px;
 }
+.preserve-lines {
+  white-space: pre-line;
+}
 .workspace-details > div {
   display: flex;
   gap: 20px;

@@ -256,12 +256,17 @@ async fn adjust_stock(
     let magnitude = parse(&quantity.abs().to_string(), 3, "Quantity")?;
     let reason = reason(&body.reason)?;
     let product = sqlx::query(
-        "SELECT quantity,average_cost,inventory_value FROM products WHERE id=$1 FOR UPDATE",
+        "SELECT kind,quantity,average_cost,inventory_value FROM products WHERE id=$1 FOR UPDATE",
     )
     .bind(body.product_id)
     .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(AppError::not_found)?;
+    if product.get::<String, _>("kind") != "stock" {
+        return Err(AppError::bad_request(
+            "Services cannot have stock adjustments",
+        ));
+    }
     let on_hand: Decimal = product.get("quantity");
     let carrying: Decimal = product.get("inventory_value");
     let old_average: Decimal = product.get("average_cost");
@@ -567,7 +572,7 @@ async fn reverse_invoice(
         .bind(id)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE sales_orders SET status='shipped',invoiced_at=NULL WHERE id=$1")
+    sqlx::query("UPDATE sales_orders SET status=CASE WHEN EXISTS(SELECT 1 FROM shipment_postings WHERE order_id=$1 AND NOT reversed) THEN 'shipped' ELSE 'confirmed' END,invoiced_at=NULL WHERE id=$1")
         .bind(order_id)
         .execute(&mut *tx)
         .await?;

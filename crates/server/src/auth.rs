@@ -350,19 +350,8 @@ async fn list_audit_events(
     Ok(Json(json!({"items": events})))
 }
 
-#[derive(Serialize, FromRow)]
-struct CompanyView {
-    id: Uuid,
-    name: String,
-    currency: String,
-    timezone: String,
-}
-
 async fn context(state: &AppState, user: AuthUser) -> AppResult<serde_json::Value> {
-    let company =
-        sqlx::query_as::<_, CompanyView>("SELECT id, name, currency, timezone FROM company")
-            .fetch_one(&state.db)
-            .await?;
+    let company = crate::company::profile(&state.db).await?;
     Ok(json!({ "user": user, "company": company }))
 }
 
@@ -541,7 +530,7 @@ async fn reset_password(
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn ensure_admin(connection: &mut PgConnection, id: Uuid) -> AppResult<()> {
+pub(crate) async fn ensure_admin(connection: &mut PgConnection, id: Uuid) -> AppResult<()> {
     let allowed: Option<bool> =
         sqlx::query_scalar("SELECT active AND role = 'admin' FROM users WHERE id = $1 FOR SHARE")
             .bind(id)
@@ -621,7 +610,7 @@ fn validated_text(value: &str, min: usize, max: usize, message: &str) -> AppResu
     }
 }
 
-fn normalize_email(value: &str) -> AppResult<String> {
+pub(crate) fn normalize_email(value: &str) -> AppResult<String> {
     let email = value.trim().to_ascii_lowercase();
     let valid = email.is_ascii()
         && email.len() <= 254
@@ -673,7 +662,7 @@ fn password_permit() -> AppResult<tokio::sync::OwnedSemaphorePermit> {
         })
 }
 
-async fn hash_password(password: String) -> AppResult<String> {
+pub(crate) async fn hash_password(password: String) -> AppResult<String> {
     if !(12..=128).contains(&password.len()) {
         return Err(AppError::bad_request("Kata sandi harus 12–128 byte."));
     }

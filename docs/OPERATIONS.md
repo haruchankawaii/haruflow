@@ -4,6 +4,8 @@
 
 Setiap instalasi memiliki satu perusahaan, satu gudang logis, satu database, dan mata uang IDR. Zona waktu perusahaan awal adalah Asia/Jakarta. Nominal API menggunakan string decimal, bukan floating point. Kuantitas mendukung tiga tempat desimal, biaya unit empat, dan nominal uang dua. Aplikasi belum menghitung pajak atau dokumen perpajakan.
 
+Administrator dapat memperbarui profil perusahaan, alamat, email, telepon, nomor pajak, dan awalan nomor pesanan/invoice melalui Pengaturan. Zona waktu dapat diganti sebelum jurnal pertama; sesudahnya perubahan ditolak agar tanggal pembukuan historis tetap konsisten. Mata uang tetap IDR. Mengubah awalan nomor tidak menomori ulang dokumen lama dan tidak mereset urutan nomor.
+
 `scripts/configure.mjs` membuat `.env` dengan password database dan token setup acak. File ini diabaikan Git. Jangan memakai `.env.example` tanpa mengganti semua placeholder. Untuk konfigurasi manual, gunakan password database URL-safe atau percent-encode password pada `DATABASE_URL`.
 
 Variabel penting:
@@ -38,6 +40,8 @@ Form setup memerlukan token lokal dan membuat satu perusahaan sekaligus admin pe
 
 Perubahan role, penonaktifan, dan reset password mencabut sesi pengguna. Admin tidak dapat menonaktifkan atau menurunkan role dirinya sendiri. Pengguna dapat mengganti password sendiri dengan password saat ini; sesi lama dicabut.
 
+Jika lupa password semua administrator, jalankan `haruflow admin reset-password admin@example.com` pada host dengan konfigurasi database, atau gunakan Compose `exec app haruflow admin reset-password admin@example.com`. Password baru diminta dua kali secara tersembunyi. Pemulihan hanya berlaku pada admin aktif, mencabut sesi lama, dan membuat audit `user.password_reset_local`. Untuk otomasi, flag `--password-stdin` menerima satu baris password 12–128 byte dari stdin; jangan memasukkan password ke argumen proses atau file yang dilacak Git.
+
 ## Urutan kerja awal
 
 1. Buat pelanggan dan produk.
@@ -47,6 +51,8 @@ Perubahan role, penonaktifan, dan reset password mencabut sesi pengguna. Admin t
 5. Posting pengiriman penuh. Aplikasi mengunci stok, menolak stok negatif, serta membukukan HPP.
 6. Buat invoice dari pengiriman lalu catat pembayaran; pembayaran sebagian didukung, uang muka dan overpayment belum didukung.
 7. Periksa neraca saldo, kartu stok, dan piutang sebelum menutup periode.
+
+Produk berjenis jasa/nonstok tidak memiliki saldo persediaan, biaya rata-rata, atau HPP stok. Pesanan yang seluruh isinya jasa dapat dibuatkan invoice sesudah konfirmasi. Pesanan campuran barang dan jasa tetap memerlukan pengiriman barang sebelum invoice, dan hanya baris barang yang mengurangi stok. Penerimaan dan penyesuaian persediaan menolak produk jasa. Jenis produk tidak dapat diganti setelah digunakan pada pesanan atau mutasi stok; jenis pada dokumen lama disimpan sebagai snapshot.
 
 Jurnal manual tidak boleh langsung mengubah akun kontrol piutang (1200) atau persediaan (1300). Gunakan alur invoice/pembayaran dan mutasi stok agar saldo subledger tetap cocok.
 

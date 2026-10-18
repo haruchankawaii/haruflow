@@ -10,7 +10,7 @@ import {
   Modal,
 } from "./components";
 import { useResource } from "./hooks";
-import { money } from "./format";
+import { companyToday, money } from "./format";
 import type { Account, Product } from "./types";
 
 export function AdjustmentForm({
@@ -323,12 +323,7 @@ export function PeriodForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [key] = useState(() => crypto.randomUUID());
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  const today = companyToday();
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
