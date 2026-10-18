@@ -1,0 +1,13 @@
+/target/
+**/node_modules/
+**/dist/
+.env
+.env.*
+!.env.example
+/backups/
+/.local/
+*.log
+*.pid
+.DS_Store
+Thumbs.db
+
