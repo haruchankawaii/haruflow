@@ -15,6 +15,7 @@ import {
   Settings2,
   ShieldCheck,
   ShoppingBag,
+  ClipboardList,
   Sprout,
   Users,
   WalletCards,
@@ -31,11 +32,13 @@ import Inventory from "./Inventory";
 import Sales from "./Sales";
 import Accounting from "./Accounting";
 import Settings from "./Settings";
+import Purchasing from "./Purchasing";
 import type { Session } from "./types";
 
 const navigation = [
   { key: "dashboard", label: "Beranda", icon: LayoutDashboard },
   { key: "sales", label: "Penjualan", icon: ShoppingBag },
+  { key: "purchasing", label: "Pembelian", icon: ClipboardList },
   { key: "inventory", label: "Inventori", icon: Package },
   { key: "customers", label: "Pelanggan", icon: Users },
   { key: "accounting", label: "Akuntansi", icon: WalletCards },
@@ -324,6 +327,8 @@ export default function App() {
                 role={session.user.role}
                 changed={changed}
               />
+            ) : page === "purchasing" ? (
+              <Purchasing role={session.user.role} changed={changed} />
             ) : page === "inventory" ? (
               <Inventory role={session.user.role} changed={changed} />
             ) : page === "customers" ? (
