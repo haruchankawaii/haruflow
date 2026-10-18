@@ -80,6 +80,7 @@ Backup menggunakan `pg_dump` dalam container PostgreSQL. Restore mengganti isi d
 - `migrations`: migrasi schema PostgreSQL yang berurutan.
 - `deploy/community`: Docker Compose untuk instalasi mandiri.
 - [Rencana Community](./docs/COMMUNITY_PLAN.md), [proposal arsitektur](./haruflow.md), dan [operasi](./docs/OPERATIONS.md).
+- [Status implementasi dan batas baseline](./docs/IMPLEMENTATION_STATUS.md).
 
 ## License
 

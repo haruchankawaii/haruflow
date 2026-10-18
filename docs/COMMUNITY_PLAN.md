@@ -1,6 +1,6 @@
 # Rencana Haruflow Community
 
-Status: usulan implementasi, belum dibangun.  
+Status: rencana acuan; baseline aplikasi Community sudah diimplementasikan. Lihat [status implementasi](./IMPLEMENTATION_STATUS.md) untuk hasil dan pekerjaan tersisa.
 Tanggal: 18 Oktober 2026.  
 Dasar: `haruflow.md` dan kondisi repository yang saat ini berisi README serta lisensi AGPL-3.0-only.
 
@@ -227,4 +227,4 @@ Urutan usulan setelah pilot: purchasing dan utang usaha → retur serta partial 
 4. Tambahkan CI build/lint/test dan cara menjalankan aplikasi pada README.
 5. Implementasikan setup admin/perusahaan sebagai fitur vertikal pertama, lalu login dan permission.
 
-Dokumen ini hanya merencanakan pekerjaan. Belum ada kode aplikasi, image rilis, CI, atau deployment yang dibuat oleh perubahan dokumentasi ini.
+Dokumen ini tetap menjadi rencana acuan. Implementasi aktual, cakupan pengujian, dan batas baseline dicatat terpisah dalam [status implementasi](./IMPLEMENTATION_STATUS.md).
