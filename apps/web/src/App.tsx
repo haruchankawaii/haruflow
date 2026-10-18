@@ -373,10 +373,10 @@ export default function App() {
               <li>
                 <span>2</span>
                 <div>
-                  <strong>Siapkan produk dan stok</strong>
+                  <strong>Siapkan katalog barang dan jasa</strong>
                   <p>
-                    Tambah katalog produk, lalu catat penerimaan stok pada
-                    Inventori.
+                    Tambah barang atau jasa pada Inventori. Catat penerimaan
+                    stok hanya untuk barang.
                   </p>
                 </div>
               </li>
@@ -390,10 +390,11 @@ export default function App() {
               <li>
                 <span>4</span>
                 <div>
-                  <strong>Kirim produk dan terbitkan invoice</strong>
+                  <strong>Terbitkan invoice</strong>
                   <p>
-                    Proses langkah berikutnya dari detail pesanan. Stok dan
-                    jurnal diperbarui otomatis.
+                    Kirim barang sebelum menerbitkan invoice. Pesanan jasa dapat
+                    langsung ditagihkan setelah konfirmasi. Stok dan jurnal
+                    diperbarui otomatis.
                   </p>
                 </div>
               </li>

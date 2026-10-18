@@ -25,6 +25,7 @@ import { AdjustmentForm } from "./Corrections";
 import { downloadCsv } from "./export";
 import { DeleteMaster } from "./MasterActions";
 import { usePagination, useResource } from "./hooks";
+import { isStockProduct } from "./commerce";
 import type { Movement, Product, Role } from "./types";
 
 export default function Inventory({
@@ -48,6 +49,7 @@ export default function Inventory({
   const [editing, setEditing] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
   const canEdit = ["admin", "warehouse"].includes(role);
+  const stockProducts = (products.data?.items ?? []).filter(isStockProduct);
   const items = (products.data?.items ?? []).filter((item) =>
     `${item.sku} ${item.name}`.toLowerCase().includes(search.toLowerCase()),
   );
@@ -56,7 +58,7 @@ export default function Inventory({
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
-  const inventoryValue = (products.data?.items ?? []).reduce(
+  const inventoryValue = stockProducts.reduce(
     (value, item) =>
       value +
       Number(
@@ -77,20 +79,20 @@ export default function Inventory({
       <PageHeader
         eyebrow="SETIAP PRODUK, TERPANTAU"
         title="Inventori"
-        description="Persediaan yang tertata untuk bisnis yang terus bergerak."
+        description="Kelola katalog barang dan jasa, serta persediaan barang Anda."
         actions={
           canEdit && (
             <>
               <button
                 className="button secondary"
-                disabled={!products.data?.items.length}
+                disabled={!stockProducts.length}
                 onClick={() => setForm("adjustment")}
               >
                 Sesuaikan stok
               </button>
               <button
                 className="button secondary"
-                disabled={!products.data?.items.length}
+                disabled={!stockProducts.length}
                 onClick={() => setForm("receipt")}
               >
                 <ArrowDownToLine size={17} /> Terima stok
@@ -111,7 +113,7 @@ export default function Inventory({
             <Package size={20} />
           </span>
           <div>
-            <small>Produk terdaftar</small>
+            <small>Barang & jasa terdaftar</small>
             <strong>
               {number(products.data?.items.length ?? 0)} <em>produk</em>
             </strong>
@@ -131,12 +133,11 @@ export default function Inventory({
             <ArrowUpRight size={20} />
           </span>
           <div>
-            <small>Produk tanpa stok</small>
+            <small>Barang tanpa stok</small>
             <strong>
               {number(
-                (products.data?.items ?? []).filter(
-                  (item) => Number(item.quantity) <= 0,
-                ).length,
+                stockProducts.filter((item) => Number(item.quantity) <= 0)
+                  .length,
               )}{" "}
               <em>produk</em>
             </strong>
@@ -178,6 +179,7 @@ export default function Inventory({
                   ? [
                       "SKU",
                       "Nama",
+                      "Jenis",
                       "Satuan",
                       "Harga",
                       "Stok",
@@ -195,10 +197,11 @@ export default function Inventory({
                   ? items.map((p) => [
                       p.sku,
                       p.name,
+                      p.kind ?? "stock",
                       p.unit,
                       p.price,
-                      p.quantity,
-                      p.average_cost,
+                      isStockProduct(p) ? p.quantity : "",
+                      isStockProduct(p) ? p.average_cost : "",
                     ])
                   : movementsList.map((m) => [
                       m.created_at,
@@ -259,31 +262,44 @@ export default function Inventory({
                           ) : (
                             <strong>{product.name}</strong>
                           )}
+                          <span className="subtle-chip">
+                            {isStockProduct(product) ? "Barang" : "Jasa"}
+                          </span>
                         </span>
                       </td>
                       <td className="mono muted">{product.sku}</td>
                       <td className="align-right">{money(product.price)}</td>
                       <td className="align-right">
-                        <span
-                          className={
-                            Number(product.quantity) <= 0
-                              ? "zero-stock"
-                              : "font-medium"
-                          }
-                        >
-                          {number(product.quantity)}
-                        </span>{" "}
-                        <span className="muted">{product.unit}</span>
+                        {isStockProduct(product) ? (
+                          <>
+                            <span
+                              className={
+                                Number(product.quantity) <= 0
+                                  ? "zero-stock"
+                                  : "font-medium"
+                              }
+                            >
+                              {number(product.quantity)}
+                            </span>{" "}
+                            <span className="muted">{product.unit}</span>
+                          </>
+                        ) : (
+                          <span className="muted">Tanpa stok</span>
+                        )}
                       </td>
                       <td className="align-right muted">
-                        {costMoney(product.average_cost)}
+                        {isStockProduct(product)
+                          ? costMoney(product.average_cost)
+                          : "—"}
                       </td>
                       <td className="align-right font-medium">
-                        {money(
-                          product.inventory_value ??
-                            Number(product.quantity) *
-                              Number(product.average_cost),
-                        )}
+                        {isStockProduct(product)
+                          ? money(
+                              product.inventory_value ??
+                                Number(product.quantity) *
+                                  Number(product.average_cost),
+                            )
+                          : "—"}
                       </td>
                     </tr>
                   ))}
@@ -300,7 +316,7 @@ export default function Inventory({
               description={
                 search
                   ? "Coba nama atau SKU yang berbeda."
-                  : "Tambahkan produk, tentukan harga, lalu terima stok awal Anda."
+                  : "Tambahkan barang atau jasa dan tentukan harganya. Terima stok awal untuk barang."
               }
               action={
                 canEdit &&
@@ -370,7 +386,7 @@ export default function Inventory({
       )}
       {form === "adjustment" && (
         <AdjustmentForm
-          products={products.data?.items ?? []}
+          products={stockProducts}
           onClose={() => setForm(null)}
           onSaved={saved}
         />
@@ -402,7 +418,7 @@ export default function Inventory({
       )}
       {form === "receipt" && (
         <ReceiptForm
-          products={products.data?.items ?? []}
+          products={stockProducts}
           onClose={() => setForm(null)}
           onSaved={saved}
         />
@@ -424,6 +440,7 @@ function ProductForm({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [kind, setKind] = useState(product?.kind ?? "stock");
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -443,13 +460,32 @@ function ProductForm({
   return (
     <Modal
       title={product ? "Edit produk" : "Tambah produk"}
-      description="Simpan detail produk ke dalam katalog Anda."
+      description="Simpan detail barang atau jasa ke dalam katalog Anda."
       onClose={() => {
         if (!busy) onClose();
       }}
     >
       <form onSubmit={submit}>
         <div className="form-body">
+          <FormField
+            label="Jenis produk *"
+            hint={
+              product
+                ? "Jenis hanya dapat diubah sebelum produk digunakan pada pesanan atau pergerakan stok."
+                : "Barang memiliki persediaan. Jasa dapat ditagihkan tanpa pengiriman stok."
+            }
+          >
+            <select
+              name="kind"
+              value={kind}
+              onChange={(event) =>
+                setKind(event.target.value as "stock" | "service")
+              }
+            >
+              <option value="stock">Barang — kelola stok</option>
+              <option value="service">Jasa — tanpa stok</option>
+            </select>
+          </FormField>
           <FormField label="Nama produk *">
             <input
               name="name"
@@ -476,7 +512,7 @@ function ProductForm({
                 required
                 maxLength={30}
                 defaultValue={product?.unit ?? "pcs"}
-                placeholder="pcs, kg, liter…"
+                placeholder="pcs, kg, jam, sesi…"
               />
             </FormField>
           </div>
@@ -497,7 +533,9 @@ function ProductForm({
           <div className="info-box">
             <Package size={18} />
             <p>
-              {product ? (
+              {kind === "service" ? (
+                "Jasa tidak memiliki persediaan atau biaya rata-rata. Pesanan jasa dapat langsung ditagihkan setelah dikonfirmasi."
+              ) : product ? (
                 "Stok dan biaya persediaan dikelola melalui penerimaan atau penyesuaian, sehingga jejak transaksi tetap tercatat."
               ) : (
                 <>
@@ -573,7 +611,7 @@ function ReceiptForm({
               <option value="" disabled>
                 Pilih produk
               </option>
-              {products.map((product) => (
+              {products.filter(isStockProduct).map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.sku} · {product.name} ({product.unit})
                 </option>

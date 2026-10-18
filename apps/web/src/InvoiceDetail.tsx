@@ -130,6 +130,9 @@ export default function InvoiceDetail({
                             item.sku}
                         </strong>
                         <small className="block muted">{item.sku}</small>
+                        {item.product_kind === "service" && (
+                          <span className="subtle-chip">Jasa</span>
+                        )}
                       </td>
                       <td className="align-right">{number(item.quantity)}</td>
                       <td className="align-right">{money(item.unit_price)}</td>

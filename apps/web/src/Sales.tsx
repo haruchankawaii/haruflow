@@ -30,6 +30,11 @@ import { usePagination, useResource } from "./hooks";
 import type { Customer, Invoice, Order, Product, Role, Session } from "./types";
 import InvoiceDetail, { ReasonForm } from "./InvoiceDetail";
 import { downloadCsv } from "./export";
+import {
+  isStockProduct,
+  nextOrderAction,
+  orderHasStockItems,
+} from "./commerce";
 
 export default function Sales({
   role,
@@ -96,7 +101,7 @@ export default function Sales({
         </span>
         <ArrowRight size={14} />
         <span>
-          <Truck size={17} /> Kirim produk
+          <Truck size={17} /> Kirim barang (jika ada)
         </span>
         <ArrowRight size={14} />
         <span>
@@ -309,7 +314,7 @@ export default function Sales({
         ) : (
           <EmptyState
             title="Invoice akan muncul di sini"
-            description="Terbitkan invoice dari pesanan yang sudah dikirim untuk mencatat piutang pelanggan."
+            description="Terbitkan invoice setelah barang dikirim, atau langsung setelah konfirmasi untuk pesanan jasa."
           />
         )}
         <div className="table-footer">
@@ -501,7 +506,8 @@ function OrderForm({
                           i !== index && other.product_id === product.id,
                       )}
                     >
-                      {product.sku} · {product.name}
+                      {product.sku} · {product.name} (
+                      {isStockProduct(product) ? "Barang" : "Jasa"})
                     </option>
                   ))}
                 </select>
@@ -588,29 +594,32 @@ function OrderDetail({
     ship: crypto.randomUUID(),
     invoice: crypto.randomUUID(),
   }));
-  const action =
-    data?.status === "draft" && ["admin", "sales"].includes(role)
-      ? {
+  const actionType = data ? nextOrderAction(data, role) : null;
+  const action = actionType
+    ? {
+        confirm: {
           path: "confirm" as const,
           label: "Konfirmasi pesanan",
           Icon: Check,
-          note: "Konfirmasi menyetujui detail pesanan untuk diproses oleh gudang.",
-        }
-      : data?.status === "confirmed" && ["admin", "warehouse"].includes(role)
-        ? {
-            path: "ship" as const,
-            label: "Kirim pesanan",
-            Icon: Truck,
-            note: "Pengiriman mengurangi stok dan mencatat harga pokok secara otomatis.",
-          }
-        : data?.status === "shipped" && ["admin", "finance"].includes(role)
-          ? {
-              path: "invoice" as const,
-              label: "Terbitkan invoice",
-              Icon: FileText,
-              note: "Invoice mencatat pendapatan dan piutang pelanggan dalam jurnal.",
-            }
-          : null;
+          note:
+            data && !orderHasStockItems(data)
+              ? "Konfirmasi menyetujui detail jasa. Setelah itu bagian keuangan dapat menerbitkan invoice tanpa pengiriman."
+              : "Konfirmasi menyetujui detail pesanan untuk diproses oleh gudang.",
+        },
+        ship: {
+          path: "ship" as const,
+          label: "Kirim barang",
+          Icon: Truck,
+          note: "Pengiriman mengurangi stok barang dan mencatat harga pokok. Baris jasa tidak mengubah persediaan.",
+        },
+        invoice: {
+          path: "invoice" as const,
+          label: "Terbitkan invoice",
+          Icon: FileText,
+          note: "Invoice mencatat seluruh barang dan jasa sebagai pendapatan dan piutang pelanggan.",
+        },
+      }[actionType]
+    : null;
   async function mutate() {
     if (!action) return;
     setBusy(true);
@@ -679,6 +688,9 @@ function OrderDetail({
                             item.product_id}
                         </strong>
                         <small className="block muted">{item.sku}</small>
+                        {item.product_kind === "service" && (
+                          <span className="subtle-chip">Jasa</span>
+                        )}
                       </td>
                       <td className="align-right">{number(item.quantity)}</td>
                       <td className="align-right">{money(item.unit_price)}</td>
@@ -708,7 +720,9 @@ function OrderDetail({
                 <p>
                   {data.status === "invoiced"
                     ? "Invoice telah diterbitkan. Catat pembayaran pelanggan pada tab Invoice."
-                    : "Pesanan siap dilanjutkan oleh pengguna dengan hak akses yang sesuai."}
+                    : data.status === "confirmed" && !orderHasStockItems(data)
+                      ? "Pesanan jasa tidak memerlukan pengiriman. Pengguna Keuangan dapat menerbitkan invoice."
+                      : "Pesanan siap dilanjutkan oleh pengguna dengan hak akses yang sesuai."}
                 </p>
               </div>
             )}

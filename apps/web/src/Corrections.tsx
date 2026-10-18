@@ -11,6 +11,7 @@ import {
 } from "./components";
 import { useResource } from "./hooks";
 import { companyToday, money } from "./format";
+import { isStockProduct } from "./commerce";
 import type { Account, Product } from "./types";
 
 export function AdjustmentForm({
@@ -70,7 +71,7 @@ export function AdjustmentForm({
               <option disabled value="">
                 Pilih produk
               </option>
-              {products.map((product) => (
+              {products.filter(isStockProduct).map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.sku} · {product.name}
                 </option>
