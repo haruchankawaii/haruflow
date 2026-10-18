@@ -311,6 +311,107 @@ async fn complete_erp_workflow_and_invariants(pool: PgPool) {
         tx.commit().await.is_err(),
         "unbalanced/empty journal must not commit"
     );
+    let (status, value, _) = request(
+        &app,
+        "PATCH",
+        &format!("/api/customers/{customer}"),
+        Some(&cookie),
+        Some(json!({"name":"Pelanggan Diperbarui","email":"customer@example.test"})),
+    )
+    .await;
+    success(status, &value);
+    let (status, value, _) = request(
+        &app,
+        "PATCH",
+        &format!("/api/products/{product}"),
+        Some(&cookie),
+        Some(json!({"sku":"UJI-001","name":"Nama produk terbaru","unit":"pcs","price":"80000"})),
+    )
+    .await;
+    success(status, &value);
+    let (status, _, _) = request(
+        &app,
+        "DELETE",
+        &format!("/api/products/{product}"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "used stock product cannot be deleted"
+    );
+    let (status, _, _) = request(
+        &app,
+        "DELETE",
+        &format!("/api/customers/{customer}"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "referenced customer cannot be deleted"
+    );
+    let (status, account, _) = request(
+        &app,
+        "POST",
+        "/api/accounting/accounts",
+        Some(&cookie),
+        Some(json!({"code":"2100","name":"Utang lain-lain","kind":"liability"})),
+    )
+    .await;
+    success(status, &account);
+    assert_eq!(account["kind"], "liability");
+    let (status, ledger, _) = request(
+        &app,
+        "GET",
+        "/api/accounting/accounts/1100/ledger",
+        Some(&cookie),
+        None,
+    )
+    .await;
+    success(status, &ledger);
+    assert_eq!(
+        ledger["closing_balance"]
+            .as_str()
+            .unwrap()
+            .parse::<rust_decimal::Decimal>()
+            .unwrap(),
+        rust_decimal::Decimal::from(160000)
+    );
+    assert_eq!(ledger["items"].as_array().unwrap().len(), 2);
+    let ledger_today: chrono::NaiveDate =
+        sqlx::query_scalar("SELECT (now() AT TIME ZONE timezone)::date FROM company")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let tomorrow = ledger_today.succ_opt().unwrap();
+    let (status, future_ledger, _) = request(
+        &app,
+        "GET",
+        &format!("/api/accounting/accounts/1100/ledger?from={tomorrow}&to={tomorrow}"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    success(status, &future_ledger);
+    assert!(future_ledger["items"].as_array().unwrap().is_empty());
+    assert_eq!(
+        future_ledger["opening_balance"],
+        future_ledger["closing_balance"]
+    );
+    let (status, _, _) = request(
+        &app,
+        "GET",
+        "/api/accounting/accounts/1100/ledger?from=2026-02-30",
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
     // Corrections preserve every historical posting and reverse in dependency order.
     let correction = || json!({"reason":"Koreksi transaksi uji","idempotency_key":Uuid::new_v4()});
     let (status, _, _) = request(

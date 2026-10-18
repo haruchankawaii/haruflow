@@ -8,6 +8,8 @@
 /.local/
 *.log
 *.pid
+*.tsbuildinfo
+/output/
 .DS_Store
 Thumbs.db
 

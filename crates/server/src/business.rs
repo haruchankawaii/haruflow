@@ -115,10 +115,10 @@ pub(crate) async fn journal(
     source: &str,
     source_id: Uuid,
     description: &str,
-    debit_account: &str,
-    credit_account: &str,
+    accounts: (&str, &str),
     amount: Decimal,
 ) -> AppResult<()> {
+    let (debit_account, credit_account) = accounts;
     crate::corrections::check_open(tx).await?;
     if amount == Decimal::ZERO {
         return Ok(());
@@ -325,8 +325,7 @@ async fn receive_stock(
         "receipt",
         id,
         "Opening stock / inventory receipt",
-        "1300",
-        "3000",
+        ("1300", "3000"),
         value,
     )
     .await?;
@@ -622,8 +621,7 @@ async fn ship_order(
         "shipment",
         posting_id,
         &format!("Shipment {}", order.get::<String, _>("number")),
-        "5000",
-        "1300",
+        ("5000", "1300"),
         cost_total,
     )
     .await?;
@@ -694,8 +692,7 @@ async fn invoice_order(
         "invoice",
         invoice_id,
         &format!("Invoice {number}"),
-        "1200",
-        "4000",
+        ("1200", "4000"),
         total,
     )
     .await?;
@@ -799,8 +796,7 @@ async fn pay_invoice(
         "payment",
         payment_id,
         &format!("Payment for {}", invoice.get::<String, _>("number")),
-        "1100",
-        "1200",
+        ("1100", "1200"),
         amount,
     )
     .await?;

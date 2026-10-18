@@ -5,6 +5,7 @@ mod business;
 mod corrections;
 mod domain;
 mod error;
+mod master_data;
 #[cfg(test)]
 mod tests;
 
@@ -127,6 +128,7 @@ async fn main() -> Result<()> {
 
 fn app_router(state: AppState, static_dir: PathBuf) -> Router {
     let api = auth::router()
+        .merge(master_data::router())
         .merge(business::router())
         .merge(corrections::router())
         .fallback(|| async { error::AppError::not_found() })

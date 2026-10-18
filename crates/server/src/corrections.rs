@@ -334,8 +334,7 @@ async fn adjust_stock(
         "adjustment",
         id,
         &format!("Stock adjustment: {reason}"),
-        debit,
-        credit,
+        (debit, credit),
         value,
     )
     .await?;
@@ -485,8 +484,7 @@ async fn reverse_payment(
         "reversal",
         reversal_id,
         &format!("Reverse payment: {reason}"),
-        "1200",
-        "1100",
+        ("1200", "1100"),
         amount,
     )
     .await?;
@@ -561,8 +559,7 @@ async fn reverse_invoice(
         "reversal",
         reversal_id,
         &format!("Reverse invoice: {reason}"),
-        "4000",
-        "1200",
+        ("4000", "1200"),
         invoice.get("total"),
     )
     .await?;
@@ -681,8 +678,7 @@ async fn reverse_shipment(
         "reversal",
         reversal_id,
         &format!("Reverse shipment: {reason}"),
-        "1300",
-        "5000",
+        ("1300", "5000"),
         total,
     )
     .await?;
