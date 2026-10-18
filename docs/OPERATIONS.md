@@ -60,7 +60,7 @@ Penutupan periode menolak posting baru sampai tanggal yang ditutup, berdasarkan 
 
 ## Backup
 
-Jalankan `node scripts/database.mjs backup` dari root repository. Script menjalankan `pg_dump -Fc`, menulis arsip pada folder `backups/`, dan membuat metadata waktu serta versi aplikasi. Nama file dapat diberikan sebagai argumen kedua. File yang sudah ada tidak ditimpa.
+Jalankan `node scripts/database.mjs backup` dari root repository. Script menjalankan `pg_dump -Fc`, menulis arsip pada folder `backups/`, dan membuat metadata waktu serta versi aplikasi. Nama file dapat diberikan sebagai argumen kedua. Arsip ditulis ke file `.partial` secara eksklusif dan nama final baru diterbitkan setelah dump selesai. File final atau `.partial` yang sudah ada tidak ditimpa atau dihapus. Gunakan filesystem yang mendukung hard link untuk lokasi backup; file sementara dan final berada di direktori yang sama.
 
 Cadangkan arsip, versi/tag atau digest image aplikasi, dan konfigurasi yang diperlukan ke lokasi lain yang terenkripsi. `.env` berisi secrets dan harus disimpan dengan perlindungan terpisah. Backup dalam disk yang sama tidak melindungi dari kegagalan disk.
 
@@ -72,7 +72,7 @@ Operator menentukan jadwal dan retensi, misalnya backup harian serta sebelum upg
 2. Jalankan PostgreSQL tujuan. Jangan menjalankan aplikasi penerima penulisan selama restore.
 3. Jalankan `node scripts/database.mjs restore path/arsip.backup --confirm-restore`. Script menghentikan aplikasi tujuan, melakukan restore satu transaksi, dan membiarkan aplikasi berhenti.
 4. Pastikan command berhasil. Kegagalan restore tidak boleh diabaikan; jangan menyalakan aplikasi sebelum hasilnya jelas.
-5. Jalankan `docker compose --env-file .env -f deploy/community/compose.yml start app`.
+5. Jalankan `docker compose --env-file .env -f deploy/community/compose.yml up -d app`. Perintah ini juga membuat container aplikasi bila instalasi tujuan baru menjalankan PostgreSQL.
 6. Periksa `/health/ready`, login, daftar dokumen, jumlah stok, nilai persediaan, piutang, serta total debit/kredit neraca saldo terhadap sumber backup.
 7. Catat tanggal, versi image, arsip, durasi, dan hasil verifikasi. Ulangi latihan secara berkala.
 
