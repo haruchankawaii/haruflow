@@ -118,4 +118,28 @@ describe("opening balance preparation", () => {
       "3000",
     ]);
   });
+  test("reserved purchasing control uses metadata rather than occupying a user's existing code", () => {
+    const accounts = [
+      { code: "2110", name: "Utang lain-lain lama", kind: "liability" },
+      {
+        code: "2111",
+        name: "Barang diterima belum ditagih",
+        kind: "liability",
+        system_role: "purchase_receipt_accrual",
+        is_control: true,
+      },
+    ];
+    expect(openingAccounts(accounts).map((account) => account.code)).toEqual([
+      "2110",
+    ]);
+    const controlDraft = draft({
+      lines: [
+        { account_code: "1100", debit: "1", credit: "0" },
+        { account_code: "2111", debit: "0", credit: "1" },
+      ],
+    });
+    expect(openingPreview(controlDraft, accounts).valid).toBe(false);
+    controlDraft.lines[1].account_code = "2110";
+    expect(openingPreview(controlDraft, accounts).valid).toBe(true);
+  });
 });

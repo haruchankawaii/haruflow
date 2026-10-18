@@ -73,7 +73,7 @@ export default function OpeningBalances({
   const dirty = JSON.stringify(draft) !== baseline;
   const latest = useRef({ state, dirty });
   latest.current = { state, dirty };
-  const preview = openingPreview(draft);
+  const preview = openingPreview(draft, accounts.data?.items ?? []);
   const stockProducts = openingProducts(products.data?.items ?? []);
   const selectableAccounts = openingAccounts(accounts.data?.items ?? []);
 
@@ -526,8 +526,8 @@ export default function OpeningBalances({
                   <h3>Saldo akun lainnya</h3>
                   <p>
                     Isi satu sisi pada setiap akun: debit atau kredit. Akun
-                    pendapatan, beban, piutang, dan persediaan tidak dipilih di
-                    sini.
+                    pendapatan, beban, dan akun kontrol operasional tidak
+                    dipilih di sini, termasuk barang diterima belum ditagih.
                   </p>
                 </div>
               </div>

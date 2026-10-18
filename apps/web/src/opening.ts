@@ -1,4 +1,5 @@
 import { lineTotal } from "./format";
+import { isControlAccount } from "./account-controls";
 import type { Account, Product } from "./types";
 
 export interface OpeningItem {
@@ -56,7 +57,7 @@ export const openingAccounts = (accounts: Account[]) =>
   accounts.filter(
     (account) =>
       ["asset", "liability", "equity"].includes(account.kind) &&
-      !["1200", "1300"].includes(account.code),
+      !isControlAccount(account),
   );
 export const openingProducts = (products: Product[]) =>
   products.filter((product) => product.kind !== "service");
@@ -114,13 +115,18 @@ export function openingMoney(value: bigint): string {
   return `${value < 0n ? "-" : ""}${absolute / 100n}.${(absolute % 100n).toString().padStart(2, "0")}`;
 }
 
-export function openingPreview(draft: OpeningDraft) {
+export function openingPreview(draft: OpeningDraft, accounts: Account[] = []) {
   let inventory = 0n;
   let debit = 0n;
   let credit = 0n;
   let valid = true;
   const productIds = new Set<string>();
   const accountCodes = new Set<string>();
+  const controlled = new Set([
+    "1200",
+    "1300",
+    ...accounts.filter(isControlAccount).map((account) => account.code),
+  ]);
   for (const item of draft.items) {
     const quantity = decimal(item.quantity, 3);
     const cost = decimal(item.unit_cost, 4);
@@ -147,7 +153,7 @@ export function openingPreview(draft: OpeningDraft) {
     const cr = cents(line.credit);
     if (
       !line.account_code ||
-      ["1200", "1300"].includes(line.account_code) ||
+      controlled.has(line.account_code) ||
       accountCodes.has(line.account_code) ||
       dr === null ||
       cr === null ||

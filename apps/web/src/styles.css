@@ -977,7 +977,8 @@ td strong {
   background: #f4f0f9;
   border-color: #e9e0f3;
 }
-.status-paid {
+.status-paid,
+.status-received {
   color: #6f9460;
   background: #f1f7e9;
   border-color: #dfebd1;

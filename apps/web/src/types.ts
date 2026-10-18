@@ -88,6 +88,9 @@ export interface Movement {
   reversal?: DocumentReversalInfo | null;
   reversal_blocked_reason?: string | null;
   reverses_movement_id?: string | null;
+  purchase_receipt_id?: string | null;
+  purchase_order_id?: string | null;
+  purchase_order_number?: string | null;
 }
 export interface DocumentReversalInfo {
   id: string;
@@ -100,6 +103,8 @@ export interface Account {
   code: string;
   name: string;
   kind: string;
+  is_control?: boolean;
+  system_role?: string | null;
 }
 export interface JournalLine {
   account_code: string;

@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   Check,
@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Store,
   Trash2,
+  Undo2,
   XCircle,
 } from "lucide-react";
 import { api, ApiError, errorMessage } from "./api";
@@ -32,6 +33,8 @@ import { calendarDate, exactMoney } from "./dashboard-charts";
 import { downloadCsv } from "./export";
 import { date, dateTime, statusNames } from "./format";
 import { usePagination, useResource } from "./hooks";
+import { JournalPreview } from "./JournalPreview";
+import { PurchaseStatusChart } from "./PurchaseStatusChart";
 import {
   exactCost,
   exactDecimal,
@@ -39,10 +42,11 @@ import {
   purchaseLineCents,
   purchasePreview,
   purchaseProducts,
-  purchaseSummary,
   requestIdentity,
   type PurchaseDraft,
   type PurchaseOrder,
+  type PurchaseReceipt,
+  type PurchasingSummary,
   type RequestIdentity,
   type Supplier,
 } from "./purchasing-model";
@@ -63,9 +67,19 @@ export default function Purchasing({
     revision,
   );
   const suppliers = useResource<{ items: Supplier[] }>("/suppliers", revision);
+  const summary = useResource<PurchasingSummary>(
+    "/purchasing/summary",
+    revision,
+  );
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
-  const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<string | null>(() => {
+    const id = new URLSearchParams(window.location.search).get("purchase");
+    return id &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      ? id
+      : null;
+  });
   const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
   const [createOrder, setCreateOrder] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(
@@ -73,6 +87,13 @@ export default function Purchasing({
   );
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [createSupplier, setCreateSupplier] = useState(false);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("purchase")) {
+      url.searchParams.delete("purchase");
+      window.history.replaceState(null, "", url);
+    }
+  }, []);
   const canManage = ["admin", "warehouse"].includes(role);
   const orderItems = (orders.data?.items ?? []).filter(
     (item) =>
@@ -93,7 +114,6 @@ export default function Purchasing({
     supplierItems,
     `${search}|${status}`,
   );
-  const summary = purchaseSummary(orders.data?.items ?? []);
   function saved() {
     setRevision((value) => value + 1);
     changed();
@@ -108,7 +128,7 @@ export default function Purchasing({
       <PageHeader
         eyebrow="RENCANAKAN BELANJA USAHA"
         title="Pembelian"
-        description="Kelola supplier dan sepakati barang yang akan dibeli."
+        description="Kelola supplier, pesan barang, dan catat penerimaan ke gudang."
         actions={
           canManage && (
             <button
@@ -130,49 +150,30 @@ export default function Purchasing({
           <ClipboardList size={23} />
         </div>
         <div>
-          <strong>Pesanan pembelian (PO) adalah rencana belanja.</strong>
+          <strong>Dari rencana belanja sampai barang masuk gudang.</strong>
           <p>
             Simpan draf, tinjau biaya, lalu konfirmasi kesepakatan dengan
-            supplier. PO belum menambah stok, membuat utang, atau mengubah kas.
-            Penerimaan barang dan tagihan supplier tersedia pada tahap
+            supplier. Saat seluruh barang tiba, catat penerimaan untuk menambah
+            stok dan nilai persediaan, beserta kewajiban barang diterima belum
+            ditagih. Tagihan dan pembayaran supplier tersedia pada tahap
             berikutnya.
           </p>
         </div>
       </div>
-      {tab === "orders" && orders.data && !orders.error && (
-        <div
-          className="purchase-summary"
-          aria-label="Ringkasan pesanan pembelian"
-        >
-          {summary.map((item) => (
-            <button
-              key={item.status}
-              className={`purchase-summary-card ${item.status} ${status === item.status ? "selected" : ""}`}
-              aria-pressed={status === item.status}
-              onClick={() =>
-                setStatus(status === item.status ? "" : item.status)
-              }
-            >
-              <span>
-                {item.status === "draft"
-                  ? "Rencana dalam draf"
-                  : item.status === "confirmed"
-                    ? "Komitmen dikonfirmasi"
-                    : "Pesanan dibatalkan"}
-                <b>{item.count} PO</b>
-              </span>
-              <strong>{exactMoney(item.total)}</strong>
-              <small>
-                {item.status === "confirmed"
-                  ? "Nilai kesepakatan pembelian, belum menjadi utang"
-                  : item.status === "draft"
-                    ? "Masih dapat diubah sebelum konfirmasi"
-                    : "Disimpan untuk riwayat, di luar komitmen aktif"}
-              </small>
-            </button>
-          ))}
-        </div>
-      )}
+      {tab === "orders" &&
+        (summary.loading ? (
+          <Loading />
+        ) : summary.error ? (
+          <ErrorState message={summary.error} onRetry={summary.reload} />
+        ) : (
+          summary.data && (
+            <PurchaseStatusChart
+              summary={summary.data}
+              selected={status}
+              onSelect={setStatus}
+            />
+          )
+        ))}
       <section className="panel purchase-panel">
         <div className="table-toolbar">
           <div className="tabs" role="tablist" aria-label="Tampilan pembelian">
@@ -219,6 +220,8 @@ export default function Purchasing({
                       "Tanggal dibuat",
                       "Perkiraan tiba",
                       "Status",
+                      "Tanggal diterima",
+                      "Nomor penerimaan aktif",
                       "Total",
                       "Catatan",
                       "Alasan pembatalan",
@@ -230,6 +233,10 @@ export default function Purchasing({
                       item.created_at,
                       item.expected_date,
                       statusNames[item.status],
+                      item.received_at,
+                      item.receipts.find(
+                        (receipt) => receipt.id === item.active_receipt_id,
+                      )?.number ?? "",
                       item.total,
                       item.notes,
                       item.cancellation_reason,
@@ -273,6 +280,7 @@ export default function Purchasing({
                 <>
                   <option value="draft">Draf</option>
                   <option value="confirmed">Dikonfirmasi</option>
+                  <option value="received">Diterima</option>
                   <option value="cancelled">Dibatalkan</option>
                 </>
               ) : (
@@ -453,8 +461,8 @@ export default function Purchasing({
       </section>
       {tab === "orders" && (
         <p className="purchase-history-note">
-          Ringkasan, pencarian, dan ekspor mencakup hingga 500 PO terbaru. Nilai
-          menggunakan biaya beli tersimpan dalam IDR.
+          Daftar, pencarian, dan ekspor mencakup hingga 500 PO terbaru. Grafik
+          di atas mencakup seluruh PO.
         </p>
       )}
       {(createSupplier || editingSupplier) && (
@@ -1172,36 +1180,71 @@ function PurchaseOrderDetail({
     `/purchase-orders/${id}`,
     revision,
   );
-  const [action, setAction] = useState<"confirm" | "cancel" | null>(null);
+  const [action, setAction] = useState<
+    "confirm" | "cancel" | "receive" | "reverse" | null
+  >(null);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [journalId, setJournalId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  const [reference, setReference] = useState("");
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const identity = useRef<RequestIdentity | null>(null);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const order = resource.data;
+  const receipt = order?.receipts.find((item) => item.id === receiptId);
+  const reviewRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (action)
+      reviewRef.current?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+  }, [action]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busyRef.current || !order || !action) return;
+    if (
+      (action === "cancel" || action === "reverse") &&
+      (reason.trim().length < 3 || reason.trim().length > 1000)
+    ) {
+      setError("Alasan harus berisi 3 sampai 1.000 karakter.");
+      return;
+    }
+    if (action === "reverse" && !receipt) return;
     busyRef.current = true;
     setBusy(true);
     setError("");
     setConflict(false);
     const payload = {
       version: order.version,
-      ...(action === "cancel" ? { reason } : {}),
+      ...(action === "cancel" || action === "reverse"
+        ? { reason: reason.trim() }
+        : {}),
+      ...(action === "receive" ? { reference: reference.trim() || null } : {}),
     };
     identity.current = requestIdentity(identity.current, {
       action,
+      order_id: id,
+      ...(action === "reverse" ? { receipt_id: receiptId } : {}),
       ...payload,
     });
     try {
-      await api(`/purchase-orders/${id}/${action}`, {
-        method: "POST",
-        body: { ...payload, idempotency_key: identity.current.key },
-      });
+      await api(
+        action === "reverse"
+          ? `/purchase-receipts/${receiptId}/reverse`
+          : `/purchase-orders/${id}/${action}`,
+        {
+          method: "POST",
+          body: { ...payload, idempotency_key: identity.current.key },
+        },
+      );
       setAction(null);
       setReason("");
+      setReference("");
+      setReceiptId(null);
+      identity.current = null;
       resource.reload();
       onSaved();
     } catch (error) {
@@ -1215,6 +1258,7 @@ function PurchaseOrderDetail({
   function reloadLatest() {
     setAction(null);
     setConflict(false);
+    setReceiptId(null);
     resource.reload();
     setError(
       "Data terbaru sedang dimuat. Tinjau status dan isi pesanan sebelum mencoba kembali.",
@@ -1261,6 +1305,12 @@ function PurchaseOrderDetail({
                 <div>
                   <small>Dikonfirmasi</small>
                   <span>{dateTime(order.confirmed_at)}</span>
+                </div>
+              )}
+              {order.received_at && (
+                <div>
+                  <small>Barang diterima</small>
+                  <span>{dateTime(order.received_at)}</span>
                 </div>
               )}
               {order.cancelled_at && (
@@ -1324,32 +1374,113 @@ function PurchaseOrderDetail({
               )}
               <p className="purchase-history-note">
                 Nama supplier, barang, satuan, dan biaya pada dokumen ini
-                menggunakan data tersimpan. PO belum mencatat stok, utang, atau
-                jurnal.
+                menggunakan data tersimpan. Draf dan konfirmasi PO belum
+                mengubah stok atau jurnal. Penerimaan mencatat seluruh barang
+                sekaligus; penerimaan sebagian tersedia pada tahap berikutnya.
               </p>
             </div>
+            {order.receipts.length > 0 && (
+              <section
+                className="purchase-receipt-history"
+                aria-labelledby="receipt-history-title"
+              >
+                <div className="purchase-receipt-heading">
+                  <h3 id="receipt-history-title">Riwayat penerimaan</h3>
+                  <p>Dokumen asal dan pembalikannya tetap tersimpan.</p>
+                </div>
+                {order.receipts.map((item) => (
+                  <PurchaseReceiptHistory
+                    key={item.id}
+                    receipt={item}
+                    canManage={canManage}
+                    busy={busy || !!action}
+                    onJournal={setJournalId}
+                    onReverse={() => {
+                      setReceiptId(item.id);
+                      setAction("reverse");
+                      setReason("");
+                      setError("");
+                      setConflict(false);
+                    }}
+                  />
+                ))}
+              </section>
+            )}
             {action && (
-              <form className="purchase-review" onSubmit={submit}>
+              <form
+                className="purchase-review"
+                onSubmit={submit}
+                ref={reviewRef}
+              >
                 <div className="purchase-review-title">
                   {action === "confirm" ? (
                     <Check size={19} />
+                  ) : action === "receive" ? (
+                    <Package size={19} />
+                  ) : action === "reverse" ? (
+                    <Undo2 size={19} />
                   ) : (
                     <XCircle size={19} />
                   )}
                   <strong>
                     {action === "confirm"
                       ? "Konfirmasi kesepakatan pembelian"
-                      : "Batalkan pesanan pembelian"}
+                      : action === "receive"
+                        ? "Terima seluruh barang dari PO"
+                        : action === "reverse"
+                          ? `Koreksi penerimaan ${receipt?.number ?? ""}`
+                          : "Batalkan pesanan pembelian"}
                   </strong>
                 </div>
                 <p>
                   {action === "confirm"
                     ? `Pastikan supplier, barang, dan total ${exactMoney(order.total)} sudah benar. Setelah konfirmasi, isi PO tidak dapat diedit.`
-                    : "Pesanan akan tetap tersimpan dengan status Dibatalkan beserta alasan di bawah."}
+                    : action === "receive"
+                      ? `Periksa seluruh barang pada daftar di atas. Penerimaan memakai jumlah dan biaya dari PO, dengan total ${exactMoney(order.total)}. Catat hanya setelah semua barang benar-benar tiba dan sesuai pesanan.`
+                      : action === "reverse"
+                        ? `Seluruh barang pada ${receipt?.number ?? "penerimaan ini"} akan dikeluarkan kembali dan jurnal sebesar ${exactMoney(receipt?.total ?? "0")} dibalik. PO kembali Dikonfirmasi dan dapat diterima ulang. Jika biaya atau isi PO salah, batalkan PO setelah pembalikan lalu buat PO pengganti.`
+                        : "Pesanan akan tetap tersimpan dengan status Dibatalkan beserta alasan di bawah."}
                 </p>
-                {action === "cancel" && (
+                {action === "receive" && (
+                  <>
+                    <div className="purchase-posting-preview">
+                      <div>
+                        <span>Persediaan bertambah</span>
+                        <strong>{exactMoney(order.total)}</strong>
+                      </div>
+                      <div>
+                        <span>
+                          Kewajiban barang diterima belum ditagih bertambah
+                        </span>
+                        <strong>{exactMoney(order.total)}</strong>
+                      </div>
+                    </div>
+                    <p className="purchase-receive-note">
+                      Biaya rata-rata stok dihitung otomatis. Kas belum berubah.
+                      Tagihan dan pembayaran supplier dicatat pada tahap
+                      berikutnya.
+                    </p>
+                    <FormField
+                      label="Referensi penerimaan"
+                      hint="Opsional, maksimal 200 karakter; misalnya nomor surat jalan supplier."
+                    >
+                      <input
+                        maxLength={200}
+                        value={reference}
+                        disabled={busy}
+                        onChange={(event) => setReference(event.target.value)}
+                        placeholder="Contoh: SJ-SUPPLIER-012"
+                      />
+                    </FormField>
+                  </>
+                )}
+                {(action === "cancel" || action === "reverse") && (
                   <FormField
-                    label="Alasan pembatalan *"
+                    label={
+                      action === "reverse"
+                        ? "Alasan koreksi penerimaan *"
+                        : "Alasan pembatalan *"
+                    }
                     hint="3–1.000 karakter; tersimpan dalam riwayat."
                   >
                     <textarea
@@ -1360,7 +1491,11 @@ function PurchaseOrderDetail({
                       value={reason}
                       disabled={busy}
                       onChange={(event) => setReason(event.target.value)}
-                      placeholder="Jelaskan mengapa pesanan dibatalkan"
+                      placeholder={
+                        action === "reverse"
+                          ? "Jelaskan kesalahan penerimaan yang perlu dikoreksi"
+                          : "Jelaskan mengapa pesanan dibatalkan"
+                      }
                       autoFocus
                     />
                   </FormField>
@@ -1380,7 +1515,7 @@ function PurchaseOrderDetail({
                     Kembali ke detail
                   </button>
                   <button
-                    className={`button ${action === "cancel" ? "secondary danger-text" : "primary"}`}
+                    className={`button ${action === "cancel" || action === "reverse" ? "secondary danger-text" : "primary"}`}
                     type="submit"
                     disabled={busy}
                   >
@@ -1388,7 +1523,11 @@ function PurchaseOrderDetail({
                       ? "Memproses…"
                       : action === "confirm"
                         ? "Konfirmasi PO"
-                        : "Batalkan PO"}
+                        : action === "receive"
+                          ? "Catat penerimaan penuh"
+                          : action === "reverse"
+                            ? "Balikkan penerimaan"
+                            : "Batalkan PO"}
                   </button>
                 </div>
               </form>
@@ -1422,7 +1561,7 @@ function PurchaseOrderDetail({
           !resource.loading &&
           !resource.error &&
           !action &&
-          order.status !== "cancelled" && (
+          (order.status === "draft" || order.status === "confirmed") && (
             <>
               <button
                 className="text-button danger-text"
@@ -1455,9 +1594,141 @@ function PurchaseOrderDetail({
                   </button>
                 </>
               )}
+              {order.status === "confirmed" && (
+                <button
+                  className="button primary"
+                  disabled={busy}
+                  onClick={() => {
+                    setAction("receive");
+                    setReference("");
+                    setError("");
+                    setConflict(false);
+                  }}
+                >
+                  <Package size={16} /> Tinjau penerimaan
+                </button>
+              )}
             </>
           )}
       </div>
+      {journalId && (
+        <JournalPreview id={journalId} onClose={() => setJournalId(null)} />
+      )}
     </Modal>
+  );
+}
+
+function PurchaseReceiptHistory({
+  receipt,
+  canManage,
+  busy,
+  onReverse,
+  onJournal,
+}: {
+  receipt: PurchaseReceipt;
+  canManage: boolean;
+  busy: boolean;
+  onReverse: () => void;
+  onJournal: (id: string) => void;
+}) {
+  return (
+    <article
+      className={`purchase-receipt-card ${receipt.reversal ? "reversed" : ""}`}
+    >
+      <header>
+        <div>
+          <strong>{receipt.number}</strong>
+          <small>{dateTime(receipt.created_at)}</small>
+        </div>
+        <span
+          className={`purchase-receipt-status ${receipt.reversal ? "reversed" : ""}`}
+        >
+          {receipt.reversal ? "Sudah dibalik" : "Penerimaan aktif"}
+        </span>
+      </header>
+      {receipt.reference && (
+        <p className="purchase-receipt-reference">
+          Referensi:{" "}
+          <span className="purchase-prewrap">{receipt.reference}</span>
+        </p>
+      )}
+      <details open={!receipt.reversal}>
+        <summary>
+          {receipt.items.length} jenis barang · {exactMoney(receipt.total)}
+        </summary>
+        <div className="table-scroll">
+          <table className="purchase-detail-lines">
+            <thead>
+              <tr>
+                <th>Barang diterima</th>
+                <th className="align-right">Jumlah</th>
+                <th className="align-right">Biaya / satuan</th>
+                <th className="align-right">Nilai persediaan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {receipt.items.map((item) => (
+                <tr key={item.id}>
+                  <td>
+                    <span className="purchase-cell">
+                      <strong>{item.product_name}</strong>
+                      <small>{item.product_sku}</small>
+                    </span>
+                  </td>
+                  <td className="align-right">
+                    {exactDecimal(item.quantity)} {item.unit}
+                  </td>
+                  <td className="align-right">{exactCost(item.unit_cost)}</td>
+                  <td className="align-right">{exactMoney(item.value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {receipt.reversal && (
+        <div className="purchase-receipt-reversal">
+          <strong>Dibalik pada {dateTime(receipt.reversal.created_at)}</strong>
+          <p className="purchase-prewrap">Alasan: {receipt.reversal.reason}</p>
+        </div>
+      )}
+      <div className="purchase-receipt-actions">
+        <button
+          type="button"
+          className="text-button"
+          disabled={busy}
+          onClick={() => onJournal(receipt.journal_id)}
+        >
+          Lihat jurnal penerimaan <ArrowRight size={13} />
+        </button>
+        {receipt.reversal && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() => onJournal(receipt.reversal!.journal_id)}
+          >
+            Lihat jurnal pembalikan <ArrowRight size={13} />
+          </button>
+        )}
+        {canManage && receipt.can_reverse && (
+          <button
+            type="button"
+            className="text-button danger-text"
+            disabled={busy}
+            onClick={onReverse}
+          >
+            <Undo2 size={14} /> Koreksi penerimaan
+          </button>
+        )}
+      </div>
+      {!receipt.reversal &&
+        !receipt.can_reverse &&
+        receipt.reversal_blocked_reason && (
+          <p className="purchase-receipt-blocked">
+            {receipt.reversal_blocked_reason}
+          </p>
+        )}
+    </article>
   );
 }

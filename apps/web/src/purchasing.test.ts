@@ -7,8 +7,10 @@ import {
   purchasePreview,
   purchaseProducts,
   purchaseSummary,
+  purchaseStatusRows,
   requestIdentity,
   type PurchaseOrder,
+  type PurchasingSummary,
 } from "./purchasing-model";
 import type { Product } from "./types";
 
@@ -86,10 +88,12 @@ describe("purchase previews", () => {
       { status: "draft", total: "0.01" },
       { status: "confirmed", total: "999999999999.99" },
       { status: "confirmed", total: "0.01" },
+      { status: "received", total: "250000.12" },
       { status: "cancelled", total: "100.00" },
     ] as PurchaseOrder[]);
-    expect(summary.map(({ count }) => count)).toEqual([1, 2, 1]);
+    expect(summary.map(({ count }) => count)).toEqual([1, 2, 1, 1]);
     expect(summary[1].total).toBe(100000000000000n);
+    expect(summary[2].total).toBe(25000012n);
   });
   test("retries reuse request keys until the submitted payload changes", () => {
     let generated = 0;
@@ -102,6 +106,77 @@ describe("purchase previews", () => {
     expect(changed.key).toBe("key-2");
     expect(requestIdentity(changed, { version: 2, notes: "B" }, make).key).toBe(
       "key-3",
+    );
+  });
+  test("chart keeps complete server totals and received orders distinct from pending PO", () => {
+    const summary: PurchasingSummary = {
+      counts: { draft: 1, confirmed: 250, received: 500, cancelled: 7 },
+      values: {
+        draft: "0.01",
+        confirmed: "999999999999999999.12",
+        received: "125000.34",
+        cancelled: "4000.00",
+      },
+      pending_receipt_total: "999999999999999999.12",
+      received_unbilled_total: "125000.34",
+      as_of: "2026-10-18T17:30:00Z",
+    };
+    const rows = purchaseStatusRows(summary);
+    expect(rows.reduce((total, item) => total + item.count, 0)).toBe(758);
+    expect(rows.find((item) => item.status === "confirmed")).toMatchObject({
+      count: 250,
+      value: 99999999999999999912n,
+      width: 50,
+    });
+    expect(rows.find((item) => item.status === "received")).toMatchObject({
+      count: 500,
+      value: 12500034n,
+      width: 100,
+    });
+    expect(rows[0].value).toBe(1n);
+  });
+  test("empty purchase charts retain every status with finite zero bars", () => {
+    const rows = purchaseStatusRows({
+      counts: { draft: 0, confirmed: 0, received: 0, cancelled: 0 },
+      values: {
+        draft: "0.00",
+        confirmed: "0.00",
+        received: "0.00",
+        cancelled: "0.00",
+      },
+      pending_receipt_total: "0.00",
+      received_unbilled_total: "0.00",
+      as_of: "2026-10-18T17:30:00Z",
+    });
+    expect(rows.map((item) => item.status)).toEqual([
+      "draft",
+      "confirmed",
+      "received",
+      "cancelled",
+    ]);
+    expect(
+      rows.every(
+        (item) => item.width === 0 && item.count === 0 && item.value === 0n,
+      ),
+    ).toBe(true);
+  });
+  test("receipt retries retain identity while another receipt or current PO version gets a fresh key", () => {
+    let generated = 0;
+    const make = () => `receipt-key-${++generated}`;
+    const payload = {
+      action: "reverse",
+      order_id: "po-1",
+      receipt_id: "gr-1",
+      version: 3,
+      reason: "Jumlah salah",
+    };
+    const first = requestIdentity(null, payload, make);
+    expect(requestIdentity(first, { ...payload }, make)).toBe(first);
+    expect(
+      requestIdentity(first, { ...payload, receipt_id: "gr-2" }, make).key,
+    ).toBe("receipt-key-2");
+    expect(requestIdentity(first, { ...payload, version: 4 }, make).key).toBe(
+      "receipt-key-3",
     );
   });
 });

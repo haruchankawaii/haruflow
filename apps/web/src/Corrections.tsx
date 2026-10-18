@@ -10,6 +10,7 @@ import {
   Modal,
 } from "./components";
 import { useResource } from "./hooks";
+import { isControlAccount } from "./account-controls";
 import { companyToday, money } from "./format";
 import { isStockProduct } from "./commerce";
 import type { Account, Product } from "./types";
@@ -222,9 +223,7 @@ export function ManualJournalForm({
                     Pilih akun
                   </option>
                   {accounts.data?.items
-                    .filter(
-                      (account) => !["1200", "1300"].includes(account.code),
-                    )
+                    .filter((account) => !isControlAccount(account))
                     .map((account) => (
                       <option key={account.code} value={account.code}>
                         {account.code} · {account.name}
@@ -295,8 +294,9 @@ export function ManualJournalForm({
             <div className="info-box">
               <Scale size={18} />
               <p>
-                Total debit dan kredit harus seimbang. Akun kontrol piutang dan
-                persediaan dikelola melalui alur operasional.
+                Total debit dan kredit harus seimbang. Akun kontrol piutang,
+                persediaan, dan barang diterima belum ditagih dikelola melalui
+                alur operasional.
               </p>
             </div>
             <FormError error={error} />

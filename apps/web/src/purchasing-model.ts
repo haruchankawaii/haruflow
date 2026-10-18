@@ -29,7 +29,7 @@ export interface PurchaseOrder {
   supplier_id: string;
   supplier_code: string;
   supplier_name: string;
-  status: "draft" | "confirmed" | "cancelled";
+  status: "draft" | "confirmed" | "received" | "cancelled";
   expected_date: string | null;
   notes: string | null;
   total: string;
@@ -37,9 +37,66 @@ export interface PurchaseOrder {
   created_at: string;
   updated_at: string;
   confirmed_at: string | null;
+  received_at: string | null;
+  active_receipt_id: string | null;
   cancelled_at: string | null;
   cancellation_reason: string | null;
   items: PurchaseItem[];
+  receipts: PurchaseReceipt[];
+}
+export interface PurchaseReceipt {
+  id: string;
+  number: string;
+  order_id: string;
+  reference: string | null;
+  total: string;
+  journal_id: string;
+  created_at: string;
+  items: {
+    id: string;
+    movement_id: string;
+    product_id: string;
+    product_sku: string;
+    product_name: string;
+    unit: string;
+    quantity: string;
+    unit_cost: string;
+    value: string;
+  }[];
+  reversal: {
+    id: string;
+    reason: string;
+    created_at: string;
+    journal_id: string;
+  } | null;
+  can_reverse: boolean;
+  reversal_blocked_reason: string | null;
+}
+export const purchaseStatuses = [
+  "draft",
+  "confirmed",
+  "received",
+  "cancelled",
+] as const;
+export interface PurchasingSummary {
+  counts: Record<(typeof purchaseStatuses)[number], number>;
+  values: Record<(typeof purchaseStatuses)[number], string>;
+  pending_receipt_total: string;
+  received_unbilled_total: string;
+  as_of: string;
+}
+
+export function purchaseStatusRows(summary: PurchasingSummary) {
+  const maximum = Math.max(
+    0,
+    ...purchaseStatuses.map((s) => summary.counts[s]),
+  );
+  return purchaseStatuses.map((status) => ({
+    status,
+    count: summary.counts[status],
+    value: moneyCents(summary.values[status]),
+    width: maximum > 0 ? (summary.counts[status] / maximum) * 100 : 0,
+  }));
 }
 export interface PurchaseDraft {
   supplier_id: string;
@@ -125,8 +182,7 @@ export function exactCost(value: string): string {
   return `Rp${exactDecimal(value)}`;
 }
 export function purchaseSummary(orders: PurchaseOrder[]) {
-  const statuses = ["draft", "confirmed", "cancelled"] as const;
-  return statuses.map((status) => {
+  return purchaseStatuses.map((status) => {
     const items = orders.filter((order) => order.status === status);
     return {
       status,

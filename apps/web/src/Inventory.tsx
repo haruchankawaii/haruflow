@@ -57,7 +57,7 @@ export default function Inventory({
     `${item.sku} ${item.name}`.toLowerCase().includes(search.toLowerCase()),
   );
   const movementsList = (movements.data?.items ?? []).filter((item) =>
-    `${item.product_name} ${item.reference ?? ""}`
+    `${item.product_name} ${item.reference ?? ""} ${item.purchase_order_number ?? ""}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
@@ -196,6 +196,7 @@ export default function Inventory({
                       "Biaya satuan",
                       "Nilai transaksi",
                       "Referensi",
+                      "Pesanan pembelian",
                       "Status koreksi",
                       "Alasan koreksi",
                     ],
@@ -217,6 +218,7 @@ export default function Inventory({
                       m.unit_cost,
                       m.value,
                       m.reference,
+                      m.purchase_order_number,
                       m.reversal ? "Dibatalkan" : "",
                       m.reversal?.reason,
                     ]),
@@ -369,7 +371,19 @@ export default function Inventory({
                       </span>
                     </td>
                     <td className="font-medium">{item.product_name}</td>
-                    <td className="mono muted">{item.reference || "—"}</td>
+                    <td className="mono muted">
+                      {item.reference || "—"}
+                      {item.purchase_order_id && (
+                        <div>
+                          <a
+                            className="text-button"
+                            href={`?purchase=${encodeURIComponent(item.purchase_order_id)}#purchasing`}
+                          >
+                            {item.purchase_order_number ?? "Lihat PO"}
+                          </a>
+                        </div>
+                      )}
+                    </td>
                     <td className="muted">{date(item.created_at)}</td>
                     <td className="align-right font-medium">
                       {number(item.quantity)}
@@ -423,7 +437,17 @@ export default function Inventory({
                             </span>
                           )
                         ) : (
-                          <span className="muted">—</span>
+                          !item.purchase_order_id && (
+                            <span className="muted">—</span>
+                          )
+                        )}
+                        {item.purchase_order_id && (
+                          <a
+                            className="text-button"
+                            href={`?purchase=${encodeURIComponent(item.purchase_order_id)}#purchasing`}
+                          >
+                            Lihat penerimaan PO
+                          </a>
                         )}
                       </div>
                     </td>

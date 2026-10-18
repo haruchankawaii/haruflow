@@ -223,10 +223,9 @@
 }
 .purchase-edit-line {
   display: grid;
-  grid-template-columns: minmax(155px, 2fr) minmax(85px, 0.85fr) minmax(
-      125px,
-      1.2fr
-    ) minmax(85px, 1fr) 28px;
+  grid-template-columns:
+    minmax(155px, 2fr) minmax(85px, 0.85fr) minmax(125px, 1.2fr)
+    minmax(85px, 1fr) 28px;
   gap: 11px;
   align-items: end;
   padding-bottom: 15px;
@@ -413,6 +412,308 @@
 .purchase-panel .table-toolbar .tabs {
   margin-right: auto;
 }
+.purchase-status-chart {
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+.purchase-chart-heading {
+  padding: 23px 24px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.purchase-chart-eyebrow {
+  font-size: 9px;
+  letter-spacing: 1.3px;
+  color: #809074;
+}
+.purchase-chart-heading h2 {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 7px 0;
+}
+.purchase-chart-heading p,
+.purchase-chart-heading > small {
+  font-size: 10px;
+  color: #8b9584;
+  line-height: 1.7;
+  margin: 0;
+}
+.purchase-chart-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr);
+  gap: 30px;
+  padding: 0 24px 20px;
+}
+.purchase-chart-row {
+  --purchase-status-color: #a8b39c;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--purchase-status-color);
+  display: grid;
+  grid-template-columns: 100px minmax(50px, 1fr) minmax(110px, auto);
+  align-items: center;
+  gap: 16px;
+  padding: 11px 9px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.purchase-chart-row.confirmed {
+  --purchase-status-color: #c59957;
+}
+.purchase-chart-row.received {
+  --purchase-status-color: #4d815c;
+}
+.purchase-chart-row.cancelled {
+  --purchase-status-color: #a2a79f;
+}
+.purchase-chart-row:hover,
+.purchase-chart-row.selected {
+  background: #f6f9f2;
+  border-color: #dfe7d8;
+}
+.purchase-chart-row:focus-visible {
+  outline: 2px solid #587c47;
+  outline-offset: 2px;
+}
+.purchase-chart-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6c7962;
+  font-size: 11px;
+}
+.purchase-chart-label i {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--purchase-status-color);
+}
+.purchase-chart-row svg {
+  width: 100%;
+  height: 11px;
+  overflow: visible;
+}
+.purchase-chart-track {
+  fill: #f0f3ec;
+}
+.purchase-chart-value {
+  text-align: right;
+  min-width: 0;
+}
+.purchase-chart-value b {
+  display: block;
+  color: #47583e;
+  font-weight: 500;
+  font-size: 11px;
+}
+.purchase-chart-value small {
+  display: block;
+  color: #8c9685;
+  font-size: 10px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.purchase-chart-caption,
+.purchase-chart-empty {
+  font-size: 10px;
+  line-height: 1.8;
+  color: #919b89;
+  margin: 8px 9px 0;
+}
+.purchase-chart-empty {
+  color: #60764f;
+  margin-top: 16px;
+}
+.purchase-chart-highlights {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 13px;
+}
+.purchase-chart-highlights > div {
+  padding: 16px 18px;
+  border: 1px solid #eee8dc;
+  background: #fcfaf5;
+  border-radius: 9px;
+}
+.purchase-chart-highlights > div.received {
+  background: #f3f8f0;
+  border-color: #e2eadb;
+}
+.purchase-chart-highlights span {
+  display: block;
+  font-size: 11px;
+  color: #7b816c;
+}
+.purchase-chart-highlights strong {
+  display: block;
+  margin: 9px 0 7px;
+  font-size: 22px;
+  color: #526647;
+  letter-spacing: -0.5px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.purchase-chart-highlights small {
+  font-size: 10px;
+  line-height: 1.7;
+  color: #939a88;
+  display: block;
+}
+.purchase-chart-scope {
+  margin: 0;
+  padding: 12px 24px;
+  border-top: 1px solid #edf0e8;
+  color: #929a89;
+  font-size: 10px;
+  line-height: 1.8;
+}
+.purchase-receipt-history {
+  padding: 0 28px 24px;
+}
+.purchase-receipt-heading h3 {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 0 6px;
+}
+.purchase-receipt-heading p {
+  margin: 0 0 15px;
+  color: #939a8a;
+  font-size: 10px;
+}
+.purchase-receipt-card {
+  border: 1px solid #dee8d8;
+  background: #fff;
+  border-radius: 9px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.purchase-receipt-card.reversed {
+  border-color: #e6e5dd;
+}
+.purchase-receipt-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  background: #f7faf3;
+}
+.purchase-receipt-card.reversed > header {
+  background: #f8f8f5;
+}
+.purchase-receipt-card header strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #506548;
+}
+.purchase-receipt-card header small {
+  display: block;
+  font-size: 10px;
+  color: #9a9f90;
+  margin-top: 6px;
+}
+.purchase-receipt-status {
+  display: inline-block;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: #e8f1e4;
+  color: #5d7c4f;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.purchase-receipt-status.reversed {
+  background: #efeee8;
+  color: #939383;
+}
+.purchase-receipt-reference {
+  font-size: 11px;
+  color: #7e8c73;
+  line-height: 1.8;
+  margin: 14px 16px 0;
+}
+.purchase-receipt-card details > summary {
+  padding: 14px 16px;
+  cursor: pointer;
+  font-size: 11px;
+  color: #77876b;
+}
+.purchase-receipt-card .purchase-detail-lines {
+  min-width: 590px;
+}
+.purchase-receipt-card td,
+.purchase-receipt-card th {
+  font-size: 10px;
+}
+.purchase-receipt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+  padding: 15px 16px;
+  border-top: 1px solid #edf0e8;
+}
+.purchase-receipt-actions .text-button {
+  font-size: 10px;
+}
+.purchase-receipt-reversal {
+  margin: 0 16px 15px;
+  padding: 12px 14px;
+  border-left: 3px solid #c9b995;
+  background: #faf8f1;
+}
+.purchase-receipt-reversal strong {
+  font-size: 10px;
+  color: #7d7f6e;
+  font-weight: 500;
+}
+.purchase-receipt-reversal p {
+  font-size: 11px;
+  line-height: 1.8;
+  margin: 7px 0 0;
+  color: #8c8e7d;
+}
+.purchase-receipt-blocked {
+  margin: 0;
+  padding: 0 16px 15px;
+  color: #9a947f;
+  font-size: 10px;
+  line-height: 1.8;
+}
+.purchase-posting-preview {
+  border: 1px solid #e2ead9;
+  border-radius: 7px;
+  padding: 0 13px;
+  background: #f7faf2;
+}
+.purchase-posting-preview > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  font-size: 11px;
+  color: #79876c;
+}
+.purchase-posting-preview > div + div {
+  border-top: 1px solid #e8eddf;
+}
+.purchase-posting-preview strong {
+  white-space: nowrap;
+  color: #587547;
+  font-weight: 500;
+}
+.purchase-review .purchase-receive-note {
+  font-size: 10px;
+  margin: 12px 0 18px;
+  color: #919b85;
+}
 @media (max-width: 1100px) {
   .purchase-summary-card {
     padding: 17px;
@@ -425,10 +726,9 @@
     gap: 5px;
   }
   .purchase-edit-line {
-    grid-template-columns: minmax(150px, 2fr) minmax(80px, 1fr) minmax(
-        110px,
-        1.1fr
-      ) 28px;
+    grid-template-columns:
+      minmax(150px, 2fr) minmax(80px, 1fr) minmax(110px, 1.1fr)
+      28px;
   }
   .purchase-line-value {
     grid-column: 1/4;
@@ -443,6 +743,14 @@
   .purchase-edit-line > .icon-button {
     grid-column: 4;
     grid-row: 1;
+  }
+  .purchase-chart-content {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .purchase-chart-highlights {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 680px) {
@@ -557,5 +865,49 @@
   .purchase-action-error {
     padding-left: 20px;
     padding-right: 20px;
+  }
+  .purchase-chart-heading {
+    padding: 18px 16px;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .purchase-chart-content {
+    padding: 0 12px 18px;
+    gap: 18px;
+  }
+  .purchase-chart-row {
+    grid-template-columns: 82px minmax(20px, 1fr) minmax(75px, auto);
+    gap: 9px;
+    padding-inline: 5px;
+  }
+  .purchase-chart-label {
+    font-size: 10px;
+    gap: 5px;
+  }
+  .purchase-chart-value b {
+    font-size: 10px;
+  }
+  .purchase-chart-value small {
+    font-size: 9px;
+    max-width: 125px;
+  }
+  .purchase-chart-highlights {
+    grid-template-columns: 1fr;
+    padding: 0 4px;
+  }
+  .purchase-chart-scope {
+    padding: 12px 16px;
+  }
+  .purchase-receipt-history {
+    padding-inline: 20px;
+  }
+  .purchase-receipt-card > header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .purchase-posting-preview > div {
+    flex-wrap: wrap;
+    gap: 7px;
   }
 }
