@@ -399,7 +399,8 @@ export default function Inventory({
                                 "Penerimaan ini belum dapat dibatalkan."}
                             </p>
                           )
-                        ) : item.reverses_movement_id ? (
+                        ) : item.kind === "receipt_reversal" &&
+                          item.reverses_movement_id ? (
                           movements.data?.items.some(
                             (source) => source.id === item.reverses_movement_id,
                           ) ? (
@@ -418,8 +419,7 @@ export default function Inventory({
                             </button>
                           ) : (
                             <span className="muted">
-                              Penerimaan asal ·{" "}
-                              {item.reverses_movement_id.slice(0, 8)}
+                              Penerimaan asal tidak ada dalam daftar terbaru.
                             </span>
                           )
                         ) : (

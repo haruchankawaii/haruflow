@@ -25,6 +25,8 @@ mod service_tests;
 mod tests;
 #[cfg(test)]
 mod upgrade_tests;
+#[cfg(test)]
+mod web_tests;
 
 use anyhow::{Context, Result, bail};
 use axum::{
@@ -214,6 +216,15 @@ async fn api_guard(request: Request, next: Next) -> Response {
 async fn security_headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
+    // The entry document selects fingerprinted assets. Caching an older HTML
+    // shell can hide newly deployed screens even when the server is upgraded.
+    if headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("text/html"))
+    {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
