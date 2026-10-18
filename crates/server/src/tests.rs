@@ -231,6 +231,42 @@ async fn complete_erp_workflow_and_invariants(pool: PgPool) {
             "{key}"
         );
     }
+    let (status, trial, _) = request(
+        &app,
+        "GET",
+        "/api/accounting/trial-balance",
+        Some(&cookie),
+        None,
+    )
+    .await;
+    success(status, &trial);
+    for field in ["total_debit", "total_credit"] {
+        assert_eq!(
+            trial[field]
+                .as_str()
+                .unwrap()
+                .parse::<rust_decimal::Decimal>()
+                .unwrap(),
+            rust_decimal::Decimal::from(660000),
+            "trial balance uses ending balances, not gross turnover"
+        );
+    }
+    let receivables = trial["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["code"] == "1200")
+        .unwrap();
+    for field in ["debit", "credit"] {
+        assert_eq!(
+            receivables[field]
+                .as_str()
+                .unwrap()
+                .parse::<rust_decimal::Decimal>()
+                .unwrap(),
+            rust_decimal::Decimal::ZERO
+        );
+    }
     let journal_count: i64 = sqlx::query_scalar("SELECT count(*) FROM journal_entries")
         .fetch_one(&pool)
         .await

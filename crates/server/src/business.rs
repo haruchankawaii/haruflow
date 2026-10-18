@@ -838,11 +838,12 @@ async fn journals(State(state): State<AppState>, _user: AuthUser) -> AppResult<J
 }
 
 async fn trial_balance(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
-    let result: Value = sqlx::query_scalar(r#"WITH balances AS (
-        SELECT a.code,a.name,a.kind,COALESCE(sum(l.debit),0) debit,COALESCE(sum(l.credit),0) credit
-        FROM accounts a LEFT JOIN journal_lines l ON l.account_code=a.code GROUP BY a.code,a.name,a.kind)
+    let result: Value = sqlx::query_scalar(r#"WITH net_balances AS (
+        SELECT a.code,a.name,a.kind,COALESCE(sum(l.debit-l.credit),0) balance
+        FROM accounts a LEFT JOIN journal_lines l ON l.account_code=a.code GROUP BY a.code,a.name,a.kind),
+        balances AS (SELECT code,name,kind,balance,greatest(balance,0) debit,greatest(-balance,0) credit FROM net_balances)
         SELECT jsonb_build_object('items',jsonb_agg(jsonb_build_object('code',code,'name',name,'kind',kind,
-        'debit',debit::text,'credit',credit::text,'balance',(debit-credit)::text) ORDER BY code),
+        'debit',debit::text,'credit',credit::text,'balance',balance::text) ORDER BY code),
         'total_debit',sum(debit)::text,'total_credit',sum(credit)::text,'balanced',sum(debit)=sum(credit)) FROM balances"#)
         .fetch_one(&state.db).await?;
     Ok(Json(result))
