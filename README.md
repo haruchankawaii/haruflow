@@ -9,7 +9,7 @@ Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa paja
 - Setup perusahaan dan admin, login lokal, role, pengelolaan pengguna, penggantian password, pencabutan sesi, dan audit aktivitas.
 - Profil perusahaan, kontak, zona waktu sebelum posting pertama, serta awalan nomor pesanan dan invoice yang dapat dikonfigurasi. Mata uang tetap IDR.
 - Pelanggan, produk, penerimaan stok, biaya rata-rata bergerak, penyesuaian, dan riwayat stok.
-- Sales order → konfirmasi → pengiriman penuh → invoice → pembayaran sebagian/penuh.
+- Sales order → konfirmasi → pengiriman penuh untuk barang → invoice → pembayaran sebagian/penuh.
 - Produk jasa/nonstok dapat ditagih langsung setelah konfirmasi, tanpa pergerakan stok; pesanan campuran tetap mengirim barang terlebih dahulu.
 - Jurnal otomatis, jurnal manual seimbang, neraca saldo, dan penutupan periode.
 - Koreksi pembayaran, invoice, dan pengiriman melalui reversal dengan alasan; riwayat posted dipertahankan.
