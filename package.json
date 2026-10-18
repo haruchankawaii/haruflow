@@ -1,0 +1,11 @@
+{
+  "name": "haruflow-community",
+  "private": true,
+  "scripts": {
+    "configure": "node scripts/configure.mjs",
+    "dev:web": "bun run --cwd apps/web dev",
+    "build:web": "bun run --cwd apps/web build",
+    "backup": "node scripts/database.mjs backup",
+    "restore": "node scripts/database.mjs restore"
+  }
+}

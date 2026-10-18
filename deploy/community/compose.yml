@@ -1,0 +1,57 @@
+name: haruflow
+
+services:
+  postgres:
+    image: postgres:18.1-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: haruflow
+      POSTGRES_DB: haruflow
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run bun run configure first}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U haruflow -d haruflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    image: haruflow/community:local
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &app_environment
+      DATABASE_URL: postgres://haruflow:${DB_PASSWORD:?Run bun run configure first}@postgres:5432/haruflow
+      HARUFLOW_SETUP_TOKEN: ${HARUFLOW_SETUP_TOKEN:?Run bun run configure first}
+      HARUFLOW_SECURE_COOKIES: ${HARUFLOW_SECURE_COOKIES:-true}
+      RUST_LOG: ${RUST_LOG:-haruflow=info,tower_http=info}
+    ports:
+      - "127.0.0.1:${HARUFLOW_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "haruflow", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+
+  migrate:
+    image: haruflow/community:local
+    profiles: [tools]
+    command: ["migrate"]
+    environment: *app_environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
