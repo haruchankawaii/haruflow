@@ -91,6 +91,9 @@ async fn upgrade_preserves_existing_stock_orders_and_ledgers(pool: PgPool) {
         "apps/web/dist".into(),
     );
     let cookie = format!("hf_session={token}");
+    let opening = call(&app, &cookie, "/api/accounting/opening", None).await;
+    assert_eq!(opening["eligible"], false);
+    assert!(opening["document"].is_null());
     let products = call(&app, &cookie, "/api/products", None).await;
     assert_eq!(products["items"][0]["kind"], "stock");
     assert_eq!(products["items"][0]["quantity"], "4.000");

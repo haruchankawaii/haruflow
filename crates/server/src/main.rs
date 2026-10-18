@@ -10,6 +10,9 @@ mod corrections;
 mod domain;
 mod error;
 mod master_data;
+mod opening;
+#[cfg(test)]
+mod opening_tests;
 #[cfg(test)]
 mod service_tests;
 #[cfg(test)]
@@ -147,6 +150,7 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(master_data::router())
         .merge(business::router())
         .merge(corrections::router())
+        .merge(opening::router())
         .fallback(|| async { error::AppError::not_found() })
         .layer(middleware::from_fn(api_guard));
     Router::new()
