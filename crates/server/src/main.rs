@@ -7,8 +7,14 @@ mod company;
 #[cfg(test)]
 mod company_tests;
 mod corrections;
+#[cfg(test)]
+mod document_correction_tests;
+mod document_corrections;
 mod domain;
 mod error;
+mod insights;
+#[cfg(test)]
+mod insights_tests;
 mod master_data;
 mod opening;
 #[cfg(test)]
@@ -151,6 +157,8 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(business::router())
         .merge(corrections::router())
         .merge(opening::router())
+        .merge(insights::router())
+        .merge(document_corrections::router())
         .fallback(|| async { error::AppError::not_found() })
         .layer(middleware::from_fn(api_guard));
     Router::new()

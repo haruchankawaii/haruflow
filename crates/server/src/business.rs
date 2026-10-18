@@ -305,12 +305,13 @@ async fn receive_stock(
     if value > Decimal::from(1_000_000_000_000u64) {
         return Err(AppError::bad_request("Receipt value limit exceeded"));
     }
-    let product =
-        sqlx::query("SELECT kind,quantity,inventory_value FROM products WHERE id=$1 FOR UPDATE")
-            .bind(body.product_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(|| AppError::bad_request("Product not found"))?;
+    let product = sqlx::query(
+        "SELECT kind,quantity,average_cost,inventory_value FROM products WHERE id=$1 FOR UPDATE",
+    )
+    .bind(body.product_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::bad_request("Product not found"))?;
     if product.get::<String, _>("kind") != "stock" {
         return Err(AppError::bad_request("Services cannot receive stock"));
     }
@@ -333,8 +334,10 @@ async fn receive_stock(
         .execute(&mut *tx)
         .await?;
     let id = Uuid::new_v4();
-    sqlx::query("INSERT INTO inventory_movements(id,product_id,kind,quantity,unit_cost,value,reference,created_by) VALUES($1,$2,'receipt',$3,$4,$5,$6,$7)")
-        .bind(id).bind(body.product_id).bind(quantity).bind(unit_cost).bind(value).bind(reference).bind(user.id).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO inventory_movements(id,product_id,kind,quantity,unit_cost,value,reference,created_by,before_quantity,before_average_cost,before_inventory_value) VALUES($1,$2,'receipt',$3,$4,$5,$6,$7,$8,$9,$10)")
+        .bind(id).bind(body.product_id).bind(quantity).bind(unit_cost).bind(value).bind(reference).bind(user.id)
+        .bind(product.get::<Decimal,_>("quantity")).bind(product.get::<Decimal,_>("average_cost"))
+        .bind(product.get::<Decimal,_>("inventory_value")).execute(&mut *tx).await?;
     journal(
         &mut tx,
         &user,
@@ -361,11 +364,25 @@ async fn receive_stock(
 }
 
 async fn movements(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
-    let items: Value = sqlx::query_scalar(r#"SELECT COALESCE(jsonb_agg(x.item ORDER BY x.created_at DESC),'[]'::jsonb) FROM (
-        SELECT m.created_at,jsonb_build_object('id',m.id,'product_id',m.product_id,'sku',p.sku,'product_name',p.name,
+    let items: Value = sqlx::query_scalar(r#"SELECT COALESCE(jsonb_agg(x.item ORDER BY x.movement_seq DESC),'[]'::jsonb) FROM (
+        SELECT m.movement_seq,jsonb_build_object('id',m.id,'product_id',m.product_id,'sku',p.sku,'product_name',p.name,
             'kind',m.kind,'quantity',m.quantity::text,'unit_cost',m.unit_cost::text,'value',m.value::text,
-            'reference',m.reference,'order_id',m.order_id,'created_at',m.created_at) item
-        FROM inventory_movements m JOIN products p ON p.id=m.product_id ORDER BY m.created_at DESC LIMIT 500) x"#)
+            'reference',m.reference,'order_id',m.order_id,'created_at',m.created_at,'reverses_movement_id',m.reverses_id,
+            'can_reverse',m.kind='receipt' AND r.id IS NULL AND m.before_quantity IS NOT NULL AND NOT EXISTS(
+                SELECT 1 FROM inventory_movements later WHERE later.product_id=m.product_id AND later.movement_seq>m.movement_seq)
+                AND (SELECT closed_through IS NULL OR (now() AT TIME ZONE (SELECT timezone FROM company))::date>closed_through FROM accounting_period WHERE singleton),
+            'reversal_blocked_reason',CASE WHEN m.kind<>'receipt' THEN NULL
+                WHEN r.id IS NOT NULL THEN 'Penerimaan sudah dibalik.'
+                WHEN m.before_quantity IS NULL THEN 'Penerimaan sebelum upgrade belum memiliki snapshot biaya; gunakan penyesuaian stok.'
+                WHEN EXISTS(SELECT 1 FROM inventory_movements later WHERE later.product_id=m.product_id AND later.movement_seq>m.movement_seq)
+                    THEN 'Ada mutasi stok setelah penerimaan ini; gunakan penyesuaian stok untuk menjaga HPP historis.'
+                WHEN NOT (SELECT closed_through IS NULL OR (now() AT TIME ZONE (SELECT timezone FROM company))::date>closed_through FROM accounting_period WHERE singleton)
+                    THEN 'Periode akuntansi saat ini sudah ditutup.' ELSE NULL END,
+            'reversal',CASE WHEN r.id IS NULL THEN NULL ELSE jsonb_build_object('id',r.id,'reason',r.reason,'created_at',r.created_at,'journal_id',rj.id) END) item
+        FROM inventory_movements m JOIN products p ON p.id=m.product_id
+        LEFT JOIN posting_reversals r ON r.source_type='receipt' AND r.source_id=m.id
+        LEFT JOIN journal_entries rj ON rj.source_type='reversal' AND rj.source_id=r.id
+        ORDER BY m.movement_seq DESC LIMIT 500) x"#)
         .fetch_one(&state.db).await?;
     Ok(Json(json!({"items":items})))
 }
@@ -872,10 +889,22 @@ async fn accounts(State(state): State<AppState>, _user: AuthUser) -> AppResult<J
 async fn journals(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
     let items: Value = sqlx::query_scalar(r#"SELECT COALESCE(jsonb_agg(x.item ORDER BY x.created_at DESC),'[]'::jsonb) FROM (
         SELECT j.created_at,jsonb_build_object('id',j.id,'description',j.description,'source_type',j.source_type,
-        'source_id',j.source_id,'created_at',j.created_at,'lines',(SELECT jsonb_agg(jsonb_build_object(
+        'source_id',j.source_id,'created_at',j.created_at,
+        'can_reverse',j.source_type='manual' AND r.id IS NULL AND (SELECT closed_through IS NULL OR (now() AT TIME ZONE (SELECT timezone FROM company))::date>closed_through FROM accounting_period WHERE singleton),
+        'reversal_blocked_reason',CASE WHEN j.source_type<>'manual' THEN NULL
+            WHEN r.id IS NOT NULL THEN 'Jurnal sudah dibalik.'
+            WHEN NOT (SELECT closed_through IS NULL OR (now() AT TIME ZONE (SELECT timezone FROM company))::date>closed_through FROM accounting_period WHERE singleton)
+                THEN 'Periode akuntansi saat ini sudah ditutup.' ELSE NULL END,
+        'reversal',CASE WHEN r.id IS NULL THEN NULL ELSE jsonb_build_object('id',r.id,'reason',r.reason,'created_at',r.created_at,'journal_id',rj.id) END,
+        'reversed_source',CASE WHEN original.id IS NULL THEN NULL ELSE jsonb_build_object('source_type',original.source_type,'source_id',original.source_id) END,
+        'lines',(SELECT jsonb_agg(jsonb_build_object(
         'account_code',l.account_code,'account_name',a.name,'debit',l.debit::text,'credit',l.credit::text) ORDER BY l.debit DESC,l.account_code)
         FROM journal_lines l JOIN accounts a ON a.code=l.account_code WHERE l.journal_id=j.id)) item
-        FROM journal_entries j ORDER BY j.created_at DESC LIMIT 500) x"#).fetch_one(&state.db).await?;
+        FROM journal_entries j
+        LEFT JOIN posting_reversals r ON r.source_type='manual' AND r.source_id=j.id AND j.source_type='manual'
+        LEFT JOIN journal_entries rj ON rj.source_type='reversal' AND rj.source_id=r.id
+        LEFT JOIN posting_reversals original ON j.source_type='reversal' AND original.id=j.source_id
+        ORDER BY j.created_at DESC,j.id DESC LIMIT 500) x"#).fetch_one(&state.db).await?;
     Ok(Json(json!({"items":items})))
 }
 
