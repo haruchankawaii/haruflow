@@ -26,6 +26,7 @@ import { downloadCsv } from "./export";
 import { DeleteMaster } from "./MasterActions";
 import { usePagination, useResource } from "./hooks";
 import { isStockProduct } from "./commerce";
+import { DocumentReversal, ReceiptHistory } from "./DocumentReversal";
 import type { Movement, Product, Role } from "./types";
 
 export default function Inventory({
@@ -48,6 +49,8 @@ export default function Inventory({
   );
   const [editing, setEditing] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
+  const [reversing, setReversing] = useState<Movement | null>(null);
+  const [receiptHistory, setReceiptHistory] = useState<Movement | null>(null);
   const canEdit = ["admin", "warehouse"].includes(role);
   const stockProducts = (products.data?.items ?? []).filter(isStockProduct);
   const items = (products.data?.items ?? []).filter((item) =>
@@ -191,7 +194,10 @@ export default function Inventory({
                       "Produk",
                       "Jumlah",
                       "Biaya satuan",
+                      "Nilai transaksi",
                       "Referensi",
+                      "Status koreksi",
+                      "Alasan koreksi",
                     ],
                 tab === "products"
                   ? items.map((p) => [
@@ -209,7 +215,10 @@ export default function Inventory({
                       m.product_name,
                       m.quantity,
                       m.unit_cost,
+                      m.value,
                       m.reference,
+                      m.reversal ? "Dibatalkan" : "",
+                      m.reversal?.reason,
                     ]),
               )
             }
@@ -346,11 +355,13 @@ export default function Inventory({
                   <th>Tanggal</th>
                   <th className="align-right">Jumlah</th>
                   <th className="align-right">Biaya satuan</th>
+                  <th className="align-right">Nilai transaksi</th>
+                  <th>Koreksi</th>
                 </tr>
               </thead>
               <tbody>
                 {movementPagination.items.map((item) => (
-                  <tr key={item.id}>
+                  <tr key={item.id} id={`movement-${item.id}`}>
                     <td>
                       <span className="customer-cell">
                         <MovementIcon incoming={Number(item.quantity) > 0} />
@@ -364,6 +375,58 @@ export default function Inventory({
                       {number(item.quantity)}
                     </td>
                     <td className="align-right">{costMoney(item.unit_cost)}</td>
+                    <td className="align-right">{money(item.value)}</td>
+                    <td>
+                      <div className="movement-correction">
+                        {item.reversal ? (
+                          <>
+                            <strong>
+                              Dibatalkan · {date(item.reversal.created_at)}
+                            </strong>
+                            <p>{item.reversal.reason}</p>
+                          </>
+                        ) : item.kind === "receipt" && canEdit ? (
+                          item.can_reverse ? (
+                            <button
+                              className="text-button danger-text"
+                              onClick={() => setReversing(item)}
+                            >
+                              Batalkan penerimaan
+                            </button>
+                          ) : (
+                            <p className="muted">
+                              {item.reversal_blocked_reason ??
+                                "Penerimaan ini belum dapat dibatalkan."}
+                            </p>
+                          )
+                        ) : item.reverses_movement_id ? (
+                          movements.data?.items.some(
+                            (source) => source.id === item.reverses_movement_id,
+                          ) ? (
+                            <button
+                              className="text-button"
+                              onClick={() =>
+                                setReceiptHistory(
+                                  movements.data!.items.find(
+                                    (source) =>
+                                      source.id === item.reverses_movement_id,
+                                  )!,
+                                )
+                              }
+                            >
+                              Lihat penerimaan asal
+                            </button>
+                          ) : (
+                            <span className="muted">
+                              Penerimaan asal ·{" "}
+                              {item.reverses_movement_id.slice(0, 8)}
+                            </span>
+                          )
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -421,6 +484,22 @@ export default function Inventory({
           products={stockProducts}
           onClose={() => setForm(null)}
           onSaved={saved}
+        />
+      )}
+      {reversing && (
+        <DocumentReversal
+          receipt={reversing}
+          onClose={() => setReversing(null)}
+          onSaved={() => {
+            setReversing(null);
+            saved();
+          }}
+        />
+      )}
+      {receiptHistory && (
+        <ReceiptHistory
+          receipt={receiptHistory}
+          onClose={() => setReceiptHistory(null)}
         />
       )}
     </>

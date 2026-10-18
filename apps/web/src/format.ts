@@ -75,6 +75,7 @@ export const statusNames: Record<string, string> = {
   open: "Belum dibayar",
   cancelled: "Dibatalkan",
   receipt: "Stok masuk",
+  receipt_reversal: "Pembatalan penerimaan",
   shipment: "Stok keluar",
   adjustment_in: "Penyesuaian masuk",
   adjustment_out: "Penyesuaian keluar",

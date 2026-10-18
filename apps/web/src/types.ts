@@ -81,8 +81,19 @@ export interface Movement {
   kind: string;
   quantity: string;
   unit_cost: string;
+  value: string;
   reference?: string;
   created_at: string;
+  can_reverse?: boolean;
+  reversal?: DocumentReversalInfo | null;
+  reversal_blocked_reason?: string | null;
+  reverses_movement_id?: string | null;
+}
+export interface DocumentReversalInfo {
+  id: string;
+  reason: string;
+  created_at: string;
+  journal_id: string;
 }
 export interface Account {
   id?: string;
@@ -105,6 +116,10 @@ export interface Journal {
   source_id?: string;
   created_at: string;
   lines: JournalLine[];
+  can_reverse?: boolean;
+  reversal?: DocumentReversalInfo | null;
+  reversed_source?: { source_type: string; source_id: string } | null;
+  reversal_blocked_reason?: string | null;
 }
 export interface TrialBalance {
   code: string;
