@@ -19,6 +19,9 @@ mod master_data;
 mod opening;
 #[cfg(test)]
 mod opening_tests;
+mod purchasing;
+#[cfg(test)]
+mod purchasing_tests;
 #[cfg(test)]
 mod service_tests;
 #[cfg(test)]
@@ -161,6 +164,7 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(opening::router())
         .merge(insights::router())
         .merge(document_corrections::router())
+        .merge(purchasing::router())
         .fallback(|| async { error::AppError::not_found() })
         .layer(middleware::from_fn(api_guard));
     Router::new()

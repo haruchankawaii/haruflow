@@ -183,11 +183,11 @@ async fn update_product(
     )?;
     if before["kind"] != kind {
         let used: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sales_order_lines WHERE product_id=$1) OR EXISTS(SELECT 1 FROM inventory_movements WHERE product_id=$1)",
+            "SELECT EXISTS(SELECT 1 FROM sales_order_lines WHERE product_id=$1) OR EXISTS(SELECT 1 FROM inventory_movements WHERE product_id=$1) OR EXISTS(SELECT 1 FROM purchase_order_lines WHERE product_id=$1)",
         ).bind(id).fetch_one(&mut *tx).await?;
         if used {
             return Err(AppError::conflict(
-                "Product kind cannot change after use in a sales or stock document",
+                "Product kind cannot change after use in a sales, purchase, or stock document",
             ));
         }
     }
@@ -253,7 +253,7 @@ async fn delete_product(
         .map_err(|error| {
             deletion_error(
                 error,
-                "Product is referenced by a sales or stock document and cannot be deleted",
+                "Product is referenced by a sales, purchase, or stock document and cannot be deleted",
             )
         })?;
     tx.commit().await?;
