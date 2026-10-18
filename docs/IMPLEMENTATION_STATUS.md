@@ -1,6 +1,6 @@
 # Status implementasi Community
 
-Community v0.1 development, upgrade tahap pertama, 18 Oktober 2026. Aplikasi dapat dibangun dan dijalankan; seluruh rencana Community belum selesai.
+Community v0.1 development, upgrade tahap kedua, 18 Oktober 2026. Saldo awal terstruktur melengkapi upgrade profil perusahaan dan produk jasa; seluruh rencana Community belum selesai.
 
 ## Sudah tersedia
 
@@ -11,6 +11,7 @@ Community v0.1 development, upgrade tahap pertama, 18 Oktober 2026. Aplikasi dap
 - Penerimaan stok awal, adjustment bertanda positif/negatif, kartu stok, dan pengiriman dengan penguncian stok serta biaya historis.
 - Sales order draft/confirm/cancel, pengiriman penuh, invoice, pembayaran sebagian/penuh, dan reversal berurutan pembayaran → invoice → pengiriman. Pesanan jasa dapat langsung diinvoiskan setelah konfirmasi; pesanan campuran hanya mengirim dan menghitung biaya persediaan untuk barang.
 - Bagan akun dasar serta akun tambahan, jurnal otomatis/manual, neraca saldo, dan buku besar dengan filter tanggal serta saldo awal/akhir.
+- Saldo awal perusahaan melalui draf berversi, pemeriksaan keseimbangan, dan posting atomik stok/jurnal/audit. Persediaan otomatis ke akun kontrol 1300; saldo akun lain memakai aset, liabilitas, atau ekuitas. Pembalikan sebelum transaksi operasional mengembalikan dokumen ke draf dengan snapshot historis yang tetap tersimpan. Lihat [panduan saldo awal](./OPENING_BALANCES.md).
 - Penutupan periode berdasarkan zona waktu perusahaan; jurnal dan ledger posted tidak dapat diubah lewat aplikasi.
 - Dashboard dengan data nyata, pencarian dan pagination pada UI, CSV, audit, serta tampilan invoice untuk pencetakan browser/PDF.
 - Dockerfile multi-stage dan Compose aplikasi + PostgreSQL; migrasi eksplisit, health probe, konfigurasi acak, dan script backup/restore.
@@ -18,12 +19,14 @@ Community v0.1 development, upgrade tahap pertama, 18 Oktober 2026. Aplikasi dap
 
 ## Verifikasi
 
-- 26 pengujian Rust lokal lulus, termasuk integrasi PostgreSQL untuk alur bisnis, identitas, profil perusahaan, pemulihan admin, produk jasa, pesanan campuran, dan reversal.
-- 12 tes frontend lulus, mencakup presisi decimal, pembulatan nilai baris, format nominal, keamanan CSV, dan perilaku barang/jasa.
+- 33 pengujian Rust lokal lulus, termasuk integrasi PostgreSQL untuk alur bisnis, identitas, profil perusahaan, pemulihan admin, produk jasa, serta saldo awal. Tes saldo awal mencakup posting bersamaan, retry, draf tidak seimbang, izin akses, versi kedaluwarsa, pembulatan, batas baris, koreksi, periode tertutup, dan pemakaian stok bernilai nol.
+- 18 tes frontend lulus, mencakup presisi decimal, pembulatan nilai baris, format nominal, keamanan CSV, barang/jasa, serta perhitungan dan pemilihan akun saldo awal.
 - Build frontend, Cargo build, serta Clippy dengan warnings-as-errors lulus.
-- Uji migrasi versi 5 → 7 mempertahankan stok, riwayat transaksi, dan ledger. Upgrade database preview dilakukan setelah backup; jumlah catatan dan saldo sebelum/sesudah tetap sama.
+- Uji migrasi versi 5 → 8 mempertahankan stok, riwayat transaksi, dan ledger. Upgrade database preview versi 7 → 8 dilakukan setelah backup; jumlah catatan dan saldo sebelum/sesudah tetap sama, dan pembukaan tambahan pada perusahaan lama diblokir.
 - Alur setup → pelanggan → produk → stok awal → order → pengiriman → invoice → pembayaran sebagian/lunas telah dijalankan lewat browser pada database preview terpisah.
 - QA browser lulus untuk perubahan kontak/awalan dokumen, pemisahan jasa dari penerimaan stok, dan pesanan jasa → konfirmasi → invoice langsung → pembayaran lunas. Invoice menampilkan kontak perusahaan; nomor dokumen lama dan stok barang tetap sama.
+- QA browser saldo awal menggunakan perusahaan demo terpisah: draf belum seimbang tidak dapat diposting dan belum mengubah neraca saldo; posting kas Rp100.000 serta stok Rp500.000 menghasilkan debit/kredit Rp600.000. Pembalikan mengembalikan stok dan akun ke nol tanpa menghapus riwayat.
+- Uji container mencakup pembukaan → pembalikan → perbaikan draf → posting ulang → penjualan barang/jasa → backup/restore → pemulihan admin. Riwayat dua posting, satu posting aktif, alasan pembalikan, stok, dan neraca saldo tetap cocok sesudah restore.
 - Script backup diperiksa untuk publikasi arsip lengkap, tidak menimpa file yang sudah ada, kegagalan dump, dan pembersihan file sementara milik proses sendiri.
 - Hasil CI terbaru dapat diperiksa di [GitHub Actions](https://github.com/haruchankawaii/haruflow/actions). Status setiap run melekat pada commit yang diuji.
 
@@ -31,11 +34,11 @@ Community v0.1 development, upgrade tahap pertama, 18 Oktober 2026. Aplikasi dap
 
 - Satu perusahaan, satu gudang logis, dan mata uang IDR tetap. Zona waktu awal Asia/Jakarta dapat diubah sebelum jurnal pertama; setelah itu terkunci untuk menjaga tanggal laporan. Multi-company, banyak mata uang, dan banyak gudang belum tersedia.
 - Penerimaan persediaan mengkredit modal awal, sehingga ditujukan untuk saldo awal dan penambahan yang memang memakai akun tersebut. Purchasing/utang supplier belum diimplementasikan.
-- Saldo awal kas dapat diposting melalui jurnal manual; proses pembukaan saldo awal per-periode khusus yang menjamin satu kali posting belum tersedia.
+- Saldo awal hanya satu konteks pembukaan perusahaan sebelum jurnal atau mutasi stok operasional, bukan reset tahunan. Pembukaan piutang per pelanggan/tagihan belum tersedia; akun kontrol piutang tidak dapat diisi langsung. Instalasi yang sudah bertransaksi tidak dapat menambahkan pembukaan baru, dan saldo awal tidak dapat dibalik setelah transaksi lain berjalan.
 - Semua posting memakai waktu transaksi saat ini. Backdating, pembukaan kembali periode, dan koreksi jurnal manual langsung melalui tombol reversal belum tersedia.
 - Belum ada lampiran, impor CSV, email, jobs/outbox, SSO, API plugin, serta OpenAPI/client generation. Baseline ini belum memiliki kebutuhan kirim event ke sistem luar.
 - API listing master data belum memiliki pagination server. Jurnal/pergerakan dibatasi pada riwayat terbaru; buku besar memberi penanda bila tampilan terpotong setelah 5.000 baris dan tetap menghitung saldo dari seluruh rentang.
 - Belum ada rilis image pada registry, installer end-user, atau deployment publik. Compose membangun image dari source lokal.
 - Uji performa berskala produksi, pilot pengguna bisnis, latihan pemulihan berkala, dan release review masih diperlukan sebelum menyatakan versi stabil atau SLA.
 
-Prioritas berikutnya: proses saldo awal terstruktur dengan pemeriksaan dan satu kali posting → koreksi jurnal manual/penerimaan stok yang terhubung → purchasing/utang supplier → retur dan pengiriman sebagian → impor data serta lampiran → laporan keuangan lengkap. Tahap pertama ini melengkapi fondasi; purchasing dan fitur lanjutan tetap menjadi pekerjaan berikutnya.
+Prioritas berikutnya: koreksi jurnal manual/penerimaan stok yang terhubung → purchasing/utang supplier → retur dan pengiriman sebagian → impor data serta lampiran → laporan keuangan lengkap. Dua tahap upgrade ini melengkapi fondasi; purchasing dan fitur lanjutan tetap menjadi pekerjaan berikutnya.
