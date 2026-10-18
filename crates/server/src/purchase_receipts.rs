@@ -102,7 +102,7 @@ async fn receive(
     // subsequently made inactive. Stock products are locked in UUID order.
     sqlx::query("SELECT id FROM products WHERE id IN (SELECT product_id FROM purchase_order_lines WHERE order_id=$1) ORDER BY id FOR UPDATE")
         .bind(id).fetch_all(&mut *tx).await?;
-    let lines = sqlx::query("SELECT l.*,p.kind,p.quantity AS stock_quantity,p.average_cost AS stock_average,p.inventory_value AS stock_value FROM purchase_order_lines l JOIN products p ON p.id=l.product_id WHERE l.order_id=$1 ORDER BY l.position")
+    let lines = sqlx::query("SELECT l.*,p.kind,p.unit AS stock_unit,p.quantity AS stock_quantity,p.average_cost AS stock_average,p.inventory_value AS stock_value FROM purchase_order_lines l JOIN products p ON p.id=l.product_id WHERE l.order_id=$1 ORDER BY l.position")
         .bind(id).fetch_all(&mut *tx).await?;
     if lines.is_empty() || lines.len() > 100 {
         return Err(AppError::conflict(
@@ -114,6 +114,14 @@ async fn receive(
     for line in &lines {
         if line.get::<String, _>("kind") != "stock" {
             return Err(AppError::conflict("Purchase order requires stock products"));
+        }
+        if line.get::<String, _>("unit") != line.get::<String, _>("stock_unit") {
+            return Err(AppError::conflict(format!(
+                "Satuan produk {} pada PO ({}) berbeda dari katalog saat ini ({}). Periksa satuan katalog dan PO sebelum menerima barang; jumlah tidak dikonversi otomatis.",
+                line.get::<String, _>("product_sku"),
+                line.get::<String, _>("unit"),
+                line.get::<String, _>("stock_unit")
+            )));
         }
         let quantity =
             line.get::<Decimal, _>("stock_quantity") + line.get::<Decimal, _>("quantity");

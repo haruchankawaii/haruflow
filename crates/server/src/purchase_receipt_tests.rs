@@ -268,7 +268,7 @@ async fn purchase_receipt_posts_all_reviewed_lines_and_grni_without_cash_or_capi
         "PATCH",
         &format!("/api/products/{}", id(&first)),
         Some(
-            json!({"sku":"GR-RENAMED","name":"Nama baru","kind":"stock","unit":"box","price":"90"}),
+            json!({"sku":"GR-RENAMED","name":"Nama baru","kind":"stock","unit":"kg","price":"90"}),
         ),
     )
     .await;
@@ -589,6 +589,53 @@ async fn purchase_receipt_failures_leave_no_partial_stock_journal_or_document(po
         );
         assert_eq!(posting_snapshot(&pool).await, before);
     }
+    // Confirmed quantities have a reviewed unit. Receiving after the catalog's
+    // unit changes would silently interpret those quantities in another unit.
+    let update_unit = |unit: &str| json!({"sku":valid["sku"],"name":valid["name"],"kind":"stock","unit":unit,"price":valid["price"]});
+    call(
+        &app,
+        &cookie,
+        "PATCH",
+        &format!("/api/products/{}", id(valid)),
+        Some(update_unit("box")),
+    )
+    .await;
+    let body = action(&simple);
+    let before = posting_snapshot(&pool).await;
+    assert_eq!(
+        request(
+            &app,
+            &cookie,
+            "POST",
+            &receive_path(&simple),
+            Some(body.clone())
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        posting_snapshot(&pool).await,
+        before,
+        "A unit mismatch must preserve all quantities, postings and PO state"
+    );
+    call(
+        &app,
+        &cookie,
+        "PATCH",
+        &format!("/api/products/{}", id(valid)),
+        Some(update_unit("kg")),
+    )
+    .await;
+    let received = call(&app, &cookie, "POST", &receive_path(&simple), Some(body)).await;
+    assert_eq!(
+        received["status"], "received",
+        "A rejected unit mismatch must not consume the request's idempotency key"
+    );
+    assert_eq!(
+        stock(&pool, valid).await,
+        (d("1.125"), d("12.3467"), d("13.89"))
+    );
     assert_inventory_matches_ledger(&pool).await;
 }
 

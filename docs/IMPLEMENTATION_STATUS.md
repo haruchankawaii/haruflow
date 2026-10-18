@@ -24,7 +24,7 @@ Community v0.1 development, upgrade tahap kelima, 19 Oktober 2026. Penerimaan pe
 
 ## Verifikasi
 
-- 62 pengujian Rust lokal lulus. Sepuluh tes penerimaan baru mencakup multi-item dan pembulatan, jurnal penampung, pemulihan biaya persis, penerimaan ulang, kegagalan atomik, periode tertutup, izin, idempotensi/konkurensi, riwayat mutasi lanjutan, ringkasan lebih dari 500 PO, konflik kode akun saat upgrade, serta proteksi penambahan baris setelah posting/restore. Input kontrol yang tidak valid ditolak tanpa HTTP 500 atau mutasi parsial. Seluruh cakupan sebelumnya tetap dijalankan.
+- 62 pengujian Rust lokal lulus. Sepuluh tes penerimaan baru mencakup multi-item dan pembulatan, jurnal penampung, pemulihan biaya persis, penerimaan ulang, kegagalan atomik, periode tertutup, izin, idempotensi/konkurensi, riwayat mutasi lanjutan, ringkasan lebih dari 500 PO, konflik kode akun saat upgrade, serta proteksi penambahan baris setelah posting/restore. Input kontrol yang tidak valid ditolak tanpa HTTP 500 atau mutasi parsial. Regresi tambahan menolak seluruh penerimaan bila satuan katalog berubah dari snapshot PO. Seluruh cakupan sebelumnya tetap dijalankan.
 - 31 tes frontend lulus dengan 148 assertions, mencakup presisi decimal, pembulatan, CSV, barang/jasa, saldo awal, chart, biaya beli empat desimal, versi/retry, status Diterima, dan perlindungan akun penampung melalui metadata tanpa mengunci akun pengguna yang kebetulan memakai kode default.
 - Build frontend, Cargo build, serta Clippy dengan warnings-as-errors lulus.
 - Uji migrasi versi 5 → 9 mempertahankan stok, riwayat transaksi, dan ledger. Kedua database preview versi 8 → 9 di-upgrade setelah backup; jumlah catatan, stok, nilai, dan biaya rata-rata sebelum/sesudah tetap sama.

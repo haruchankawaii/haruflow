@@ -26,7 +26,7 @@ Daftar PO menampilkan paling banyak 500 dokumen terbaru; pencarian, filter, dan 
 
 ## Penerimaan penuh dan pembukuan
 
-Pilih PO dikonfirmasi, tinjau jumlah dan biaya seluruh baris, lalu isi referensi surat jalan bila ada. Jumlah dan biaya berasal dari PO tersimpan; tahap ini belum menerima sebagian, mengubah biaya saat menerima, menambah ongkos, atau menghitung pajak. Supplier yang belakangan dinonaktifkan tetap dapat memenuhi PO yang sebelumnya sudah dikonfirmasi.
+Pilih PO dikonfirmasi, tinjau jumlah dan biaya seluruh baris, lalu isi referensi surat jalan bila ada. Jumlah dan biaya berasal dari PO tersimpan; tahap ini belum menerima sebagian, mengubah biaya saat menerima, menambah ongkos, atau menghitung pajak. Satuan setiap barang harus tetap sama dengan snapshot PO. Jika satuan katalog berubah, seluruh penerimaan ditolak agar tidak terjadi konversi diam-diam; periksa perubahan katalog atau buat PO pengganti dengan satuan yang benar. Supplier yang belakangan dinonaktifkan tetap dapat memenuhi PO yang sebelumnya sudah dikonfirmasi.
 
 Posting penerimaan menyimpan seluruh perubahan secara atomik:
 
