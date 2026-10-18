@@ -228,3 +228,5 @@ Urutan usulan setelah pilot: purchasing dan utang usaha → retur serta partial 
 5. Implementasikan setup admin/perusahaan sebagai fitur vertikal pertama, lalu login dan permission.
 
 Dokumen ini tetap menjadi rencana acuan. Implementasi aktual, cakupan pengujian, dan batas baseline dicatat terpisah dalam [status implementasi](./IMPLEMENTATION_STATUS.md).
+
+Pembaruan bertahap 19 Oktober 2026: supplier dan PO sudah mulai diimplementasikan sebagai perluasan Community. Penerimaan dari PO, supplier invoice, utang, dan pembayaran tetap pekerjaan berikutnya. Baca [panduan pembelian](./PURCHASING.md) untuk lingkup tahap pertama ini.

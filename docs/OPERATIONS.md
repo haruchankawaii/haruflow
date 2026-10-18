@@ -34,7 +34,7 @@ Form setup memerlukan token lokal dan membuat satu perusahaan sekaligus admin pe
 
 - Administrator: seluruh aksi serta manajemen pengguna.
 - Sales: pelanggan, pembuatan dan konfirmasi sales order.
-- Warehouse: produk, penerimaan, adjustment, pengiriman, serta reversal pengiriman.
+- Warehouse: produk, supplier, PO, penerimaan, adjustment, pengiriman, serta reversal pengiriman.
 - Finance: saldo awal, invoice, pembayaran/reversal, jurnal manual, dan periode pembukuan.
 - Viewer: akses baca; tidak dapat mengubah data.
 
@@ -54,7 +54,9 @@ Jika lupa password semua administrator, jalankan `haruflow admin reset-password 
 
 Penerimaan stok manual tetap tersedia dan mengkredit modal awal; jangan gunakan sebagai pengganti purchasing/utang supplier. Hindari memasukkan barang awal dua kali melalui saldo awal dan penerimaan stok.
 
-Produk berjenis jasa/nonstok tidak memiliki saldo persediaan, biaya rata-rata, atau HPP stok. Pesanan yang seluruh isinya jasa dapat dibuatkan invoice sesudah konfirmasi. Pesanan campuran barang dan jasa tetap memerlukan pengiriman barang sebelum invoice, dan hanya baris barang yang mengurangi stok. Penerimaan dan penyesuaian persediaan menolak produk jasa. Jenis produk tidak dapat diganti setelah digunakan pada pesanan atau mutasi stok; jenis pada dokumen lama disimpan sebagai snapshot.
+Menu Pembelian menyediakan supplier serta PO draf/edit/konfirmasi/pembatalan. PO tidak mengubah stok atau jurnal dan dapat disiapkan meskipun periode akuntansi tertutup. Supplier aktif diperlukan saat membuat/mengubah draf atau mengonfirmasi PO. Dokumen dikonfirmasi dikunci; pembatalan memerlukan alasan dan tidak menghapus riwayat. Penerimaan dari PO, tagihan, dan pembayaran supplier menyusul; lihat [panduan pembelian](./PURCHASING.md).
+
+Produk berjenis jasa/nonstok tidak memiliki saldo persediaan, biaya rata-rata, atau HPP stok. Pesanan yang seluruh isinya jasa dapat dibuatkan invoice sesudah konfirmasi. Pesanan campuran barang dan jasa tetap memerlukan pengiriman barang sebelum invoice, dan hanya baris barang yang mengurangi stok. Penerimaan dan penyesuaian persediaan menolak produk jasa. Jenis produk tidak dapat diganti setelah digunakan pada pesanan penjualan, PO, atau mutasi stok; jenis pada dokumen lama disimpan sebagai snapshot.
 
 Jurnal manual tidak boleh langsung mengubah akun kontrol piutang (1200) atau persediaan (1300). Gunakan alur invoice/pembayaran dan mutasi stok agar saldo subledger tetap cocok.
 
@@ -104,6 +106,8 @@ Jangan mengedit migrasi yang sudah diterapkan. Tambahkan migrasi baru berurutan.
 Migrasi `0008_opening_balances.sql` menambahkan dokumen/snapshot saldo awal dan jenis pergerakan baru. Migrasi tidak mengubah saldo maupun dokumen lama. Perusahaan yang telah memiliki jurnal tetap memakai saldo historisnya; fitur saldo awal akan menunjukkan alasan mengapa pembukaan baru diblokir. Versi sebelum fitur ini tidak memahami posting saldo awal baru, sehingga jangan menurunkan versi executable setelah fitur dipakai tanpa pemulihan backup yang sesuai.
 
 Migrasi `0009_document_corrections.sql` menambahkan urutan mutasi yang monoton dan snapshot posisi sebelum penerimaan baru. Pengisian urutan riwayat lama tidak mengubah jumlah atau nilai transaksi. Penerimaan yang sudah ada tetap memiliki snapshot kosong dan tidak dapat dibatalkan melalui fasilitas baru. Setelah jenis pembalikan baru dipakai, versi sebelum migrasi ini memerlukan restore backup yang sesuai untuk penurunan versi.
+
+Migrasi `0010_purchasing.sql` menambahkan supplier, PO, baris snapshot, serta urutan nomor pembelian. Migrasi ini tidak memposting stok atau jurnal. Setelah dipakai, referensi PO ikut mengunci jenis produk dan mencegah penghapusannya. Gunakan executable yang mengenali referensi pembelian tersebut; untuk penurunan versi, pulihkan backup beserta versi aplikasi yang cocok.
 
 ## Health, log, dan troubleshooting
 

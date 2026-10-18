@@ -85,12 +85,54 @@ if (mode === 'seed') {
   const journalCorrection = { reason: 'CI removes incorrect manual cash', idempotency_key: crypto.randomUUID() };
   const journalReversal = await api(`/accounting/journals/${wrongJournal.id}/reverse`, 'POST', journalCorrection);
   assert.deepEqual(await api(`/accounting/journals/${wrongJournal.id}/reverse`, 'POST', journalCorrection), journalReversal);
+  const supplier = await api('/suppliers', 'POST', {
+    code: 'CI-SUP', name: 'CI Supplier', email: 'supplier@example.test',
+    idempotency_key: crypto.randomUUID(),
+  });
+  const purchaseInput = {
+    supplier_id: supplier.id, expected_date: '2027-01-15', notes: 'CI purchase planning',
+    items: [{ product_id: product.id, quantity: '2', unit_cost: '60000' }],
+    idempotency_key: crypto.randomUUID(),
+  };
+  const purchase = await api('/purchase-orders', 'POST', purchaseInput);
+  assert.deepEqual(await api('/purchase-orders', 'POST', purchaseInput), purchase, 'PO retry cannot duplicate documents');
+  const editedPurchase = await api(`/purchase-orders/${purchase.id}`, 'PUT', {
+    ...purchaseInput, version: purchase.version,
+    items: [{ product_id: product.id, quantity: '2.5', unit_cost: '60000.1234' }],
+    idempotency_key: crypto.randomUUID(),
+  });
+  assert.equal(editedPurchase.total, '150000.31', 'Purchase costs round to cents after multiplying');
+  const confirmedPurchase = await api(`/purchase-orders/${purchase.id}/confirm`, 'POST', {
+    version: editedPurchase.version, idempotency_key: crypto.randomUUID(),
+  });
+  await api(`/purchase-orders/${purchase.id}/cancel`, 'POST', {
+    version: confirmedPurchase.version, reason: 'CI supplier changed delivery terms', idempotency_key: crypto.randomUUID(),
+  });
+  const reviewedPurchase = await api('/purchase-orders', 'POST', {
+    ...purchaseInput, notes: 'CI reviewed purchase',
+    items: [{ product_id: product.id, quantity: '3', unit_cost: '60000' }],
+    idempotency_key: crypto.randomUUID(),
+  });
+  await api(`/purchase-orders/${reviewedPurchase.id}/confirm`, 'POST', {
+    version: reviewedPurchase.version, idempotency_key: crypto.randomUUID(),
+  });
 } else {
   await login();
 }
 
 if (mode === 'mutate') {
   await api('/customers', 'POST', { name: 'Must disappear after backup restore' });
+  const supplier = (await api('/suppliers')).items[0];
+  await api(`/suppliers/${supplier.id}`, 'PUT', {
+    code: supplier.code, name: 'Must disappear after backup restore', email: supplier.email,
+    phone: supplier.phone, address: supplier.address, active: supplier.active,
+    version: supplier.version, idempotency_key: crypto.randomUUID(),
+  });
+  const product = (await api('/products')).items.find(item => item.kind === 'stock');
+  await api('/purchase-orders', 'POST', {
+    supplier_id: supplier.id, items: [{ product_id: product.id, quantity: '1', unit_cost: '100' }],
+    idempotency_key: crypto.randomUUID(),
+  });
   console.log('Post-backup mutation created on disposable instance.');
 } else {
   if (mode === 'recover') {
@@ -156,5 +198,23 @@ if (mode === 'mutate') {
   assert.equal(Number(insights.receivables.invoiced), 170000);
   assert.equal(Number(insights.receivables.paid), 170000);
   assert.equal(Number(insights.receivables.outstanding), 0);
-  console.log(`Disposable-instance ${mode} check passed: corrections, chart totals, stock, sales, payments, and restored ledger balances.`);
+  const suppliers = await api('/suppliers');
+  assert.equal(suppliers.items.length, 1);
+  assert.equal(suppliers.items[0].code, 'CI-SUP');
+  assert.equal(suppliers.items[0].name, 'CI Supplier', 'Supplier mutation must disappear after restore');
+  const purchases = await api('/purchase-orders');
+  assert.equal(purchases.items.length, 2, 'PO creation after backup must disappear after restore');
+  const cancelledPurchase = purchases.items.find(purchase => purchase.status === 'cancelled');
+  assert.ok(cancelledPurchase);
+  assert.equal(cancelledPurchase.total, '150000.31');
+  assert.equal(cancelledPurchase.cancellation_reason, 'CI supplier changed delivery terms');
+  assert.equal(cancelledPurchase.items[0].unit_cost, '60000.1234');
+  const activePurchase = purchases.items.find(purchase => purchase.status === 'confirmed');
+  assert.ok(activePurchase);
+  assert.equal(activePurchase.total, '180000.00');
+  assert.equal(activePurchase.supplier_name, 'CI Supplier');
+  assert.equal(activePurchase.expected_date, '2027-01-15');
+  const purchaseDetail = await api(`/purchase-orders/${activePurchase.id}`);
+  assert.deepEqual(purchaseDetail, activePurchase, 'PO detail and list retain the same snapshots after restore');
+  console.log(`Disposable-instance ${mode} check passed: suppliers, PO history, corrections, charts, stock, sales, payments, and restored ledger balances.`);
 }
