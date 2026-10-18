@@ -208,7 +208,8 @@ const ORDER_JSON: &str = r#"jsonb_build_object(
     'id',o.id,'number',o.number,'supplier_id',o.supplier_id,'supplier_code',o.supplier_code,'supplier_name',o.supplier_name,
     'status',o.status,'expected_date',o.expected_date,'notes',o.notes,'total',o.total::text,'version',o.version,
     'created_at',o.created_at,'updated_at',o.updated_at,'confirmed_at',o.confirmed_at,'cancelled_at',o.cancelled_at,
-    'cancellation_reason',o.cancellation_reason,'items',COALESCE((SELECT jsonb_agg(jsonb_build_object(
+    'cancellation_reason',o.cancellation_reason,'received_at',o.received_at,'active_receipt_id',o.active_receipt_id,
+    'receipts',purchase_receipt_history(o.id),'items',COALESCE((SELECT jsonb_agg(jsonb_build_object(
     'id',l.id,'product_id',l.product_id,'product_sku',l.product_sku,'product_name',l.product_name,'unit',l.unit,
     'quantity',l.quantity::text,'unit_cost',l.unit_cost::text,'total',l.total::text) ORDER BY l.position)
     FROM purchase_order_lines l WHERE l.order_id=o.id),'[]'::jsonb))"#;
@@ -217,7 +218,7 @@ fn order_select() -> String {
     format!("SELECT {ORDER_JSON} FROM purchase_orders o WHERE o.id=$1")
 }
 
-async fn read_order(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> AppResult<Value> {
+pub(crate) async fn read_order(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> AppResult<Value> {
     Ok(sqlx::query_scalar(&order_select())
         .bind(id)
         .fetch_one(&mut **tx)
@@ -380,7 +381,7 @@ async fn insert_lines(
     Ok(())
 }
 
-fn check_version(expected: i32, current: i32) -> AppResult<()> {
+pub(crate) fn check_version(expected: i32, current: i32) -> AppResult<()> {
     if expected < 1 {
         return Err(AppError::bad_request("Version must be positive"));
     }
@@ -586,6 +587,11 @@ async fn cancel_order(
     let row = lock_order(&mut tx, id, body.version).await?;
     if row.get::<String, _>("status") == "cancelled" {
         return Err(AppError::conflict("Purchase order is already cancelled"));
+    }
+    if row.get::<String, _>("status") == "received" {
+        return Err(AppError::conflict(
+            "Reverse the active goods receipt before cancelling the purchase order",
+        ));
     }
     sqlx::query("UPDATE purchase_orders SET status='cancelled',cancelled_at=now(),cancellation_reason=$2,updated_at=now(),version=version+1 WHERE id=$1")
         .bind(id).bind(reason).execute(&mut *tx).await?;

@@ -33,6 +33,7 @@ pub fn router() -> Router<AppState> {
         .route("/invoices/{id}/payments", post(pay_invoice))
         .route("/accounting/accounts", get(accounts))
         .route("/accounting/journals", get(journals))
+        .route("/accounting/journals/{id}", get(journal_detail))
         .route("/accounting/trial-balance", get(trial_balance))
 }
 
@@ -368,6 +369,8 @@ async fn movements(State(state): State<AppState>, _user: AuthUser) -> AppResult<
         SELECT m.movement_seq,jsonb_build_object('id',m.id,'product_id',m.product_id,'sku',p.sku,'product_name',p.name,
             'kind',m.kind,'quantity',m.quantity::text,'unit_cost',m.unit_cost::text,'value',m.value::text,
             'reference',m.reference,'order_id',m.order_id,'created_at',m.created_at,'reverses_movement_id',m.reverses_id,
+            'purchase_receipt_id',m.purchase_receipt_id,'purchase_order_id',pr.order_id,
+            'purchase_order_number',po.number,
             'can_reverse',m.kind='receipt' AND r.id IS NULL AND m.before_quantity IS NOT NULL AND NOT EXISTS(
                 SELECT 1 FROM inventory_movements later WHERE later.product_id=m.product_id AND later.movement_seq>m.movement_seq)
                 AND (SELECT closed_through IS NULL OR (now() AT TIME ZONE (SELECT timezone FROM company))::date>closed_through FROM accounting_period WHERE singleton),
@@ -380,8 +383,11 @@ async fn movements(State(state): State<AppState>, _user: AuthUser) -> AppResult<
                     THEN 'Periode akuntansi saat ini sudah ditutup.' ELSE NULL END,
             'reversal',CASE WHEN r.id IS NULL THEN NULL ELSE jsonb_build_object('id',r.id,'reason',r.reason,'created_at',r.created_at,'journal_id',rj.id) END) item
         FROM inventory_movements m JOIN products p ON p.id=m.product_id
-        LEFT JOIN posting_reversals r ON r.source_type='receipt' AND r.source_id=m.id
+        LEFT JOIN posting_reversals r ON (r.source_type='receipt' AND r.source_id=m.id AND m.kind='receipt')
+            OR (r.source_type='purchase_receipt' AND r.source_id=m.purchase_receipt_id AND m.kind='purchase_receipt')
         LEFT JOIN journal_entries rj ON rj.source_type='reversal' AND rj.source_id=r.id
+        LEFT JOIN purchase_receipts pr ON pr.id=m.purchase_receipt_id
+        LEFT JOIN purchase_orders po ON po.id=pr.order_id
         ORDER BY m.movement_seq DESC LIMIT 500) x"#)
         .fetch_one(&state.db).await?;
     Ok(Json(json!({"items":items})))
@@ -879,16 +885,14 @@ async fn pay_invoice(
 
 async fn accounts(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
     let items: Value = sqlx::query_scalar(
-        "SELECT COALESCE(jsonb_agg(to_jsonb(a) ORDER BY code),'[]'::jsonb) FROM accounts a",
+        "SELECT COALESCE(jsonb_agg(to_jsonb(a)||jsonb_build_object('is_control',a.code IN ('1200','1300') OR a.system_role IS NOT NULL) ORDER BY code),'[]'::jsonb) FROM accounts a",
     )
     .fetch_one(&state.db)
     .await?;
     Ok(Json(json!({"items":items})))
 }
 
-async fn journals(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
-    let items: Value = sqlx::query_scalar(r#"SELECT COALESCE(jsonb_agg(x.item ORDER BY x.created_at DESC),'[]'::jsonb) FROM (
-        SELECT j.created_at,jsonb_build_object('id',j.id,'description',j.description,'source_type',j.source_type,
+const JOURNAL_ROWS: &str = r#"        SELECT j.id,j.created_at,jsonb_build_object('id',j.id,'description',j.description,'source_type',j.source_type,
         'source_id',j.source_id,'created_at',j.created_at,
         'can_reverse',j.source_type='manual' AND r.id IS NULL AND (SELECT closed_through IS NULL OR (now() AT TIME ZONE (SELECT timezone FROM company))::date>closed_through FROM accounting_period WHERE singleton),
         'reversal_blocked_reason',CASE WHEN j.source_type<>'manual' THEN NULL
@@ -904,8 +908,28 @@ async fn journals(State(state): State<AppState>, _user: AuthUser) -> AppResult<J
         LEFT JOIN posting_reversals r ON r.source_type='manual' AND r.source_id=j.id AND j.source_type='manual'
         LEFT JOIN journal_entries rj ON rj.source_type='reversal' AND rj.source_id=r.id
         LEFT JOIN posting_reversals original ON j.source_type='reversal' AND original.id=j.source_id
-        ORDER BY j.created_at DESC,j.id DESC LIMIT 500) x"#).fetch_one(&state.db).await?;
+"#;
+
+async fn journals(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
+    let sql = format!(
+        "SELECT COALESCE(jsonb_agg(x.item ORDER BY x.created_at DESC,x.id DESC),'[]'::jsonb) FROM ({JOURNAL_ROWS} ORDER BY j.created_at DESC,j.id DESC LIMIT 500) x"
+    );
+    let items: Value = sqlx::query_scalar(&sql).fetch_one(&state.db).await?;
     Ok(Json(json!({"items":items})))
+}
+
+async fn journal_detail(
+    State(state): State<AppState>,
+    _user: AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<Value>> {
+    let sql = format!("SELECT item FROM ({JOURNAL_ROWS} WHERE j.id=$1) x");
+    let item: Value = sqlx::query_scalar(&sql)
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(AppError::not_found)?;
+    Ok(Json(item))
 }
 
 async fn trial_balance(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {

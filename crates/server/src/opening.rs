@@ -238,11 +238,16 @@ async fn validate(
                 "Opening receivables require customer documents; inventory is generated from opening stock items",
             ));
         }
-        let account = sqlx::query("SELECT name,kind FROM accounts WHERE code=$1")
+        let account = sqlx::query("SELECT name,kind,system_role FROM accounts WHERE code=$1")
             .bind(&line.account_code)
             .fetch_optional(&mut **tx)
             .await?
             .ok_or_else(|| AppError::bad_request("Unknown opening account"))?;
+        if account.get::<Option<String>, _>("system_role").is_some() {
+            return Err(AppError::bad_request(
+                "Opening control balances require their source document workflow",
+            ));
+        }
         if !matches!(
             account.get::<String, _>("kind").as_str(),
             "asset" | "liability" | "equity"

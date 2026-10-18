@@ -110,9 +110,11 @@ async fn manual_journal(
     let mut debit_total = Decimal::ZERO;
     let mut credit_total = Decimal::ZERO;
     for line in &body.lines {
-        if line.account_code == "1200" || line.account_code == "1300" {
+        let control: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE code=$1 AND (code IN ('1200','1300') OR system_role IS NOT NULL))")
+            .bind(&line.account_code).fetch_one(&mut *tx).await?;
+        if control {
             return Err(AppError::bad_request(
-                "Receivables and inventory are control accounts; use invoice or stock workflows",
+                "This is a control account; use its invoice, stock or purchase document workflow",
             ));
         }
         let debit = nonnegative_money(&line.debit)?;
