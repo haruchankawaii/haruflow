@@ -70,7 +70,7 @@ export default function Dashboard({
       title: "Kas & bank",
       amount: data.cash,
       icon: Banknote,
-      note: "Pembayaran yang tercatat",
+      note: "Saldo kas dari pembukuan",
       tone: "blue",
     },
   ];

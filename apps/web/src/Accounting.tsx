@@ -20,6 +20,7 @@ import type { Account, Journal, TrialBalance, Role } from "./types";
 import { ManualJournalForm, PeriodForm } from "./Corrections";
 import { downloadCsv } from "./export";
 import { AccountForm, Ledger } from "./Ledger";
+import OpeningBalances from "./OpeningBalances";
 
 const kindNames: Record<string, string> = {
   asset: "Aset",
@@ -94,13 +95,14 @@ export default function Accounting({
         </div>
         <span className="subtle-chip">Double-entry</span>
       </div>
-      <section className="panel" key={revision}>
+      <section className="panel">
         <div className="table-toolbar">
           <div className="tabs" role="tablist" aria-label="Laporan akuntansi">
             {[
               ["trial", "Neraca saldo"],
               ["journals", "Jurnal umum"],
               ["accounts", "Daftar akun"],
+              ["opening", "Saldo awal"],
             ].map(([key, name]) => (
               <button
                 key={key}
@@ -116,23 +118,30 @@ export default function Accounting({
               </button>
             ))}
           </div>
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder={
-              tab === "journals"
-                ? "Cari keterangan jurnal…"
-                : "Cari nama atau kode akun…"
-            }
-          />
+          {tab !== "opening" && (
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder={
+                tab === "journals"
+                  ? "Cari keterangan jurnal…"
+                  : "Cari nama atau kode akun…"
+              }
+            />
+          )}
         </div>
-        {tab === "trial" ? (
-          <TrialBalanceView search={search} />
-        ) : tab === "journals" ? (
-          <JournalsView search={search} />
-        ) : (
-          <AccountsView search={search} />
-        )}
+        <div key={revision}>
+          {tab === "trial" ? (
+            <TrialBalanceView search={search} />
+          ) : tab === "journals" ? (
+            <JournalsView search={search} />
+          ) : tab === "opening" ? null : (
+            <AccountsView search={search} />
+          )}
+        </div>
+        <div hidden={tab !== "opening"}>
+          <OpeningBalances role={role} changed={changed} />
+        </div>
       </section>
       {form === "journal" && (
         <ManualJournalForm onClose={() => setForm(null)} onSaved={saved} />

@@ -64,6 +64,7 @@ export const roleNames = {
 };
 export const statusNames: Record<string, string> = {
   draft: "Draf",
+  posted: "Diposting",
   confirmed: "Dikonfirmasi",
   shipped: "Dikirim",
   invoiced: "Ditagihkan",
@@ -78,6 +79,8 @@ export const statusNames: Record<string, string> = {
   adjustment_in: "Penyesuaian masuk",
   adjustment_out: "Penyesuaian keluar",
   shipment_reversal: "Pengembalian pengiriman",
+  opening: "Stok awal",
+  opening_reversal: "Pembalikan stok awal",
   void: "Dibatalkan",
 };
 

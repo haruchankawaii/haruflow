@@ -353,7 +353,7 @@ export default function Inventory({
                   <tr key={item.id}>
                     <td>
                       <span className="customer-cell">
-                        <MovementIcon incoming={item.kind === "receipt"} />
+                        <MovementIcon incoming={Number(item.quantity) > 0} />
                         {statusNames[item.kind] ?? item.kind}
                       </span>
                     </td>
