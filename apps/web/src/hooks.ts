@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { api, errorMessage } from "./api";
 
+export const ResourceRevisionContext = createContext(0);
+
 export function useResource<T>(path: string, revision = 0) {
+  const workspaceRevision = useContext(ResourceRevisionContext);
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -12,7 +21,9 @@ export function useResource<T>(path: string, revision = 0) {
     setLoading(true);
     setError("");
     api<T>(path, { signal: controller.signal })
-      .then(setData)
+      .then((result) => {
+        if (!controller.signal.aborted) setData(result);
+      })
       .catch((error) => {
         if (!controller.signal.aborted) setError(errorMessage(error));
       })
@@ -20,7 +31,7 @@ export function useResource<T>(path: string, revision = 0) {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [path, revision, retry]);
+  }, [path, revision, workspaceRevision, retry]);
   return { data, loading, error, reload };
 }
 

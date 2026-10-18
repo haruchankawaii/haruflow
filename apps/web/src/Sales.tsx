@@ -48,7 +48,10 @@ export default function Sales({
   const [create, setCreate] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [payment, setPayment] = useState<Invoice | null>(null);
-  const [invoiceDetail, setInvoiceDetail] = useState<Invoice | null>(null);
+  const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
+  const invoiceDetail = invoices.data?.items.find(
+    (invoice) => invoice.id === invoiceDetailId,
+  );
   const canSell = ["admin", "sales"].includes(role);
   const canPay = ["admin", "finance"].includes(role);
   const orderItems = (orders.data?.items ?? []).filter((item) =>
@@ -274,7 +277,7 @@ export default function Sales({
                     <td>
                       <button
                         className="table-link"
-                        onClick={() => setInvoiceDetail(invoice)}
+                        onClick={() => setInvoiceDetailId(invoice.id)}
                       >
                         {invoice.number}
                       </button>
@@ -328,11 +331,11 @@ export default function Sales({
         <InvoiceDetail
           invoice={invoiceDetail}
           session={session}
-          onClose={() => setInvoiceDetail(null)}
+          onClose={() => setInvoiceDetailId(null)}
           onChanged={saved}
           onPay={() => {
             setPayment(invoiceDetail);
-            setInvoiceDetail(null);
+            setInvoiceDetailId(null);
           }}
         />
       )}
