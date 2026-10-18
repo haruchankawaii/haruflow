@@ -64,6 +64,8 @@ Dokumen posted, jurnal, pembayaran, audit, dan pergerakan stok tidak dihapus dar
 
 Reversal pengiriman mengembalikan biaya historis pengiriman ke nilai persediaan saat ini dan menghitung ulang biaya rata-rata. Reversal berbeda dari retur penjualan komersial; retur belum tersedia.
 
+Finance dapat membalik jurnal manual melalui Jurnal umum; seluruh baris dibalik persis dan jurnal asal tetap terhubung ke jurnal pembalik. Warehouse dapat membatalkan penerimaan yang memiliki snapshot biaya sebelum penerimaan dan belum diikuti mutasi stok apa pun pada produk yang sama. Pembatalan mengembalikan jumlah, nilai, dan biaya rata-rata sebelum penerimaan. Penerimaan lama tanpa snapshot tidak ditebak biaya historisnya; gunakan penyesuaian stok setelah memeriksa transaksi terkait. Lihat [panduan koreksi dan chart](./CORRECTIONS_AND_CHARTS.md).
+
 Saldo awal hanya dapat dibalik sebelum ada jurnal atau pergerakan stok lain. Pembalikan memulihkan saldo ke nol, menyimpan alasan serta snapshot posting, dan mengembalikan dokumen menjadi draf untuk koreksi. Dokumen pembukaan hanya satu per perusahaan; posting ulang setelah pembalikan tetap memakai konteks yang sama. Setelah transaksi operasional berjalan, koreksi pembukaan tidak dilakukan dengan mereset saldo.
 
 Penutupan periode menolak posting baru sampai tanggal yang ditutup, berdasarkan zona waktu perusahaan. Tanggal tutup hanya dapat maju dan tidak dapat dibuka kembali melalui UI. Semua posting versi awal menggunakan waktu transaksi saat ini; backdating belum didukung. Menutup tanggal hari ini menghentikan posting sampai hari berikutnya. Lakukan pemeriksaan dan backup sebelum menutup periode.
@@ -100,6 +102,8 @@ Secara default file Compose menggunakan nama proyek `haruflow`. Untuk latihan pa
 Jangan mengedit migrasi yang sudah diterapkan. Tambahkan migrasi baru berurutan. Rollback executable hanya aman bila schema masih kompatibel. Jika tidak, pulihkan backup dengan versi aplikasi yang cocok dan perhitungkan perubahan setelah waktu backup.
 
 Migrasi `0008_opening_balances.sql` menambahkan dokumen/snapshot saldo awal dan jenis pergerakan baru. Migrasi tidak mengubah saldo maupun dokumen lama. Perusahaan yang telah memiliki jurnal tetap memakai saldo historisnya; fitur saldo awal akan menunjukkan alasan mengapa pembukaan baru diblokir. Versi sebelum fitur ini tidak memahami posting saldo awal baru, sehingga jangan menurunkan versi executable setelah fitur dipakai tanpa pemulihan backup yang sesuai.
+
+Migrasi `0009_document_corrections.sql` menambahkan urutan mutasi yang monoton dan snapshot posisi sebelum penerimaan baru. Pengisian urutan riwayat lama tidak mengubah jumlah atau nilai transaksi. Penerimaan yang sudah ada tetap memiliki snapshot kosong dan tidak dapat dibatalkan melalui fasilitas baru. Setelah jenis pembalikan baru dipakai, versi sebelum migrasi ini memerlukan restore backup yang sesuai untuk penurunan versi.
 
 ## Health, log, dan troubleshooting
 

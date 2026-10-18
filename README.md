@@ -14,7 +14,9 @@ Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa paja
 - Jurnal otomatis, jurnal manual seimbang, neraca saldo, dan penutupan periode.
 - Saldo awal kas/aset/modal dan stok melalui draf, pemeriksaan, posting satu kali, serta pembalikan sebelum transaksi operasional dimulai. Lihat [panduan saldo awal](./docs/OPENING_BALANCES.md).
 - Koreksi pembayaran, invoice, dan pengiriman melalui reversal dengan alasan; riwayat posted dipertahankan.
+- Pembalikan jurnal manual dan penerimaan stok terbaru yang memiliki snapshot biaya; dokumen asal dan alasan koreksi tetap tersimpan. Lihat [panduan koreksi dan chart](./docs/CORRECTIONS_AND_CHARTS.md).
 - Dashboard, pencarian, ekspor CSV, dan tampilan cetak invoice.
+- Chart pendapatan/HPP dan mutasi kas dengan pilihan 3/6/12 bulan, serta posisi invoice terbayar/piutang saat ini.
 
 Purchasing/utang, retur komersial, pengiriman sebagian, multicurrency, multi-company, payroll, dan integrasi pajak berada di luar versi ini. Detail lingkup dan tahap selanjutnya ada di [rencana Community](./docs/COMMUNITY_PLAN.md).
 
