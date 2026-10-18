@@ -66,7 +66,7 @@ bun run build:web
 
 Tes mencakup perhitungan decimal, setup bersamaan, permission dan pencabutan sesi, alur ERP, idempotensi, perebutan stok, jurnal seimbang, ledger yang tidak bisa diedit, reversal, dan periode tutup. Workflow GitHub Actions menjalankan pemeriksaan backend, frontend, serta build container.
 
-## Backup dan restore
+## Pemulihan administrator
 
 Jika seluruh akses admin hilang karena lupa password, operator lokal dapat memulihkan administrator aktif dari terminal:
 

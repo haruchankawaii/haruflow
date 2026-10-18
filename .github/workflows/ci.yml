@@ -73,6 +73,7 @@ jobs:
       - run: node scripts/database.mjs restore backups/ci.backup --confirm-restore
       - run: docker compose --env-file .env -f deploy/community/compose.yml up -d --wait --wait-timeout 90 app
       - run: node scripts/smoke.mjs verify
+      - run: node scripts/smoke.mjs recover
       - if: failure()
         run: docker compose --env-file .env -f deploy/community/compose.yml logs --tail=100
       - if: always()
