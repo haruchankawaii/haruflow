@@ -46,7 +46,21 @@ if (mode === 'seed') {
   await api('/setup', 'POST', { token, company_name: 'CI Disposable Company', name: 'CI Administrator', email: 'ci@example.test', password });
   const customer = await api('/customers', 'POST', { name: 'CI Customer' });
   const product = await api('/products', 'POST', { sku: 'CI-001', name: 'CI Product', unit: 'pcs', price: '80000' });
-  await api('/inventory/receipts', 'POST', { product_id: product.id, quantity: '10', unit_cost: '50000', reference: 'CI opening stock', idempotency_key: crypto.randomUUID() });
+  const openingInput = {
+    description: 'CI initial balances',
+    items: [{ product_id: product.id, quantity: '10', unit_cost: '50000' }],
+    lines: [{ account_code: '1100', debit: '100000', credit: '0' }, { account_code: '3000', debit: '0', credit: '600000' }],
+  };
+  const draft = await api('/accounting/opening', 'PUT', { ...openingInput, version: 0 });
+  assert.equal(draft.document.balanced, true);
+  assert.equal(Number(draft.document.inventory_total), 500000);
+  const firstPost = { version: draft.document.version, idempotency_key: crypto.randomUUID() };
+  const posted = await api('/accounting/opening/post', 'POST', firstPost);
+  assert.deepEqual(await api('/accounting/opening/post', 'POST', firstPost), posted, 'Retry cannot duplicate opening balances');
+  const reversed = await api('/accounting/opening/reverse', 'POST', { version: posted.document.version, reason: 'CI checks correction history', idempotency_key: crypto.randomUUID() });
+  assert.equal(reversed.document.status, 'draft');
+  const correctedDraft = await api('/accounting/opening', 'PUT', { ...openingInput, description: 'CI reviewed opening balances', version: reversed.document.version });
+  await api('/accounting/opening/post', 'POST', { version: correctedDraft.document.version, idempotency_key: crypto.randomUUID() });
   const order = await api('/orders', 'POST', { customer_id: customer.id, items: [{ product_id: product.id, quantity: '2', unit_price: '80000' }], idempotency_key: crypto.randomUUID() });
   await api(`/orders/${order.id}/confirm`, 'POST', { idempotency_key: crypto.randomUUID() });
   await api(`/orders/${order.id}/ship`, 'POST', { idempotency_key: crypto.randomUUID() });
@@ -88,13 +102,13 @@ if (mode === 'mutate') {
     await login();
   }
   const dashboard = await api('/dashboard');
-  for (const [key, expected] of Object.entries({ revenue: 170000, outstanding: 0, inventory_value: 400000, cash: 170000, customers_count: 1, products_count: 2, orders_count: 2 })) {
+  for (const [key, expected] of Object.entries({ revenue: 170000, outstanding: 0, inventory_value: 400000, cash: 270000, customers_count: 1, products_count: 2, orders_count: 2 })) {
     assert.equal(Number(dashboard[key]), expected, `Dashboard ${key}`);
   }
   const trial = await api('/accounting/trial-balance');
   assert.equal(trial.balanced, true);
-  assert.equal(Number(trial.total_debit), 670000);
-  assert.equal(Number(trial.total_credit), 670000);
+  assert.equal(Number(trial.total_debit), 770000);
+  assert.equal(Number(trial.total_credit), 770000);
   const products = await api('/products');
   assert.equal(Number(products.items.find(product => product.sku === 'CI-001').quantity), 8);
   const service = products.items.find(product => product.sku === 'CI-SERVICE');
@@ -102,13 +116,20 @@ if (mode === 'mutate') {
   assert.equal(Number(service.quantity), 0);
   assert.equal(Number(service.inventory_value), 0);
   const movements = await api('/inventory/movements');
-  assert.equal(movements.items.length, 2, 'Service invoicing cannot create stock movements');
+  assert.equal(movements.items.length, 4, 'Only opening, its correction, and stock shipping create movements');
+  const opening = await api('/accounting/opening');
+  assert.equal(opening.document.status, 'posted');
+  assert.equal(opening.eligible, false);
+  assert.equal(opening.can_reverse, false, 'Opening cannot reverse after business postings');
+  assert.equal(opening.document.history.length, 2);
+  assert.equal(opening.document.history.filter(posting => posting.reversed_at === null).length, 1);
+  assert.ok(opening.document.history.some(posting => posting.reason === 'CI checks correction history'));
   const company = await api('/company');
   assert.equal(company.order_prefix, 'ORD');
   assert.equal(company.invoice_prefix, 'BILL');
   const orders = await api('/orders');
   assert.ok(orders.items.some(order => order.number === 'SO-000001'), 'Existing numbers survive prefix edits');
   const journals = await api('/accounting/journals');
-  assert.equal(journals.items.length, 6);
-  console.log(`Disposable-instance ${mode} check passed: frontend, login, stock, sales, payment, ledger balances.`);
+  assert.equal(journals.items.length, 8);
+  console.log(`Disposable-instance ${mode} check passed: frontend, login, opening correction, stock, sales, payment, ledger balances.`);
 }

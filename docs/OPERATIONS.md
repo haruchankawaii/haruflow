@@ -35,7 +35,7 @@ Form setup memerlukan token lokal dan membuat satu perusahaan sekaligus admin pe
 - Administrator: seluruh aksi serta manajemen pengguna.
 - Sales: pelanggan, pembuatan dan konfirmasi sales order.
 - Warehouse: produk, penerimaan, adjustment, pengiriman, serta reversal pengiriman.
-- Finance: invoice, pembayaran/reversal, jurnal manual, dan periode pembukuan.
+- Finance: saldo awal, invoice, pembayaran/reversal, jurnal manual, dan periode pembukuan.
 - Viewer: akses baca; tidak dapat mengubah data.
 
 Perubahan role, penonaktifan, dan reset password mencabut sesi pengguna. Admin tidak dapat menonaktifkan atau menurunkan role dirinya sendiri. Pengguna dapat mengganti password sendiri dengan password saat ini; sesi lama dicabut.
@@ -44,13 +44,15 @@ Jika lupa password semua administrator, jalankan `haruflow admin reset-password 
 
 ## Urutan kerja awal
 
-1. Buat pelanggan dan produk.
-2. Masukkan stok awal melalui penerimaan stok dengan biaya unit yang benar. Penerimaan versi awal mengkredit akun modal awal; jangan gunakan sebagai pengganti purchasing/utang supplier.
-3. Jika perlu, masukkan modal kas melalui jurnal manual debit kas dan kredit modal awal.
+1. Buat pelanggan, produk, dan akun yang diperlukan.
+2. Buka Akuntansi → Saldo awal sebelum mencatat transaksi pertama. Isi stok dan saldo akun dalam draf; nilai stok otomatis menjadi debit persediaan. Masukkan akun lawan yang sesuai sampai total debit dan kredit seimbang.
+3. Simpan, tinjau, lalu posting draf. Stok, biaya rata-rata, jurnal, dan audit tersimpan bersama. Baca [panduan saldo awal](./OPENING_BALANCES.md) untuk contoh kas dan persediaan serta batas pembukaan piutang. Instalasi yang sudah bertransaksi tidak menerima pembukaan tambahan.
 4. Buat sales order lalu konfirmasi. Konfirmasi belum mereservasi stok.
 5. Posting pengiriman penuh. Aplikasi mengunci stok, menolak stok negatif, serta membukukan HPP.
 6. Buat invoice dari pengiriman lalu catat pembayaran; pembayaran sebagian didukung, uang muka dan overpayment belum didukung.
 7. Periksa neraca saldo, kartu stok, dan piutang sebelum menutup periode.
+
+Penerimaan stok manual tetap tersedia dan mengkredit modal awal; jangan gunakan sebagai pengganti purchasing/utang supplier. Hindari memasukkan barang awal dua kali melalui saldo awal dan penerimaan stok.
 
 Produk berjenis jasa/nonstok tidak memiliki saldo persediaan, biaya rata-rata, atau HPP stok. Pesanan yang seluruh isinya jasa dapat dibuatkan invoice sesudah konfirmasi. Pesanan campuran barang dan jasa tetap memerlukan pengiriman barang sebelum invoice, dan hanya baris barang yang mengurangi stok. Penerimaan dan penyesuaian persediaan menolak produk jasa. Jenis produk tidak dapat diganti setelah digunakan pada pesanan atau mutasi stok; jenis pada dokumen lama disimpan sebagai snapshot.
 
@@ -61,6 +63,8 @@ Jurnal manual tidak boleh langsung mengubah akun kontrol piutang (1200) atau per
 Dokumen posted, jurnal, pembayaran, audit, dan pergerakan stok tidak dihapus dari riwayat. Reversal mencatat transaksi lawan serta alasan. Untuk membatalkan transaksi penjualan yang sudah lunas, balik pembayaran terlebih dahulu, kemudian invoice, lalu pengiriman. Order draft/confirmed dapat dibatalkan bila belum memiliki transaksi turunan aktif.
 
 Reversal pengiriman mengembalikan biaya historis pengiriman ke nilai persediaan saat ini dan menghitung ulang biaya rata-rata. Reversal berbeda dari retur penjualan komersial; retur belum tersedia.
+
+Saldo awal hanya dapat dibalik sebelum ada jurnal atau pergerakan stok lain. Pembalikan memulihkan saldo ke nol, menyimpan alasan serta snapshot posting, dan mengembalikan dokumen menjadi draf untuk koreksi. Dokumen pembukaan hanya satu per perusahaan; posting ulang setelah pembalikan tetap memakai konteks yang sama. Setelah transaksi operasional berjalan, koreksi pembukaan tidak dilakukan dengan mereset saldo.
 
 Penutupan periode menolak posting baru sampai tanggal yang ditutup, berdasarkan zona waktu perusahaan. Tanggal tutup hanya dapat maju dan tidak dapat dibuka kembali melalui UI. Semua posting versi awal menggunakan waktu transaksi saat ini; backdating belum didukung. Menutup tanggal hari ini menghentikan posting sampai hari berikutnya. Lakukan pemeriksaan dan backup sebelum menutup periode.
 
@@ -94,6 +98,8 @@ Secara default file Compose menggunakan nama proyek `haruflow`. Untuk latihan pa
 6. Simpan versi yang diterapkan dan hasil pemeriksaan.
 
 Jangan mengedit migrasi yang sudah diterapkan. Tambahkan migrasi baru berurutan. Rollback executable hanya aman bila schema masih kompatibel. Jika tidak, pulihkan backup dengan versi aplikasi yang cocok dan perhitungkan perubahan setelah waktu backup.
+
+Migrasi `0008_opening_balances.sql` menambahkan dokumen/snapshot saldo awal dan jenis pergerakan baru. Migrasi tidak mengubah saldo maupun dokumen lama. Perusahaan yang telah memiliki jurnal tetap memakai saldo historisnya; fitur saldo awal akan menunjukkan alasan mengapa pembukaan baru diblokir. Versi sebelum fitur ini tidak memahami posting saldo awal baru, sehingga jangan menurunkan versi executable setelah fitur dipakai tanpa pemulihan backup yang sesuai.
 
 ## Health, log, dan troubleshooting
 

@@ -12,6 +12,7 @@ Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa paja
 - Sales order → konfirmasi → pengiriman penuh untuk barang → invoice → pembayaran sebagian/penuh.
 - Produk jasa/nonstok dapat ditagih langsung setelah konfirmasi, tanpa pergerakan stok; pesanan campuran tetap mengirim barang terlebih dahulu.
 - Jurnal otomatis, jurnal manual seimbang, neraca saldo, dan penutupan periode.
+- Saldo awal kas/aset/modal dan stok melalui draf, pemeriksaan, posting satu kali, serta pembalikan sebelum transaksi operasional dimulai. Lihat [panduan saldo awal](./docs/OPENING_BALANCES.md).
 - Koreksi pembayaran, invoice, dan pengiriman melalui reversal dengan alasan; riwayat posted dipertahankan.
 - Dashboard, pencarian, ekspor CSV, dan tampilan cetak invoice.
 
