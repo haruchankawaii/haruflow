@@ -527,7 +527,8 @@ export default function OpeningBalances({
                   <p>
                     Isi satu sisi pada setiap akun: debit atau kredit. Akun
                     pendapatan, beban, dan akun kontrol operasional tidak
-                    dipilih di sini, termasuk barang diterima belum ditagih.
+                    dipilih di sini, termasuk barang diterima belum ditagih dan
+                    utang supplier.
                   </p>
                 </div>
               </div>

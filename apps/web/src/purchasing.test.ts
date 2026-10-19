@@ -119,6 +119,7 @@ describe("purchase previews", () => {
       },
       pending_receipt_total: "999999999999999999.12",
       received_unbilled_total: "125000.34",
+      supplier_payable_total: "0.00",
       as_of: "2026-10-18T17:30:00Z",
     };
     const rows = purchaseStatusRows(summary);
@@ -146,6 +147,7 @@ describe("purchase previews", () => {
       },
       pending_receipt_total: "0.00",
       received_unbilled_total: "0.00",
+      supplier_payable_total: "0.00",
       as_of: "2026-10-18T17:30:00Z",
     });
     expect(rows.map((item) => item.status)).toEqual([

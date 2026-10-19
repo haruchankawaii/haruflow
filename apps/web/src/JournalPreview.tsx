@@ -17,7 +17,7 @@ export function JournalPreview({
     <Modal
       wide
       title="Rincian jurnal"
-      description="Posting tersimpan dari dokumen penerimaan."
+      description="Posting tersimpan dari dokumen asal."
       onClose={onClose}
     >
       {resource.loading ? (
@@ -77,7 +77,7 @@ export function JournalPreview({
             </div>
             <div className="form-body">
               <p className="muted">
-                Koreksi jurnal otomatis dilakukan melalui penerimaan asalnya.
+                Koreksi jurnal otomatis dilakukan melalui dokumen asalnya.
               </p>
             </div>
           </>
@@ -85,7 +85,7 @@ export function JournalPreview({
       )}
       <div className="form-actions">
         <button className="button secondary" onClick={onClose}>
-          Kembali ke penerimaan
+          Kembali ke dokumen
         </button>
       </div>
     </Modal>

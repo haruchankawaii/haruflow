@@ -71,6 +71,10 @@ export interface PurchaseReceipt {
   } | null;
   can_reverse: boolean;
   reversal_blocked_reason: string | null;
+  bill_id: string | null;
+  bill_number: string | null;
+  can_bill: boolean;
+  bill_blocked_reason: string | null;
 }
 export const purchaseStatuses = [
   "draft",
@@ -83,6 +87,7 @@ export interface PurchasingSummary {
   values: Record<(typeof purchaseStatuses)[number], string>;
   pending_receipt_total: string;
   received_unbilled_total: string;
+  supplier_payable_total: string;
   as_of: string;
 }
 

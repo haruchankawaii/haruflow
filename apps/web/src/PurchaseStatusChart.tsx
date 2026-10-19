@@ -92,8 +92,16 @@ export function PurchaseStatusChart({
             <span>Barang diterima, belum ditagih</span>
             <strong>{exactMoney(summary.received_unbilled_total)}</strong>
             <small>
-              Persediaan dan kewajiban sementara sudah tercatat. Tagihan serta
-              pembayaran supplier tersedia pada tahap berikutnya.
+              Persediaan dan kewajiban sementara sudah tercatat. Catat invoice
+              supplier melalui tab Tagihan.
+            </small>
+          </div>
+          <div>
+            <span>Utang supplier tercatat</span>
+            <strong>{exactMoney(summary.supplier_payable_total)}</strong>
+            <small>
+              Tagihan aktif yang belum dibayar. Lihat jatuh tempo pada tab
+              Tagihan.
             </small>
           </div>
         </div>

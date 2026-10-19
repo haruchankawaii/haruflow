@@ -295,8 +295,8 @@ export function ManualJournalForm({
               <Scale size={18} />
               <p>
                 Total debit dan kredit harus seimbang. Akun kontrol piutang,
-                persediaan, dan barang diterima belum ditagih dikelola melalui
-                alur operasional.
+                persediaan, barang diterima belum ditagih, dan utang supplier
+                dikelola melalui alur operasional.
               </p>
             </div>
             <FormError error={error} />

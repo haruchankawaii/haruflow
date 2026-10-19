@@ -121,6 +121,7 @@ describe("opening balance preparation", () => {
   test("reserved purchasing control uses metadata rather than occupying a user's existing code", () => {
     const accounts = [
       { code: "2110", name: "Utang lain-lain lama", kind: "liability" },
+      { code: "2200", name: "Utang khusus lama", kind: "liability" },
       {
         code: "2111",
         name: "Barang diterima belum ditagih",
@@ -128,9 +129,17 @@ describe("opening balance preparation", () => {
         system_role: "purchase_receipt_accrual",
         is_control: true,
       },
+      {
+        code: "2201",
+        name: "Utang supplier",
+        kind: "liability",
+        system_role: "purchase_payable",
+        is_control: true,
+      },
     ];
     expect(openingAccounts(accounts).map((account) => account.code)).toEqual([
       "2110",
+      "2200",
     ]);
     const controlDraft = draft({
       lines: [
@@ -138,6 +147,8 @@ describe("opening balance preparation", () => {
         { account_code: "2111", debit: "0", credit: "1" },
       ],
     });
+    expect(openingPreview(controlDraft, accounts).valid).toBe(false);
+    controlDraft.lines[1].account_code = "2201";
     expect(openingPreview(controlDraft, accounts).valid).toBe(false);
     controlDraft.lines[1].account_code = "2110";
     expect(openingPreview(controlDraft, accounts).valid).toBe(true);

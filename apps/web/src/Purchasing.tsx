@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Check,
   ClipboardList,
+  FileText,
   Info,
   Mail,
   MapPin,
@@ -36,6 +37,11 @@ import { usePagination, useResource } from "./hooks";
 import { JournalPreview } from "./JournalPreview";
 import { PurchaseStatusChart } from "./PurchaseStatusChart";
 import {
+  SupplierBills,
+  SupplierBillForm,
+  SupplierBillDetail,
+} from "./SupplierBills";
+import {
   exactCost,
   exactDecimal,
   purchaseDraft,
@@ -60,7 +66,11 @@ export default function Purchasing({
   role: Role;
   changed: () => void;
 }) {
-  const [tab, setTab] = useState<"orders" | "suppliers">("orders");
+  const [tab, setTab] = useState<"orders" | "suppliers" | "bills">(() =>
+    new URLSearchParams(window.location.search).has("bill")
+      ? "bills"
+      : "orders",
+  );
   const [revision, setRevision] = useState(0);
   const orders = useResource<{ items: PurchaseOrder[] }>(
     "/purchase-orders",
@@ -81,6 +91,16 @@ export default function Purchasing({
       : null;
   });
   const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
+  const [selectedBill, setSelectedBill] = useState<string | null>(() => {
+    const id = new URLSearchParams(window.location.search).get("bill");
+    return id &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      ? id
+      : null;
+  });
+  const [creatingBill, setCreatingBill] = useState(false);
+  const [billingOrderId, setBillingOrderId] = useState<string | undefined>();
+  const [focusReceipt, setFocusReceipt] = useState<string | undefined>();
   const [createOrder, setCreateOrder] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(
     null,
@@ -89,12 +109,14 @@ export default function Purchasing({
   const [createSupplier, setCreateSupplier] = useState(false);
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.has("purchase")) {
+    if (url.searchParams.has("purchase") || url.searchParams.has("bill")) {
       url.searchParams.delete("purchase");
+      url.searchParams.delete("bill");
       window.history.replaceState(null, "", url);
     }
   }, []);
   const canManage = ["admin", "warehouse"].includes(role);
+  const canBill = ["admin", "finance"].includes(role);
   const orderItems = (orders.data?.items ?? []).filter(
     (item) =>
       (!status || item.status === status) &&
@@ -118,7 +140,7 @@ export default function Purchasing({
     setRevision((value) => value + 1);
     changed();
   }
-  function switchTab(next: "orders" | "suppliers") {
+  function switchTab(next: "orders" | "suppliers" | "bills") {
     setTab(next);
     setSearch("");
     setStatus("");
@@ -128,19 +150,25 @@ export default function Purchasing({
       <PageHeader
         eyebrow="RENCANAKAN BELANJA USAHA"
         title="Pembelian"
-        description="Kelola supplier, pesan barang, dan catat penerimaan ke gudang."
+        description="Kelola supplier, penerimaan barang, dan tagihan jatuh tempo."
         actions={
-          canManage && (
+          ((tab === "bills" && canBill) || (tab !== "bills" && canManage)) && (
             <button
               className="button primary"
               onClick={() =>
-                tab === "orders"
-                  ? setCreateOrder(true)
-                  : setCreateSupplier(true)
+                tab === "bills"
+                  ? setCreatingBill(true)
+                  : tab === "orders"
+                    ? setCreateOrder(true)
+                    : setCreateSupplier(true)
               }
             >
               <Plus size={17} />
-              {tab === "orders" ? "Buat PO" : "Tambah supplier"}
+              {tab === "bills"
+                ? "Catat tagihan"
+                : tab === "orders"
+                  ? "Buat PO"
+                  : "Tambah supplier"}
             </button>
           )
         }
@@ -150,16 +178,59 @@ export default function Purchasing({
           <ClipboardList size={23} />
         </div>
         <div>
-          <strong>Dari rencana belanja sampai barang masuk gudang.</strong>
+          <strong>Dari rencana belanja sampai utang supplier tercatat.</strong>
           <p>
             Simpan draf, tinjau biaya, lalu konfirmasi kesepakatan dengan
             supplier. Saat seluruh barang tiba, catat penerimaan untuk menambah
             stok dan nilai persediaan, beserta kewajiban barang diterima belum
-            ditagih. Tagihan dan pembayaran supplier tersedia pada tahap
+            ditagih. Catat invoice supplier untuk memindahkannya menjadi utang
+            dengan jatuh tempo. Pembayaran supplier tersedia pada tahap
             berikutnya.
           </p>
         </div>
       </div>
+      <div
+        className="tabs purchase-top-tabs"
+        role="tablist"
+        aria-label="Tampilan pembelian"
+      >
+        <button
+          role="tab"
+          aria-selected={tab === "orders"}
+          className={tab === "orders" ? "active" : ""}
+          onClick={() => switchTab("orders")}
+        >
+          <ClipboardList size={16} /> Pesanan pembelian{" "}
+          <span className="count-pill">{orders.data?.items.length ?? 0}</span>
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "suppliers"}
+          className={tab === "suppliers" ? "active" : ""}
+          onClick={() => switchTab("suppliers")}
+        >
+          <Store size={16} /> Supplier{" "}
+          <span className="count-pill">
+            {suppliers.data?.items.length ?? 0}
+          </span>
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "bills"}
+          className={tab === "bills" ? "active" : ""}
+          onClick={() => switchTab("bills")}
+        >
+          <FileText size={16} /> Tagihan
+        </button>
+      </div>
+      {tab === "bills" && (
+        <SupplierBills
+          revision={revision}
+          onSelect={setSelectedBill}
+          onCreate={() => setCreatingBill(true)}
+          canManage={canBill}
+        />
+      )}
       {tab === "orders" &&
         (summary.loading ? (
           <Loading />
@@ -174,176 +245,229 @@ export default function Purchasing({
             />
           )
         ))}
-      <section className="panel purchase-panel">
-        <div className="table-toolbar">
-          <div className="tabs" role="tablist" aria-label="Tampilan pembelian">
+      {tab !== "bills" && (
+        <section className="panel purchase-panel">
+          <div className="table-toolbar">
+            <strong className="bill-list-title">
+              {tab === "orders"
+                ? "Daftar pesanan pembelian"
+                : "Daftar supplier"}
+            </strong>
             <button
-              role="tab"
-              aria-selected={tab === "orders"}
-              className={tab === "orders" ? "active" : ""}
-              onClick={() => switchTab("orders")}
+              className="text-button export-button"
+              disabled={
+                tab === "orders"
+                  ? orders.loading || !!orders.error
+                  : suppliers.loading || !!suppliers.error
+              }
+              onClick={() =>
+                tab === "orders"
+                  ? downloadCsv(
+                      "haruflow-pembelian",
+                      [
+                        "Nomor",
+                        "Kode supplier",
+                        "Supplier",
+                        "Tanggal dibuat",
+                        "Perkiraan tiba",
+                        "Status",
+                        "Tanggal diterima",
+                        "Nomor penerimaan aktif",
+                        "Total",
+                        "Catatan",
+                        "Alasan pembatalan",
+                      ],
+                      orderItems.map((item) => [
+                        item.number,
+                        item.supplier_code,
+                        item.supplier_name,
+                        item.created_at,
+                        item.expected_date,
+                        statusNames[item.status],
+                        item.received_at,
+                        item.receipts.find(
+                          (receipt) => receipt.id === item.active_receipt_id,
+                        )?.number ?? "",
+                        item.total,
+                        item.notes,
+                        item.cancellation_reason,
+                      ]),
+                    )
+                  : downloadCsv(
+                      "haruflow-supplier",
+                      ["Kode", "Nama", "Email", "Telepon", "Alamat", "Status"],
+                      supplierItems.map((item) => [
+                        item.code,
+                        item.name,
+                        item.email,
+                        item.phone,
+                        item.address,
+                        item.active ? "Aktif" : "Nonaktif",
+                      ]),
+                    )
+              }
             >
-              <ClipboardList size={16} />
-              Pesanan pembelian
-              <span className="count-pill">
-                {orders.data?.items.length ?? 0}
-              </span>
-            </button>
-            <button
-              role="tab"
-              aria-selected={tab === "suppliers"}
-              className={tab === "suppliers" ? "active" : ""}
-              onClick={() => switchTab("suppliers")}
-            >
-              <Store size={16} />
-              Supplier
-              <span className="count-pill">
-                {suppliers.data?.items.length ?? 0}
-              </span>
+              Ekspor CSV
             </button>
           </div>
-          <button
-            className="text-button export-button"
-            disabled={
-              tab === "orders"
-                ? orders.loading || !!orders.error
-                : suppliers.loading || !!suppliers.error
-            }
-            onClick={() =>
-              tab === "orders"
-                ? downloadCsv(
-                    "haruflow-pembelian",
-                    [
-                      "Nomor",
-                      "Kode supplier",
-                      "Supplier",
-                      "Tanggal dibuat",
-                      "Perkiraan tiba",
-                      "Status",
-                      "Tanggal diterima",
-                      "Nomor penerimaan aktif",
-                      "Total",
-                      "Catatan",
-                      "Alasan pembatalan",
-                    ],
-                    orderItems.map((item) => [
-                      item.number,
-                      item.supplier_code,
-                      item.supplier_name,
-                      item.created_at,
-                      item.expected_date,
-                      statusNames[item.status],
-                      item.received_at,
-                      item.receipts.find(
-                        (receipt) => receipt.id === item.active_receipt_id,
-                      )?.number ?? "",
-                      item.total,
-                      item.notes,
-                      item.cancellation_reason,
-                    ]),
+          <div className="purchase-filters">
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder={
+                tab === "orders"
+                  ? "Cari nomor PO atau supplier…"
+                  : "Cari kode, nama, atau kontak supplier…"
+              }
+            />
+            <label className="purchase-filter">
+              <span>Status</span>
+              <select
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}
+              >
+                <option value="">Semua status</option>
+                {tab === "orders" ? (
+                  <>
+                    <option value="draft">Draf</option>
+                    <option value="confirmed">Dikonfirmasi</option>
+                    <option value="received">Diterima</option>
+                    <option value="cancelled">Dibatalkan</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="active">Aktif</option>
+                    <option value="inactive">Nonaktif</option>
+                  </>
+                )}
+              </select>
+            </label>
+          </div>
+          {tab === "orders" ? (
+            orders.loading ? (
+              <Loading />
+            ) : orders.error ? (
+              <ErrorState message={orders.error} onRetry={orders.reload} />
+            ) : orderItems.length ? (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nomor PO</th>
+                      <th>Supplier</th>
+                      <th>Dibuat</th>
+                      <th>Perkiraan tiba</th>
+                      <th>Status</th>
+                      <th className="align-right">Nilai pembelian</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orderPagination.items.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <button
+                            className="table-link"
+                            onClick={() => setSelectedOrder(item.id)}
+                          >
+                            {item.number}
+                          </button>
+                        </td>
+                        <td>
+                          <span className="purchase-cell">
+                            <strong>{item.supplier_name}</strong>
+                            <small>{item.supplier_code}</small>
+                          </span>
+                        </td>
+                        <td className="muted">{date(item.created_at)}</td>
+                        <td className="muted">
+                          {item.expected_date
+                            ? calendarDate(item.expected_date)
+                            : "Belum ditentukan"}
+                        </td>
+                        <td>
+                          <Status status={item.status} />
+                        </td>
+                        <td className="align-right font-medium">
+                          {exactMoney(item.total)}
+                        </td>
+                        <td>
+                          <button
+                            className="text-button"
+                            onClick={() => setSelectedOrder(item.id)}
+                          >
+                            Detail <ArrowRight size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState
+                title={
+                  search || status
+                    ? "Pesanan pembelian tidak ditemukan"
+                    : "Mulai rencanakan pembelian pertama."
+                }
+                description={
+                  search || status
+                    ? "Ubah kata kunci atau filter status untuk melihat pesanan lain."
+                    : "Tambahkan supplier, pilih barang, dan isi biaya beli sesuai kesepakatan."
+                }
+                action={
+                  canManage &&
+                  !search &&
+                  !status && (
+                    <button
+                      className="button secondary"
+                      onClick={() => setCreateOrder(true)}
+                    >
+                      <Plus size={16} />
+                      Buat PO
+                    </button>
                   )
-                : downloadCsv(
-                    "haruflow-supplier",
-                    ["Kode", "Nama", "Email", "Telepon", "Alamat", "Status"],
-                    supplierItems.map((item) => [
-                      item.code,
-                      item.name,
-                      item.email,
-                      item.phone,
-                      item.address,
-                      item.active ? "Aktif" : "Nonaktif",
-                    ]),
-                  )
-            }
-          >
-            Ekspor CSV
-          </button>
-        </div>
-        <div className="purchase-filters">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder={
-              tab === "orders"
-                ? "Cari nomor PO atau supplier…"
-                : "Cari kode, nama, atau kontak supplier…"
-            }
-          />
-          <label className="purchase-filter">
-            <span>Status</span>
-            <select
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
-            >
-              <option value="">Semua status</option>
-              {tab === "orders" ? (
-                <>
-                  <option value="draft">Draf</option>
-                  <option value="confirmed">Dikonfirmasi</option>
-                  <option value="received">Diterima</option>
-                  <option value="cancelled">Dibatalkan</option>
-                </>
-              ) : (
-                <>
-                  <option value="active">Aktif</option>
-                  <option value="inactive">Nonaktif</option>
-                </>
-              )}
-            </select>
-          </label>
-        </div>
-        {tab === "orders" ? (
-          orders.loading ? (
+                }
+              />
+            )
+          ) : suppliers.loading ? (
             <Loading />
-          ) : orders.error ? (
-            <ErrorState message={orders.error} onRetry={orders.reload} />
-          ) : orderItems.length ? (
+          ) : suppliers.error ? (
+            <ErrorState message={suppliers.error} onRetry={suppliers.reload} />
+          ) : supplierItems.length ? (
             <div className="table-scroll">
               <table>
                 <thead>
                   <tr>
-                    <th>Nomor PO</th>
                     <th>Supplier</th>
-                    <th>Dibuat</th>
-                    <th>Perkiraan tiba</th>
+                    <th>Email</th>
+                    <th>Telepon</th>
                     <th>Status</th>
-                    <th className="align-right">Nilai pembelian</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {orderPagination.items.map((item) => (
-                    <tr key={item.id}>
+                  {supplierPagination.items.map((supplier) => (
+                    <tr key={supplier.id}>
                       <td>
                         <button
-                          className="table-link"
-                          onClick={() => setSelectedOrder(item.id)}
+                          className="table-link purchase-cell"
+                          onClick={() => setSelectedSupplier(supplier)}
                         >
-                          {item.number}
+                          <strong>{supplier.name}</strong>
+                          <small>{supplier.code}</small>
                         </button>
                       </td>
+                      <td className="muted">{supplier.email || "—"}</td>
+                      <td className="muted">{supplier.phone || "—"}</td>
                       <td>
-                        <span className="purchase-cell">
-                          <strong>{item.supplier_name}</strong>
-                          <small>{item.supplier_code}</small>
-                        </span>
-                      </td>
-                      <td className="muted">{date(item.created_at)}</td>
-                      <td className="muted">
-                        {item.expected_date
-                          ? calendarDate(item.expected_date)
-                          : "Belum ditentukan"}
-                      </td>
-                      <td>
-                        <Status status={item.status} />
-                      </td>
-                      <td className="align-right font-medium">
-                        {exactMoney(item.total)}
+                        <SupplierStatus active={supplier.active} />
                       </td>
                       <td>
                         <button
                           className="text-button"
-                          onClick={() => setSelectedOrder(item.id)}
+                          onClick={() => setSelectedSupplier(supplier)}
                         >
                           Detail <ArrowRight size={14} />
                         </button>
@@ -357,13 +481,13 @@ export default function Purchasing({
             <EmptyState
               title={
                 search || status
-                  ? "Pesanan pembelian tidak ditemukan"
-                  : "Mulai rencanakan pembelian pertama."
+                  ? "Supplier tidak ditemukan"
+                  : "Kenali pemasok usaha Anda."
               }
               description={
                 search || status
-                  ? "Ubah kata kunci atau filter status untuk melihat pesanan lain."
-                  : "Tambahkan supplier, pilih barang, dan isi biaya beli sesuai kesepakatan."
+                  ? "Coba kata kunci atau status yang berbeda."
+                  : "Simpan kode, nama, dan kontak supplier untuk memulai pesanan pembelian."
               }
               action={
                 canManage &&
@@ -371,94 +495,22 @@ export default function Purchasing({
                 !status && (
                   <button
                     className="button secondary"
-                    onClick={() => setCreateOrder(true)}
+                    onClick={() => setCreateSupplier(true)}
                   >
                     <Plus size={16} />
-                    Buat PO
+                    Tambah supplier
                   </button>
                 )
               }
             />
-          )
-        ) : suppliers.loading ? (
-          <Loading />
-        ) : suppliers.error ? (
-          <ErrorState message={suppliers.error} onRetry={suppliers.reload} />
-        ) : supplierItems.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Supplier</th>
-                  <th>Email</th>
-                  <th>Telepon</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {supplierPagination.items.map((supplier) => (
-                  <tr key={supplier.id}>
-                    <td>
-                      <button
-                        className="table-link purchase-cell"
-                        onClick={() => setSelectedSupplier(supplier)}
-                      >
-                        <strong>{supplier.name}</strong>
-                        <small>{supplier.code}</small>
-                      </button>
-                    </td>
-                    <td className="muted">{supplier.email || "—"}</td>
-                    <td className="muted">{supplier.phone || "—"}</td>
-                    <td>
-                      <SupplierStatus active={supplier.active} />
-                    </td>
-                    <td>
-                      <button
-                        className="text-button"
-                        onClick={() => setSelectedSupplier(supplier)}
-                      >
-                        Detail <ArrowRight size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          )}
+          <div className="table-footer">
+            <Pagination
+              {...(tab === "orders" ? orderPagination : supplierPagination)}
+            />
           </div>
-        ) : (
-          <EmptyState
-            title={
-              search || status
-                ? "Supplier tidak ditemukan"
-                : "Kenali pemasok usaha Anda."
-            }
-            description={
-              search || status
-                ? "Coba kata kunci atau status yang berbeda."
-                : "Simpan kode, nama, dan kontak supplier untuk memulai pesanan pembelian."
-            }
-            action={
-              canManage &&
-              !search &&
-              !status && (
-                <button
-                  className="button secondary"
-                  onClick={() => setCreateSupplier(true)}
-                >
-                  <Plus size={16} />
-                  Tambah supplier
-                </button>
-              )
-            }
-          />
-        )}
-        <div className="table-footer">
-          <Pagination
-            {...(tab === "orders" ? orderPagination : supplierPagination)}
-          />
-        </div>
-      </section>
+        </section>
+      )}
       {tab === "orders" && (
         <p className="purchase-history-note">
           Daftar, pencarian, dan ekspor mencakup hingga 500 PO terbaru. Grafik
@@ -558,12 +610,56 @@ export default function Purchasing({
         <PurchaseOrderDetail
           id={selectedOrder}
           canManage={canManage}
+          canBill={canBill}
+          focusReceipt={focusReceipt}
+          onCreateBill={(orderId) => {
+            setSelectedOrder(null);
+            setBillingOrderId(orderId);
+            setCreatingBill(true);
+          }}
+          onBill={(id) => {
+            setSelectedOrder(null);
+            setTab("bills");
+            setSelectedBill(id);
+          }}
           revision={revision}
           onClose={() => setSelectedOrder(null)}
           onSaved={saved}
           onEdit={(order) => {
             setSelectedOrder(null);
             setEditingOrder(order);
+          }}
+        />
+      )}
+      {creatingBill && (
+        <SupplierBillForm
+          initialOrderId={billingOrderId}
+          revision={revision}
+          onClose={() => {
+            setCreatingBill(false);
+            setBillingOrderId(undefined);
+          }}
+          onSaved={(id) => {
+            setCreatingBill(false);
+            setBillingOrderId(undefined);
+            setSelectedBill(id);
+            setTab("bills");
+            saved();
+          }}
+        />
+      )}
+      {selectedBill && (
+        <SupplierBillDetail
+          id={selectedBill}
+          revision={revision}
+          canManage={canBill}
+          onClose={() => setSelectedBill(null)}
+          onSaved={saved}
+          onOpenOrder={(id, receiptId) => {
+            setSelectedBill(null);
+            setTab("orders");
+            setFocusReceipt(receiptId);
+            setSelectedOrder(id);
           }}
         />
       )}
@@ -1164,6 +1260,10 @@ function PurchaseOrderForm({
 function PurchaseOrderDetail({
   id,
   canManage,
+  canBill,
+  focusReceipt,
+  onCreateBill,
+  onBill,
   revision,
   onClose,
   onEdit,
@@ -1171,6 +1271,10 @@ function PurchaseOrderDetail({
 }: {
   id: string;
   canManage: boolean;
+  canBill: boolean;
+  focusReceipt?: string;
+  onCreateBill: (orderId: string) => void;
+  onBill: (billId: string) => void;
   revision: number;
   onClose: () => void;
   onEdit: (order: PurchaseOrder) => void;
@@ -1195,6 +1299,17 @@ function PurchaseOrderDetail({
   const order = resource.data;
   const receipt = order?.receipts.find((item) => item.id === receiptId);
   const reviewRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!focusReceipt || resource.loading) return;
+    const timer = window.setTimeout(
+      () =>
+        document
+          .getElementById(`purchase-receipt-${focusReceipt}`)
+          ?.scrollIntoView({ block: "center", behavior: "smooth" }),
+      50,
+    );
+    return () => window.clearTimeout(timer);
+  }, [focusReceipt, resource.loading]);
   useEffect(() => {
     if (action)
       reviewRef.current?.scrollIntoView({
@@ -1393,6 +1508,9 @@ function PurchaseOrderDetail({
                     key={item.id}
                     receipt={item}
                     canManage={canManage}
+                    canBill={canBill}
+                    onBill={onBill}
+                    onCreateBill={() => onCreateBill(order.id)}
                     busy={busy || !!action}
                     onJournal={setJournalId}
                     onReverse={() => {
@@ -1457,8 +1575,8 @@ function PurchaseOrderDetail({
                     </div>
                     <p className="purchase-receive-note">
                       Biaya rata-rata stok dihitung otomatis. Kas belum berubah.
-                      Tagihan dan pembayaran supplier dicatat pada tahap
-                      berikutnya.
+                      Setelah diterima, finance dapat mencatat tagihan supplier.
+                      Pembayaran tersedia pada tahap berikutnya.
                     </p>
                     <FormField
                       label="Referensi penerimaan"
@@ -1621,18 +1739,25 @@ function PurchaseOrderDetail({
 function PurchaseReceiptHistory({
   receipt,
   canManage,
+  canBill,
+  onBill,
+  onCreateBill,
   busy,
   onReverse,
   onJournal,
 }: {
   receipt: PurchaseReceipt;
   canManage: boolean;
+  canBill: boolean;
+  onBill: (id: string) => void;
+  onCreateBill: () => void;
   busy: boolean;
   onReverse: () => void;
   onJournal: (id: string) => void;
 }) {
   return (
     <article
+      id={`purchase-receipt-${receipt.id}`}
       className={`purchase-receipt-card ${receipt.reversal ? "reversed" : ""}`}
     >
       <header>
@@ -1693,6 +1818,26 @@ function PurchaseReceiptHistory({
         </div>
       )}
       <div className="purchase-receipt-actions">
+        {receipt.bill_id && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() => onBill(receipt.bill_id!)}
+          >
+            <FileText size={14} /> Lihat tagihan {receipt.bill_number}
+          </button>
+        )}
+        {canBill && receipt.can_bill && !receipt.bill_id && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={onCreateBill}
+          >
+            <FileText size={14} /> Catat tagihan
+          </button>
+        )}
         <button
           type="button"
           className="text-button"
@@ -1722,6 +1867,15 @@ function PurchaseReceiptHistory({
           </button>
         )}
       </div>
+      {canBill &&
+        !receipt.reversal &&
+        !receipt.can_bill &&
+        !receipt.bill_id &&
+        receipt.bill_blocked_reason && (
+          <p className="purchase-receipt-blocked">
+            {receipt.bill_blocked_reason}
+          </p>
+        )}
       {!receipt.reversal &&
         !receipt.can_reverse &&
         receipt.reversal_blocked_reason && (
