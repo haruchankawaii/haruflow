@@ -1,232 +1,143 @@
 # Rencana Haruflow Community
 
-Status: rencana acuan; baseline aplikasi Community sudah diimplementasikan. Lihat [status implementasi](./IMPLEMENTATION_STATUS.md) untuk hasil dan pekerjaan tersisa.
+Status: fondasi Community dan lima perluasan operasional utama telah diimplementasikan; aplikasi masih merupakan versi pengembangan, belum rilis stabil.
 Tanggal pembaruan: 19 Oktober 2026.
-Dasar: `haruflow.md` dan kondisi repository yang saat ini berisi README serta lisensi AGPL-3.0-only.
+Dasar: arah produk dalam `haruflow.md` dan implementasi aktual repository. Rincian hasil pengujian serta batas fitur dicatat di [status implementasi](./IMPLEMENTATION_STATUS.md).
 
 ## 1. Arah produk
 
-Haruflow Community adalah ERP gratis yang dapat dijalankan sendiri oleh usaha kecil. Sasaran awal adalah usaha dagang dengan satu perusahaan, satu gudang, dan satu mata uang operasional. Asumsi ini membatasi kompleksitas versi pertama dan dapat ditinjau sebelum implementasi domain.
+Haruflow Community adalah ERP gratis yang dijalankan sendiri oleh usaha kecil. Sasaran saat ini adalah usaha dagang dengan satu perusahaan, satu gudang logis, dan mata uang IDR. Produk jasa dapat dipakai pada alur penjualan tanpa persediaan.
 
-Hasil yang dituju untuk v0.1: pengguna dapat memasang aplikasi, membuat perusahaan dan pengguna, memasukkan saldo awal, mencatat penjualan sampai pembayaran, lalu melihat stok dan jurnal yang saling cocok.
+Pengguna dapat menyiapkan perusahaan dan pengguna, memposting saldo awal, mengelola penjualan serta pembelian, mencatat pembayaran dan retur, lalu memeriksa stok, piutang/utang, dan laporan keuangan dari jurnal yang sama.
 
-Community tidak memerlukan akun Haruflow, layanan lisensi, atau koneksi ke Haruflow Cloud. Tidak ada batas pengguna berbasis lisensi; kapasitas mengikuti perangkat dan konfigurasi pemilik instalasi. Lisensi mengikuti `LICENSE` yang sudah ada di repository.
+Community tidak memerlukan akun Haruflow, layanan lisensi, atau koneksi ke Haruflow Cloud. Tidak ada batas pengguna berbasis lisensi; kapasitas mengikuti perangkat dan konfigurasi instalasi. Lisensi mengikuti `LICENSE` dalam repository.
 
-Pemilik instalasi mengelola server, domain/TLS, backup, dan upgrade. Haruflow menyediakan aplikasi, image rilis, panduan, serta perintah operasional. Dukungan awal melalui dokumentasi dan issue repository; belum ada SLA.
+Pemilik instalasi mengelola server, akses jaringan/TLS, backup, secrets, dan upgrade. Saat ini tersedia source, Dockerfile/Compose, serta panduan operasional. Image rilis pada registry, installer pengguna akhir, pilot bisnis, dan SLA belum tersedia.
 
-## 2. Batas versi pertama
+## 2. Lingkup yang sudah diimplementasikan
 
-### Termasuk dalam v0.1
+### Fondasi
 
-- Setup perusahaan: nama, zona waktu, mata uang, periode pembukuan, dan penomoran dokumen.
-- Login lokal, sesi yang dapat dicabut, logout, pengelolaan pengguna, dan reset password melalui perintah admin lokal.
-- Permission di Rust dengan role awal Administrator, Sales, Warehouse, Finance, dan Viewer. Permission rinci mengikuti aksi, bukan sekadar nama role.
-- Master data pelanggan, produk stok/nonstok, satuan dasar, gudang utama, dan bagan akun.
-- Saldo awal stok dan akuntansi melalui proses draft, validasi, dan posting yang dapat diaudit.
-- Sales order, pengiriman penuh, invoice dari pengiriman, dan penerimaan pembayaran; pembayaran sebagian diperbolehkan.
-- Penerimaan stok manual dengan biaya per unit, penyesuaian stok, dan riwayat pergerakan stok.
-- Biaya persediaan dengan moving weighted average; pengiriman mencatat biaya historisnya untuk pembatalan atau penelusuran.
-- Jurnal berpasangan dari invoice, pengiriman, penerimaan stok, penyesuaian, dan pembayaran; jurnal manual untuk Finance.
-- Daftar stok, kartu stok, piutang pelanggan, jurnal umum, buku besar, dan neraca saldo.
-- Audit aktivitas penting, pencarian, filter, pagination, ekspor CSV, serta tampilan cetak invoice melalui browser.
-- Docker Compose, health check, migrasi database, panduan backup/restore, dan prosedur upgrade.
+- Setup perusahaan/admin, autentikasi lokal, sesi yang dapat dicabut, pengelolaan pengguna, role Administrator/Sales/Warehouse/Finance/Viewer, dan pemulihan admin melalui perintah lokal.
+- Profil perusahaan, kontak, serta awalan nomor dokumen; zona waktu dapat diubah sebelum jurnal pertama. Mata uang tetap IDR.
+- Pelanggan, supplier, produk barang/jasa, satuan dasar, bagan akun dasar serta akun tambahan, dan audit aktivitas penting.
+- Saldo awal stok serta akun yang diperbolehkan melalui draf, pemeriksaan keseimbangan, posting atomik, dan pembalikan sebelum transaksi operasional.
+- Persediaan dengan biaya rata-rata bergerak, penerimaan stok manual, adjustment, riwayat mutasi, dan koreksi berbasis snapshot ketika belum ada mutasi lanjutan.
+- Jurnal berpasangan otomatis/manual, buku besar, neraca saldo, penutupan periode, pencarian, pagination UI, CSV, dan cetak invoice melalui browser.
+- Satu aplikasi Rust melayani API dan frontend; Compose aplikasi/PostgreSQL, migrasi eksplisit, health check, CI, serta utilitas backup/restore tersedia.
 
-### Ditunda setelah v0.1
+### Lima perluasan Community yang sudah selesai diimplementasikan
 
-- Purchasing lengkap, pembayaran supplier, penerimaan/tagihan sebagian, dan retur barang komersial. Supplier, PO, penerimaan penuh, tagihan, serta posisi utang/jatuh tempo sudah ditambahkan bertahap setelah baseline; lihat catatan pembaruan di akhir dokumen.
-- Pengiriman sebagian, backorder, konversi satuan, transfer antargudang, lot, serial number, dan expiry.
-- Multi-company, multicurrency, konsolidasi, dan pembatasan akses lintas cabang/gudang.
-- HR, payroll, manufacturing, POS offline, dan aplikasi mobile native.
-- Perhitungan pajak otomatis, pelaporan pajak, e-Faktur, integrasi bank, dan rekonsiliasi bank otomatis.
-- SSO, marketplace plugin, kustomisasi workflow, dan konektor eksternal.
-- Email, realtime, lampiran dokumen, dan object storage; tidak diperlukan untuk alur minimum pertama.
+1. **Pembayaran supplier sebagian/penuh.** Pembayaran dari tagihan mengurangi Kas 1100 dan utang supplier, menolak kelebihan pembayaran, menyimpan idempotensi/audit/jurnal, serta menyediakan pembalikan beralasan dengan pemeriksaan dependensi.
+2. **Umur utang dan chart pembayaran.** Umur utang memakai kelompok belum lewat jatuh tempo (termasuk hari ini), terlambat 1–30/31–60/61–90/lebih dari 90 hari, rincian supplier, dan pergerakan pembayaran. Ringkasan jatuh tempo juga membedakan tagihan hari ini dari yang belum jatuh tempo. Ringkasan memakai seluruh dokumen yang relevan, bukan hanya daftar dokumen terbaru.
+3. **Retur pelanggan dan supplier sebagian/penuh.** Retur berasal dari invoice/tagihan, mengurangi nilai tagihan, memperbarui persediaan bila relevan, dan mencatat refund langsung jika pembayaran melebihi nilai bersih baru. Riwayat dan jurnal pembalik tetap tersimpan. [Panduan retur](./RETURNS.md) menjelaskan biaya, pembulatan, refund aktual, dan batas koreksi.
+4. **Pemenuhan serta penagihan bertahap.** Sales order dapat dikirim dan diinvoiskan sebagian/penuh dengan sisa per baris tetap terlacak. PO dapat diterima dan ditagih sebagian/penuh; satu penerimaan dapat memiliki beberapa tagihan untuk bagian jumlah yang berbeda. Alokasi dan pembulatan mencegah jumlah atau nilai ditagih dua kali. Lihat [pemenuhan penjualan](./SALES_FULFILLMENT.md) dan [pembelian](./PURCHASING.md).
+5. **Laporan keuangan.** Laba rugi periode, neraca kumulatif, dan arus kas Kas 1100 tersedia dengan tanggal perusahaan, chart, CSV, serta rincian akun/jurnal. Arus kas menyediakan klasifikasi manual beralasan dengan versi dan riwayat. Lihat [panduan laporan](./FINANCIAL_REPORTS.md) untuk dasar perhitungan serta cakupannya.
 
-Community tetap dapat menerima fitur-fitur lanjutan tersebut di kemudian hari. Batas di atas adalah urutan pengembangan, bukan keputusan permanen mengenai pemisahan lisensi fitur Enterprise.
+Alur operasional sekarang mencakup penjualan → pengiriman → invoice → pembayaran, serta supplier → PO → penerimaan → tagihan → pembayaran. Retur merupakan transaksi komersial tersendiri; retur tidak membuka ulang jumlah pesanan yang sudah dipenuhi atau ditagih.
 
-## 3. Arsitektur yang akan dipakai
+## 3. Batas produk saat ini
 
-- Frontend: React + TypeScript + Vite, memakai Bun untuk package management, build, dan pengujian frontend. Ini pilihan awal rencana; framework UI belum ditentukan dalam dokumen sumber.
-- Backend: Rust + Axum + Tokio, dengan Tower/tower-http untuk middleware standar.
-- Persistence: PostgreSQL + SQLx, dengan migrasi yang disimpan di repository.
-- Kontrak API: HTTP/JSON + OpenAPI; client TypeScript dihasilkan dari kontrak yang sama.
-- Struktur: modular monolith. Modul berbagi satu aplikasi dan transaksi database, dengan batas ownership data yang jelas.
-- Runtime default: dua container, `app` dan `postgres`. Aplikasi Rust melayani API serta frontend hasil build Bun.
-- Pekerjaan latar belakang: antrean PostgreSQL dengan eksekutor dalam proses aplikasi pada konfigurasi sederhana. Mode worker terpisah memakai codebase/image yang sama ketika diperlukan.
-- Elysia tidak menjadi dependensi runtime Community v0.1. Redis, Kubernetes, dan message broker juga tidak dibutuhkan.
+Selesainya lima perluasan di atas belum berarti seluruh rencana ERP atau persiapan rilis stabil selesai. Batas berikut masih berlaku:
 
-Versi dependensi akan dipilih dan dikunci pada tahap fondasi. Tidak menggunakan tag `latest` untuk image rilis yang didokumentasikan.
+- Satu perusahaan, satu gudang logis, dan IDR. Belum ada banyak gudang/cabang, transfer gudang, multicurrency, atau konsolidasi perusahaan.
+- Pembelian berfokus pada barang stok dari PO. Tagihan mengikuti jumlah dan nilai penerimaan; pembelian jasa, selisih harga invoice, ongkir, diskon, dan pajak otomatis belum tersedia.
+- Belum ada uang muka, overpayment, refund tertunda, atau saldo kredit pelanggan/supplier yang digunakan pada dokumen lain. Refund pada retur saat ini harus mencerminkan uang yang benar-benar sudah berpindah.
+- Belum ada impor CSV dengan pemeriksaan/dry run, lampiran bukti transaksi, serta saldo awal piutang per pelanggan dan utang per supplier. Saldo awal akun umum tidak menggantikan rincian kewajiban per pihak.
+- Satuan dasar belum mempunyai konversi. Lot/batch, serial number, tanggal kedaluwarsa, dan reservasi stok belum tersedia.
+- Arus kas terbatas pada Kas 1100. Akun aset lain belum otomatis menjadi kas/setara kas. Klasifikasi manual berlaku untuk satu jurnal secara utuh; pembagian satu jurnal ke beberapa aktivitas belum tersedia. Laporan belum menyatakan kepatuhan terhadap format pelaporan atau perpajakan tertentu.
+- Belum ada HR/payroll, produksi, POS offline, aplikasi mobile native, integrasi bank/pajak, SSO, marketplace plugin, email, jobs/outbox, atau penyimpanan lampiran.
+- Listing master belum mempunyai pagination server. Beberapa daftar operasional dibatasi pada dokumen terbaru; rincian buku besar memberi penanda bila tampilan terpotong, sementara saldo dan ringkasan tetap dihitung dari seluruh data yang sesuai.
 
-Struktur repository yang diusulkan:
+Fitur lanjutan dapat tetap dikembangkan dalam Community. Batas di atas menjelaskan lingkup aktual serta urutan pekerjaan, bukan keputusan permanen pemisahan lisensi Enterprise.
 
-```text
-apps/web/                   frontend React
-crates/haruflow/             binary, routing, konfigurasi, lifecycle
-crates/domain/               aturan bisnis, tipe nilai, state transition
-crates/application/          use case, permission, koordinasi transaksi
-crates/infrastructure/       SQLx, repository, auth adapters, jobs
-packages/api-client/         client TypeScript yang dihasilkan
-migrations/                 schema PostgreSQL
-deploy/community/           Compose dan contoh konfigurasi
-docs/                       panduan pengguna, arsitektur, operasi
-```
+## 4. Arsitektur yang dipakai
 
-Modul awal: identity, company, master-data, sales, inventory, accounting, audit, dan jobs. Gunakan struktur sederhana dahulu; crate tambahan dibuat hanya ketika membantu batas dependensi atau pengujian.
+- Frontend React + TypeScript + Vite; Bun untuk dependensi, pengujian, dan build.
+- Backend Rust + Axum + Tokio, dengan Tower/tower-http untuk middleware.
+- PostgreSQL + SQLx, migrasi tersimpan di repository, dan transaksi database bersama dalam modular monolith.
+- Aplikasi Rust menyajikan API HTTP/JSON dan hasil build frontend. Runtime Compose menjalankan aplikasi serta PostgreSQL; Redis, Kubernetes, dan message broker tidak diperlukan.
+- Implementasi utama berada di `apps/web/`, `crates/server/`, `migrations/`, `deploy/community/`, `scripts/`, dan `docs/`.
 
-## 4. Aturan domain yang wajib dipenuhi
+OpenAPI dan client TypeScript yang dihasilkan dari kontrak belum tersedia. Antrean pekerjaan, outbox, atau worker terpisah belum diimplementasikan; pengembangannya menunggu kebutuhan integrasi yang konkret. Versi dependensi serta image dasar mengikuti berkas kunci dan konfigurasi repository.
+
+## 5. Aturan domain yang dipertahankan
 
 ### Transaksi dan angka
 
-- Semua mutasi bisnis melalui Rust; browser dan adapter tidak menulis langsung ke database.
-- Gunakan tipe decimal untuk nominal, harga, biaya, dan kuantitas. Hindari floating point untuk perhitungan bisnis.
-- Tetapkan skala, pembulatan mata uang, dan pembulatan biaya per unit secara eksplisit sebelum membangun posting.
-- Satu aksi posting menyimpan dokumen, ledger, saldo, audit, serta event yang relevan dalam satu transaksi.
-- Terapkan constraint database, penguncian baris, dan retry terbatas untuk mutasi stok serta penomoran yang bersamaan.
-- Endpoint posting dan pembayaran mendukung idempotency key. Pengulangan request tidak boleh membuat transaksi baru.
+- Mutasi bisnis melalui backend, bukan penulisan database langsung dari browser.
+- Nominal serta jumlah menggunakan decimal dengan skala dan pembulatan eksplisit. Label serta preview finansial frontend yang baru memakai perhitungan sen yang presisi.
+- Posting menyimpan dokumen, stok/ledger, saldo, audit, dan hasil idempotensi dalam satu transaksi. Request ulang tidak boleh membuat posting baru; versi lama tidak boleh menimpa dokumen yang sudah berubah.
+- Constraint database dan penguncian terurut melindungi mutasi bersamaan. Stok tidak boleh negatif; sales order belum mereservasi stok sebelum pengiriman.
 
 ### Dokumen, stok, dan akuntansi
 
-- Dokumen mengikuti state transition eksplisit, misalnya draft → confirmed → posted atau cancelled. Penolakan transisi diuji di backend.
-- Stok tidak boleh negatif pada v0.1. Sales order belum mereservasi stok; ketersediaan diperiksa dan dikunci saat pengiriman diposting.
-- Pengiriman v0.1 harus memenuhi seluruh order; invoice dibuat satu kali untuk pengiriman tersebut. Tidak ada invoice atas kuantitas yang belum dikirim.
-- Penerimaan stok memperbarui kuantitas, nilai persediaan, dan biaya rata-rata secara atomik. Kebijakan saat saldo nol serta pembulatan harus mempunyai contoh uji.
-- Setiap jurnal posted memiliki total debit sama dengan kredit. Jurnal pada periode tertutup ditolak.
-- Invoice mencatat piutang dan pendapatan; pengiriman mencatat HPP dan pengurangan persediaan; pembayaran mencatat kas/bank dan pengurangan piutang.
-- Penerimaan dan penyesuaian stok memakai akun lawan yang dikonfigurasi. Penambahan stok tidak boleh diam-diam menghilangkan pencatatan nilai persediaan.
-- Pembayaran tidak boleh melampaui sisa piutang pada v0.1; uang muka dan overpayment ditunda.
-- Data posted tidak diedit atau dihapus. Koreksi menggunakan reversal yang merujuk transaksi asal, dengan permission dan alasan.
-- Pembatalan dokumen berantai ditolak bila masih memiliki transaksi turunan aktif. Reversal pembayaran, invoice, lalu pengiriman dilakukan berurutan; reversal stok juga harus menjaga saldo valid.
-- Saldo awal hanya dapat diposting sekali per konteks pembukaan; koreksi memakai reversal. Nilai awal stok harus cocok dengan akun persediaan.
-- Laporan berasal dari ledger/dokumen posted, memakai batas tanggal dan zona waktu yang konsisten.
+- Pengiriman, penerimaan, dan invoice mempunyai alokasi jumlah masing-masing. Jumlah terakumulasi tidak boleh melampaui pesanan atau sumbernya. Barang yang belum dikirim tidak dapat diinvoiskan; jasa dapat ditagih setelah konfirmasi tanpa mutasi stok.
+- Penerimaan PO mendebit persediaan dan mengkredit barang diterima belum ditagih. Tagihan memindahkan kewajiban ke utang supplier; pembayaran mengurangi utang serta kas. Penerimaan manual tetap mengikuti akun lawan alurnya sendiri.
+- Invoice penjualan mencatat piutang dan pendapatan; pengiriman mencatat HPP dan pengurangan persediaan; pembayaran mengurangi piutang dan menambah kas.
+- Retur pelanggan atas barang memakai biaya historis pengiriman. Retur supplier memakai biaya rata-rata stok saat retur; selisih terhadap kredit tagihan dicatat pada akun selisih retur pembelian. Jasa tidak membuat mutasi persediaan.
+- Pembayaran dibatasi sisa tagihan bersih setelah retur. Pengembalian uang dicatat bersama retur bila pembayaran yang sudah ada melebihi nilai bersih baru.
+- Setiap jurnal posted seimbang. Posting dan pembalikan memakai tanggal saat ini menurut zona waktu perusahaan; periode tertutup menolak posting baru. Tanggal invoice supplier tidak memundurkan jurnal.
+- Dokumen posted tidak diedit atau dihapus. Koreksi memakai reversal beralasan yang merujuk dokumen asal. Retur aktif harus dibalik sebelum pembalikan pembayaran/invoice/tagihan; dependensi alokasi serta mutasi stok lanjutan tetap diperiksa.
+- Pembalikan stok harus cocok dengan snapshot dan belum mempunyai mutasi berikutnya. Membalik transaksi lanjutan tidak menghapus riwayat mutasinya.
+- Saldo awal dapat dikoreksi melalui reversal sebelum aktivitas operasional. Persediaan awal harus cocok dengan akun kontrol persediaan; akun kontrol operasional lainnya dilindungi dari jurnal manual/saldo awal yang memutus rincian sumbernya.
+- Laporan memakai ledger dan dokumen posted dengan tanggal serta zona waktu yang jelas. Laba rugi memakai periode, neraca memakai akumulasi sampai tanggal akhir, dan arus kas mencakup seluruh pergerakan Kas 1100 dalam cakupannya.
 
-## 5. Keamanan dan operasi minimum
+## 6. Prioritas Community yang masih perlu dikerjakan
 
-- Password disimpan dengan Argon2id; akun admin pertama dibuat melalui setup token sekali pakai atau CLI lokal, tanpa password default.
-- Sesi memakai cookie Secure pada HTTPS, HttpOnly, dan SameSite, disertai proteksi CSRF untuk mutasi berbasis cookie.
-- Permission diperiksa di setiap endpoint; pengguna nonaktif dan sesi yang dicabut segera kehilangan akses.
-- Batasi percobaan login dan ukuran request; query memakai bound parameters; error publik tidak membocorkan detail internal.
-- Secrets berasal dari konfigurasi lokal atau mounted secrets; contoh konfigurasi tidak memuat kredensial nyata.
-- PostgreSQL tidak dipublikasikan ke internet oleh Compose default. Dokumentasikan reverse proxy/TLS untuk akses dari luar mesin.
-- Log terstruktur membawa request ID dan menghindari password, token, cookie, serta isi sensitif dokumen.
-- Backup mencakup database, versi aplikasi, dan konfigurasi yang diperlukan. Secrets dicadangkan dengan perlindungan tersendiri.
-- Restore diuji ke instalasi kosong; panduan menjelaskan penghentian penulisan, validasi hasil, dan aktivasi kembali.
-- Migrasi dijalankan sekali melalui langkah upgrade yang eksplisit, dengan pemeriksaan versi dan backup sebelum perubahan.
-- Rollback aplikasi hanya diperbolehkan jika skema kompatibel. Jika tidak, gunakan restore backup sesuai runbook dan jelaskan konsekuensi kehilangan perubahan setelah backup.
-- Telemetri keluar ke Haruflow tidak diaktifkan secara default.
+Urutan berikut menjadi acuan setelah pembayaran, umur utang, retur, pemenuhan bertahap, dan tiga laporan keuangan tersedia. Prioritas akhirnya mengikuti kebutuhan pilot pengguna; daftar ini tidak menambah implementasi pada upgrade yang sedang diselesaikan.
 
-## 6. Tahapan implementasi
+### Prioritas 1 — Kesiapan rilis dan pemakaian nyata
 
-Estimasi di bawah adalah kisaran awal untuk satu developer, bukan janji tanggal rilis. Total sekitar 17–24 minggu kerja efektif; kalender bisa lebih panjang. Validasi ulang setelah tahap 2 karena pengalaman Rust, keputusan domain, dan kapasitas kerja belum diketahui.
+- Selesaikan review kandidat rilis, catatan perubahan, pengelompokan batas fitur, dan panduan upgrade dari versi sebelumnya.
+- Terbitkan artefak/image bertag versi tetap beserta checksum; tentukan kebutuhan installer untuk pengguna sasaran.
+- Jalankan pilot dengan usaha dagang dan dataset yang mewakili transaksi nyata. Catat perangkat, ukuran data, serta hasil pengukuran baca/posting dan akses bersamaan.
+- Jadwalkan latihan pemulihan pada lingkungan terpisah dan pemeriksaan upgrade rutin. Backup/restore dasar sudah mempunyai utilitas serta smoke test; keberhasilan itu belum menggantikan latihan operasional dan pengukuran kapasitas.
+- Uji lebih lanjut kegagalan koneksi, timeout, restart ketika posting, dan kebutuhan beberapa instance. Penambahan worker hanya diperlukan ketika ada pekerjaan latar belakang.
 
-### Tahap 0 — Finalisasi lingkup dan contoh bisnis (1 minggu)
+### Prioritas 2 — Migrasi data dan bukti transaksi
 
-Hasil:
-- ADR untuk stack, runtime Community, batas MVP, dan format nilai decimal.
-- Daftar permission, state transition, mapping akun, serta aturan pembatalan.
-- Skenario contoh yang dapat diperiksa manual, termasuk saldo awal dan pembulatan biaya stok.
+- Impor master serta dokumen yang dibutuhkan dengan validasi/dry run, laporan kesalahan per baris, dan perlindungan duplikasi.
+- Saldo awal piutang per pelanggan dan utang per supplier yang terhubung ke ledger serta pembayaran berikutnya.
+- Lampiran bukti transaksi dengan aturan akses, backup, dan pemulihan yang jelas.
+- Pagination server serta pencarian riwayat yang lebih besar tanpa mengubah kebenaran total laporan.
 
-Selesai ketika: satu contoh transaksi end-to-end mempunyai hasil stok, piutang, dan jurnal yang disepakati; fitur tertunda tercatat jelas.
+### Prioritas 3 — Kelengkapan transaksi dagang
 
-### Tahap 1 — Fondasi aplikasi dan instalasi (2–3 minggu)
+- Uang muka, kredit lintas dokumen, dan refund tertunda dengan saldo pihak serta jejak penyelesaian yang dapat direkonsiliasi.
+- Pembelian jasa, selisih harga invoice terhadap penerimaan, ongkir/diskon, dan perhitungan pajak sesuai kebijakan usaha yang dipilih.
+- Penanganan barang pengganti serta retur yang lebih kompleks berdasarkan kebutuhan pilot, tanpa membuka ulang pesanan secara diam-diam.
 
-Hasil:
-- Rust workspace dan frontend Bun/React, routing API, konfigurasi tervalidasi, SQLx, migrasi, dan health endpoints.
-- Frontend statis disajikan oleh Rust; Compose development serta rancangan image rilis.
-- CI untuk formatting, lint/typecheck, unit test, dan integrasi PostgreSQL.
+### Prioritas 4 — Inventori dan pelaporan lanjutan
 
-Selesai ketika: checkout baru dapat dibangun dan dijalankan mengikuti README; database bersih dapat dimigrasikan; kegagalan konfigurasi menghasilkan pesan yang jelas.
+- Banyak gudang, transfer stok, konversi satuan, batch/serial/kedaluwarsa, dan reservasi bila diperlukan usaha sasaran.
+- Perluasan cakupan kas/bank, rekonsiliasi bank, dan pembagian aktivitas arus kas per bagian jurnal.
+- Pengelompokan laporan serta proses tahun buku sesuai kebutuhan pengguna, tanpa mengubah ledger historis yang telah diposting.
 
-### Tahap 2 — Identitas, perusahaan, dan master data (2–3 minggu)
+Integrasi, HR/payroll, produksi, POS, multi-company/multicurrency, SSO, dan plugin tetap menjadi perluasan jangka berikutnya yang memerlukan lingkup tersendiri. Tidak ada jadwal rilis atau SLA yang dijanjikan dalam rencana ini.
 
-Hasil:
-- Setup admin/perusahaan, login/logout, session revocation, permission, dan audit dasar.
-- CRUD pelanggan, produk, satuan, gudang utama, periode, dan bagan akun.
-- Komponen UI bersama untuk form, tabel, pagination, validasi, dan penanganan error.
+## 7. Skenario penerimaan yang harus tetap terjaga
 
-Selesai ketika: role yang tidak berwenang gagal mengakses API meskipun memanggil endpoint langsung; data master memiliki aturan unik dan tidak bisa dihapus bila sudah digunakan.
+Gunakan transaksi tanpa pajak dan periksa melalui dokumen, mutasi, serta jurnal:
 
-### Tahap 3 — Mesin ledger dan stok (3–4 minggu)
+1. Saldo awal 10 unit × Rp50.000, penjualan 2 unit × Rp80.000, pengiriman, invoice Rp160.000, dan pembayaran Rp60.000 + Rp100.000 harus menghasilkan stok 8 unit senilai Rp400.000, piutang nol, kas masuk Rp160.000, pendapatan Rp160.000, serta HPP Rp100.000.
+2. Pesanan 10 unit yang baru dikirim 4 unit dan diinvoiskan 2 unit harus menyimpan sisa kirim 6 unit serta 2 unit terkirim yang masih siap ditagih. Posting berikutnya memakai pesanan yang sama dan tidak menagih jumlah yang sama dua kali.
+3. PO 10 unit yang diterima 4 unit dan ditagih 2 unit harus mempertahankan sisa penerimaan 6 unit dan 2 unit diterima yang belum ditagih, dengan persediaan, kewajiban sementara, serta utang supplier yang sesuai.
+4. Tagihan supplier Rp180.000 yang dibayar Rp60.000 lalu Rp120.000 harus berakhir tanpa sisa utang. Pembalikan yang diizinkan harus memulihkan saldo melalui jurnal lawan dan menyimpan riwayat pembayaran asal.
+5. Tagihan Rp180.000 yang telah dibayar Rp120.000 lalu memperoleh kredit retur Rp80.000 harus menjadi nilai bersih Rp100.000, refund Rp20.000, pembayaran bersih Rp100.000, dan sisa nol. Arah kas mengikuti retur pelanggan atau supplier; pemenuhan pesanan asal tidak dibuka ulang.
+6. Laba rugi harus mencakup seluruh akun pendapatan/beban, neraca harus seimbang dengan laba akumulasi, dan saldo awal + masuk − keluar Kas 1100 harus sama dengan saldo akhirnya. Akun tambahan, pembalikan, periode kosong, serta batas hari zona waktu tetap diperhitungkan.
+7. Retry dengan kunci yang sama, versi lama, perebutan stok terakhir, jumlah berlebih, dan periode tertutup tidak boleh membuat transaksi ganda atau mutasi parsial.
+8. Backup yang dipulihkan ke lingkungan terpisah harus mempertahankan dokumen, alokasi, retur, pembayaran, audit, stok, dan saldo ledger yang sesuai.
 
-Hasil:
-- Infrastruktur transaksi, idempotensi, penomoran, dan audit atomik.
-- Mesin jurnal seimbang, posting/reversal, periode tutup, serta saldo awal.
-- Movement ledger, penerimaan, adjustment, moving weighted average, dan kartu stok.
+Skenario ini menjadi acuan regresi, bukan pernyataan bahwa seluruh skenario pilot, performa, dan kegagalan produksi telah diuji. Bukti pengujian aktual mengikuti [status implementasi](./IMPLEMENTATION_STATUS.md).
 
-Selesai ketika: tes concurrent mutation tidak menghasilkan stok negatif atau saldo hilang; saldo stok cocok dengan movement ledger; jurnal tidak seimbang dan posting pada periode tertutup selalu ditolak.
+## 8. Kriteria rilis stabil
 
-### Tahap 4 — Order dan pengiriman (2–3 minggu)
+- Alur utama, hak akses, idempotensi, pembulatan, konkurensi, upgrade, dan backup/restore mempunyai hasil pengujian yang dapat diperiksa.
+- Tidak ada bug diketahui yang menggandakan transaksi, merusak saldo, membocorkan akses, atau kehilangan data tanpa prosedur pemulihan.
+- Instalasi bersih serta restart mempertahankan data; tidak ada kredensial default atau keharusan mengedit source untuk operasi biasa.
+- Dokumentasi mencakup konfigurasi produksi/TLS, pengelolaan secrets, migrasi, pemulihan, serta batas fitur yang masih ada.
+- Uji performa menggunakan dataset dan perangkat yang dicatat. Sasaran waktu respons ditetapkan dari pengukuran workload, bukan dianggap sebagai SLA sebelum ada bukti.
+- Pengguna pilot dapat menyelesaikan alur bisnis utama berdasarkan panduan dan memahami laporan, koreksi, serta batas fitur.
 
-Hasil:
-- Sales order draft/confirm/cancel serta pengiriman penuh.
-- Posting pengiriman mengurangi stok dan membukukan HPP dengan biaya historis.
-- Pemeriksaan stok, idempotensi pengiriman, dan pembatasan pembatalan berantai.
-
-Selesai ketika: dua pengiriman yang berebut stok terakhir menghasilkan hanya transaksi yang valid; retry tidak menggandakan pengiriman, movement, atau jurnal.
-
-### Tahap 5 — Invoice, pembayaran, dan laporan (3–4 minggu)
-
-Hasil:
-- Invoice dari pengiriman, pembayaran sebagian/penuh, dan reversal yang terhubung.
-- Piutang, jurnal umum, buku besar, neraca saldo, pencarian/filter, CSV, dan cetak invoice.
-- Uji integrasi seluruh alur bisnis melalui API dan pengujian browser untuk alur pengguna utama.
-
-Selesai ketika: contoh bisnis pada bagian 7 lulus; piutang cocok dengan ledger akuntansi; dokumen tidak dapat ditagih atau dibayar dua kali melalui request berulang.
-
-### Tahap 6 — Backup, upgrade, dan ketahanan (2–3 minggu)
-
-Hasil:
-- CLI backup/restore atau wrapper terdokumentasi, migrasi upgrade, graceful shutdown, dan observability dasar.
-- Pengujian kehilangan koneksi database, restart saat posting, timeout, dan dua instance aplikasi dengan job executor.
-- Jika ada pekerjaan latar belakang pada rilis ini: claim/lease, retry terbatas, pencatatan kegagalan, dan pemulihan job setelah crash.
-- Pemeriksaan keamanan endpoint, audit dependensi, serta uji beban pada perangkat yang dicatat spesifikasinya.
-
-Selesai ketika: backup dapat dipulihkan pada instalasi baru, jumlah/saldo bisnis cocok, dan upgrade dari kandidat rilis sebelumnya berhasil dengan data tetap konsisten.
-
-### Tahap 7 — Pilot dan rilis Community v0.1 (2–3 minggu)
-
-Hasil:
-- Panduan instalasi, penggunaan dasar, akses jaringan/TLS, backup, upgrade, troubleshooting, dan pelaporan bug.
-- Image dengan tag versi tetap, release notes, checksum artefak, serta contoh konfigurasi.
-- Pilot pada instalasi baru dengan pengguna sasaran; masalah yang merusak transaksi, hak akses, atau pemulihan data diselesaikan sebelum rilis.
-
-Selesai ketika: pengguna pilot dapat menyelesaikan alur utama berdasarkan dokumentasi, seluruh kriteria rilis terpenuhi, dan batas fitur v0.1 dinyatakan pada release notes.
-
-## 7. Skenario penerimaan end-to-end
-
-Gunakan skenario tanpa pajak untuk memeriksa alur minimum:
-
-1. Admin membuat perusahaan IDR, gudang utama, akun kas/bank, piutang, persediaan, modal awal, pendapatan, dan HPP.
-2. Finance memposting saldo awal 10 unit barang dengan biaya Rp50.000/unit: debit persediaan Rp500.000 dan kredit modal awal Rp500.000.
-3. Sales membuat dan mengonfirmasi order 2 unit dengan harga Rp80.000/unit.
-4. Warehouse memposting pengiriman penuh. Stok menjadi 8 unit; debit HPP Rp100.000 dan kredit persediaan Rp100.000.
-5. Finance memposting invoice Rp160.000: debit piutang dan kredit pendapatan dengan nilai yang sama.
-6. Finance mencatat pembayaran Rp60.000 lalu Rp100.000: kas bertambah Rp160.000, piutang menjadi nol, invoice lunas.
-7. Laporan menunjukkan persediaan Rp400.000, kas Rp160.000, pendapatan Rp160.000, dan HPP Rp100.000. Total debit dan kredit neraca saldo masing-masing Rp660.000.
-8. Request posting/pembayaran yang diulang dengan idempotency key sama mengembalikan hasil transaksi asal, tanpa menambah dokumen atau saldo.
-9. Percobaan pengiriman melebihi stok dan posting ke periode tertutup ditolak tanpa mutasi parsial.
-10. Restore backup ke instance baru menghasilkan dokumen, audit, stok, dan neraca saldo yang sama.
-
-Tambahkan skenario uji tersendiri untuk penerimaan berbiaya berbeda, pembulatan biaya rata-rata, saldo nol, reversal, request bersamaan, dan crash sebelum/sesudah commit.
-
-## 8. Kriteria rilis dan prioritas berikutnya
-
-v0.1 dapat dirilis jika:
-
-- Alur penerimaan end-to-end, tes invariant, permission, concurrency, backup/restore, dan upgrade lulus.
-- Tidak ada bug diketahui yang menyebabkan transaksi ganda, jurnal tidak seimbang, kebocoran akses, atau kehilangan data tanpa penjelasan pemulihan.
-- Instalasi bersih dan restart mempertahankan data; tidak ada kredensial default atau keharusan mengedit source code.
-- Dokumentasi menjelaskan batas produk, konfigurasi produksi, pemulihan, dan pengelolaan secrets.
-- Performa diuji dengan dataset serta hardware yang dilaporkan. Target sementara P95 baca <300 ms dan posting <500 ms dipakai sebagai sasaran pengukuran, bukan SLA atau penghalang rilis tanpa melihat workload.
-
-Urutan pengembangan purchasing saat ini: pembayaran supplier sebagian/penuh dan koreksinya → umur utang dengan kelompok hari serta chart pembayaran → retur serta partial delivery → multiwarehouse → lampiran dan impor CSV dengan dry run → laporan keuangan lebih lengkap. Supplier, PO, penerimaan penuh, tagihan, dan ringkasan jatuh tempo telah diimplementasikan sebagai perluasan baseline. Urutan akhir mengikuti kebutuhan pengguna pilot.
-
-## 9. Pekerjaan pertama yang siap dieksekusi
-
-1. Dokumentasikan keputusan lingkup dan contoh posting pada ADR.
-2. Buat Rust workspace, frontend React/TypeScript dengan Bun, dan migrasi awal PostgreSQL.
-3. Buat Compose lokal dengan app + PostgreSQL serta health checks.
-4. Tambahkan CI build/lint/test dan cara menjalankan aplikasi pada README.
-5. Implementasikan setup admin/perusahaan sebagai fitur vertikal pertama, lalu login dan permission.
-
-Dokumen ini tetap menjadi rencana acuan. Implementasi aktual, cakupan pengujian, dan batas baseline dicatat terpisah dalam [status implementasi](./IMPLEMENTATION_STATUS.md).
-
-Pembaruan bertahap 19 Oktober 2026: supplier, PO, penerimaan penuh, koreksi penerimaan aman, tagihan supplier/jatuh tempo, serta chart status PO dan utang sudah diimplementasikan sebagai perluasan Community. Finance/Admin dapat mencatat satu tagihan penuh per penerimaan aktif, membaliknya dengan alasan, lalu menerbitkan pengganti tanpa menghapus sejarah. Tagihan memakai snapshot penerimaan dan jurnal debit barang diterima belum ditagih/kredit utang supplier, tanpa perubahan stok atau kas. Tanggal invoice tidak melakukan backdating jurnal; periode saat ini harus terbuka. Tagihan aktif mencegah koreksi penerimaannya sampai tagihan dibalik terlebih dahulu. Pembayaran sebagian/penuh, koreksi pembayaran, umur utang per kelompok hari, dan chart pembayaran tetap pekerjaan berikutnya. Baca [panduan pembelian](./PURCHASING.md) untuk lingkup dan batas tahap ini.
+Lima perluasan operasional kini sudah masuk implementasi Community. Fokus berikutnya adalah membuat pengguna dapat memindahkan data, menjalankan alur yang tersedia, dan mengoperasikannya secara konsisten sebelum memperluas domain lagi.

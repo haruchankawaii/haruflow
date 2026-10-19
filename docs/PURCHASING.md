@@ -1,81 +1,105 @@
-# Pembelian, penerimaan, dan tagihan supplier
+# Pembelian, utang, dan pembayaran supplier
 
-Pesanan pembelian atau purchase order (PO) mencatat barang yang ingin dibeli dari supplier, jumlahnya, biaya beli yang disepakati, dan perkiraan kedatangan. Biaya beli diisi sendiri; harga jual dari katalog bukan biaya pembelian.
+Alur pembelian adalah **PO → penerimaan barang → tagihan supplier → pembayaran → lunas**. Penerimaan dan tagihan dapat dibuat sebagian, sehingga jumlah yang belum diterima atau belum ditagih tetap terlacak. Retur memakai dokumen dan kredit tersendiri.
 
-Modul menyediakan supplier, PO, penerimaan barang penuh dari PO, serta tagihan supplier dan jatuh tempo. Membuat atau mengonfirmasi PO belum menambah stok, membukukan utang, atau mengeluarkan kas. Penerimaan menambah persediaan dan kewajiban barang diterima belum ditagih; tagihan memindahkannya ke utang supplier. Pembayaran supplier belum tersedia. Nilai PO dikonfirmasi yang belum diterima masih merupakan komitmen pembelian.
+PO mencatat jumlah serta biaya yang disepakati, bukan harga jual katalog. Membuat atau mengonfirmasi PO belum mengubah stok, utang, atau kas. Penerimaan menambah persediaan dan kewajiban barang diterima belum ditagih; tagihan memindahkan kewajiban itu ke utang supplier; pembayaran mengurangi utang dan Kas 1100.
 
 ## Hak akses dan supplier
 
-Semua pengguna yang sudah masuk dapat membaca menu **Pembelian**, chart, tagihan, riwayat penerimaan, dan jurnal terkait. Administrator dan Warehouse dapat mengelola supplier, PO, penerimaan, serta koreksi penerimaan yang memenuhi syarat. Administrator dan Finance dapat mencatat serta membalik tagihan supplier; Warehouse tidak dapat melakukannya. Role pembelian tersendiri belum ditambahkan.
+Semua pengguna yang sudah masuk dapat membaca Pembelian, chart, riwayat, dan jurnal. Administrator dan Warehouse mengelola supplier, PO, penerimaan, serta koreksi penerimaan. Administrator dan Finance mencatat atau membalik tagihan, pembayaran, dan retur supplier. Role pembelian tersendiri belum tersedia.
 
-Pada tab Supplier, isi kode unik, nama, dan kontak yang diperlukan. Kode dinormalisasi menjadi huruf besar. Supplier dapat dinonaktifkan agar tidak dipakai pada PO baru atau perubahan draf. Riwayat supplier dan PO tetap disimpan; penonaktifan tidak membatalkan PO lama. Aktifkan kembali supplier sebelum melanjutkan konfirmasi drafnya.
+Pada tab **Supplier**, isi kode unik, nama, dan kontak yang diperlukan. Kode dinormalisasi menjadi huruf besar. Supplier aktif diperlukan saat membuat atau mengubah draf PO dan saat konfirmasi. Penonaktifan tidak mengubah riwayat: PO yang sudah dikonfirmasi tetap dapat diterima, ditagih, dan dibayar sesudah supplier nonaktif.
 
-## Alur PO
+## Membuat dan memenuhi PO
 
-1. Buat PO dengan supplier aktif dan satu atau lebih produk barang dari katalog. Produk jasa belum didukung pada alur pembelian ini.
-2. Masukkan jumlah dan biaya beli per unit. Perkiraan kedatangan serta catatan bersifat opsional; tanggal ini bukan tanggal posting akuntansi atau jatuh tempo pembayaran.
-3. Simpan sebagai draf, lalu tinjau rincian. Draf dapat diubah. Nomor otomatis memakai urutan `PO-000001` dan seterusnya; perubahan awalan nomor penjualan tidak memengaruhinya. Nomor yang terlewati tidak dipakai ulang.
-4. Konfirmasi setelah rincian disetujui. PO dikonfirmasi tidak dapat diedit. Nama/kode supplier dan SKU/nama/satuan barang pada dokumen merupakan snapshot agar penggantian nama katalog tidak mengubah dokumen historis. Menyimpan ulang draf memperbarui snapshot dari master data saat itu.
-5. Terima barang melalui **Tinjau penerimaan** ketika seluruh barang benar-benar datang. Jika rencana berubah sebelum diterima, batalkan dengan alasan 3–1.000 karakter. PO dibatalkan tidak dapat dibuka kembali. PO dengan penerimaan aktif tidak dapat dibatalkan sebelum penerimaannya dibalik dengan aman.
+1. Buat PO dengan supplier aktif dan 1–100 produk barang yang berbeda. Pembelian jasa belum tersedia.
+2. Isi jumlah dan biaya per unit. Perkiraan kedatangan serta catatan bersifat opsional; perkiraan ini bukan tanggal posting atau jatuh tempo.
+3. Simpan sebagai draf dan tinjau rincian. Draf dapat diubah; nomor otomatis memakai urutan `PO-000001` dan seterusnya.
+4. Konfirmasi kesepakatan. Isi PO kemudian dikunci. Kode/nama supplier, SKU/nama/satuan barang, jumlah, serta biaya tersimpan pada dokumen; perubahan nama katalog tidak mengubah riwayat.
+5. Buka **Tinjau penerimaan**, isi jumlah yang benar-benar datang, dan isi 0 untuk melewati barang yang belum datang. Referensi surat jalan bersifat opsional. Terima seluruh sisa bila semuanya telah tiba.
 
-Versi dokumen mencegah perubahan pengguna lain tertimpa. Jika muncul konflik versi, muat ulang dokumen dan periksa perubahan sebelum mencoba lagi. Idempotency key pada penulisan mencegah pengulangan request yang sama membuat supplier/PO atau transisi tambahan. Alasan pembatalan dan audit tetap tersimpan.
+Kolom **Diterima / sisa** memperlihatkan kemajuan tiap baris. Contoh PO 10 unit: menerima 4 unit membuat status **Diterima sebagian**, dengan sisa 6 unit pada PO yang sama. Sesudah semua baris lengkap, status menjadi **Diterima**. Setiap penerimaan memiliki dokumen `GR-000001` tersendiri dan tetap terlihat dalam riwayat.
 
-Kuantitas mendukung tiga desimal, biaya unit empat desimal, dan total uang dua desimal. Nilai setiap baris dihitung dari jumlah × biaya, dibulatkan ke dua desimal dengan nilai tengah menjauhi nol, lalu dijumlahkan. Contoh `2,5 × Rp60.000,1234` menghasilkan total **Rp150.000,31**. Nilai harus positif; hasil pembulatan baris nol ditolak. Satu PO berisi 1–100 produk berbeda, kuantitas/biaya unit paling besar 1 miliar, serta total baris/dokumen paling besar Rp1 triliun.
+PO yang belum mempunyai penerimaan aktif dapat dibatalkan dengan alasan 3–1.000 karakter. PO dibatalkan tidak dapat dibuka kembali. PO dengan penerimaan aktif tidak dapat langsung dibatalkan; penerimaannya harus memenuhi syarat pembalikan terlebih dahulu.
 
-Daftar PO menampilkan paling banyak 500 dokumen terbaru; pencarian, filter, dan ekspor CSV memakai daftar tersebut. Chart serta ringkasan nominal dihitung dari **seluruh PO** dalam satu snapshot database. Detail PO tetap dapat dibaca berdasarkan ID, termasuk lewat tautan asal pada pergerakan stok. Supplier dan barang pada dokumen tetap memiliki referensi historis; jenis barang tidak dapat diubah menjadi jasa setelah dipakai.
+Versi dokumen mencegah perubahan pengguna lain tertimpa. Jika muncul konflik, muat ulang dan tinjau data terbaru. Kunci idempotensi pada penulisan mencegah request yang sama membuat transaksi tambahan. Nomor yang terlewati tidak dipakai ulang.
 
-## Penerimaan penuh dan pembukuan
+## Jumlah, biaya, dan pembulatan
 
-Pilih PO dikonfirmasi, tinjau jumlah dan biaya seluruh baris, lalu isi referensi surat jalan bila ada. Jumlah dan biaya berasal dari PO tersimpan; tahap ini belum menerima sebagian, mengubah biaya saat menerima, menambah ongkos, atau menghitung pajak. Satuan setiap barang harus tetap sama dengan snapshot PO. Jika satuan katalog berubah, seluruh penerimaan ditolak agar tidak terjadi konversi diam-diam; periksa perubahan katalog atau buat PO pengganti dengan satuan yang benar. Supplier yang belakangan dinonaktifkan tetap dapat memenuhi PO yang sebelumnya sudah dikonfirmasi.
+Kuantitas mendukung tiga desimal, biaya unit empat, dan uang dua desimal. Jumlah dan biaya unit paling besar 1 miliar; nilai baris/dokumen paling besar Rp1 triliun. Total PO dihitung dari jumlah × biaya per baris, dibulatkan ke dua desimal dengan nilai tengah menjauhi nol, lalu dijumlahkan. Contoh `2,5 × Rp60.000,1234` menghasilkan **Rp150.000,31**.
 
-Posting penerimaan menyimpan seluruh perubahan secara atomik:
+Penerimaan sebagian memakai pembulatan kumulatif. Bagian terakhir mengambil sisa nilai baris agar seluruh penerimaan aktif tepat sama dengan nilai PO ketika jumlahnya lengkap. Misalnya 3 unit dengan biaya Rp3,3333 memiliki total Rp10,00; penerimaan 1 unit per dokumen bernilai Rp3,33, Rp3,34, lalu Rp3,33. Penagihan sebagian membagi nilai penerimaan tersimpan dengan prinsip yang sama.
 
-- Dokumen penerimaan bernomor `GR-000001`, snapshot barang/biaya, dan audit.
-- Mutasi stok masuk, nilai persediaan, dan biaya rata-rata baru untuk setiap barang.
-- Jurnal debit Persediaan (1300) dan kredit **Barang diterima belum ditagih** sesuai total PO.
-- PO berstatus **Diterima**, dengan tepat satu penerimaan aktif.
+Setiap baris yang diproses harus bernilai positif setelah pembulatan. Jika masih ada jumlah tersisa, sistem menyisakan minimal Rp0,01 untuk bagian terakhir. Jumlah yang terlalu kecil dapat ditolak; perbesar jumlah yang diproses atau isi 0 untuk melewati barang tersebut. Sistem menolak penerimaan atau penagihan melebihi sisa, produk/baris dari dokumen lain, serta baris ganda.
 
-Kas, pendapatan, dan HPP tidak berubah ketika menerima barang. Contoh: 3 unit × Rp60.000 menambah persediaan serta kewajiban sementara sebesar Rp180.000. Kewajiban ini belum merupakan tagihan supplier dengan nomor invoice dan tanggal jatuh tempo.
+## Pembukuan penerimaan
 
-Akun penampung tersebut merupakan akun kontrol sistem. Migrasi memilih kode bebas mulai 2110–2199; bila semuanya terpakai, dipilih kode sepuluh digit yang belum dipakai. Akun pengguna yang sudah ada tidak diambil alih atau diubah. Periksa kode aktual pada Daftar akun. Akun ini tidak dapat diisi melalui jurnal manual atau saldo awal, agar saldonya cocok dengan penerimaan aktif yang belum ditagih.
+Jumlah dipilih dari sisa PO; biaya dan satuan mengikuti snapshot PO. Biaya tidak diubah saat menerima barang. Jika satuan katalog sekarang berbeda, penerimaan ditolak agar tidak terjadi konversi diam-diam. Harga invoice yang berbeda, ongkir, pajak, dan biaya tambahan belum mempunyai alur alokasi tersendiri.
 
-Penerimaan dan koreksi memakai waktu posting saat ini, zona waktu perusahaan, serta pemeriksaan periode akuntansi. Periode tertutup menolak posting baru. Request berulang dengan idempotency key sama mengembalikan hasil semula tanpa penerimaan atau jurnal tambahan.
+Penerimaan menyimpan dokumen GR, mutasi masuk, jumlah/nilai persediaan, biaya rata-rata baru, jurnal, perubahan kemajuan PO, dan audit secara atomik. Jurnalnya **debit Persediaan 1300 / kredit Barang diterima belum ditagih** sebesar nilai bagian yang diterima. Kas, pendapatan, dan HPP tidak berubah.
 
-## Koreksi penerimaan
+Akun penampung penerimaan merupakan akun kontrol sistem: kode bebas 2110–2199, atau kode sepuluh digit kosong bila rentang itu penuh. Akun pengguna tidak diambil alih; periksa kode aktual pada Daftar akun. Akun tersebut tidak dapat diisi melalui jurnal manual atau saldo awal. Penerimaan stok manual tetap mengkredit modal awal; gunakan alur PO untuk pembelian yang menimbulkan kewajiban supplier.
 
-Pilih **Balikkan penerimaan** pada riwayat PO, tinjau dampaknya, dan isi alasan 3–1.000 karakter. Jika penerimaan sudah ditagih, balikkan tagihan supplier aktif terlebih dahulu. Pembalikan penerimaan hanya tersedia bila penerimaan masih aktif, tidak memiliki tagihan aktif, periode terbuka, dan **setiap barang** belum memiliki mutasi stok lanjutan. Mutasi yang kemudian sudah dibalik tetap dihitung sebagai riwayat lanjutan. Pemeriksaan juga mencocokkan jumlah, nilai, serta biaya rata-rata dengan snapshot penerimaan.
+## Tagihan supplier sebagian atau penuh
 
-Bila memenuhi syarat, pembalikan memulihkan jumlah/nilai/biaya rata-rata sebelumnya secara persis, menambah mutasi dan jurnal lawan, serta mengembalikan PO ke Dikonfirmasi. Dokumen asal, alasan, jurnal asal/pembalik, dan semua riwayat tetap tersimpan. Seluruh barang dikoreksi bersama; jika satu barang tidak memenuhi syarat, tidak ada perubahan parsial.
+Buka **Pembelian → Tagihan → Catat tagihan**, atau mulai dari penerimaan tertentu pada rincian PO:
 
-PO tersebut dapat diterima ulang sehingga muncul dokumen GR baru. Isi PO dikonfirmasi tetap terkunci: bila biaya atau jumlah PO salah, balik penerimaan bila aman, batalkan PO, lalu buat PO pengganti. Jika pembalikan diblokir oleh mutasi lanjutan, periksa stok, HPP, dan kewajiban terkait sebelum menentukan koreksi. Penyesuaian stok saja tidak otomatis menghapus kewajiban penerimaan PO.
+1. Pilih penerimaan aktif yang masih mempunyai jumlah belum ditagih. PO boleh berstatus Diterima sebagian atau Diterima. Satu penerimaan dapat memiliki beberapa tagihan; setiap baris hanya boleh ditagih sampai jumlah yang diterima.
+2. Isi jumlah yang ditagih pada setiap baris. Barang, satuan, biaya, dan nilai alokasi berasal dari snapshot penerimaan. Mutasi stok setelah penerimaan tidak menghalangi penagihan.
+3. Isi nomor invoice supplier, tanggal invoice, jatuh tempo, dan catatan opsional. Nomor invoice berisi 1–100 karakter dan harus unik untuk supplier yang sama di antara tagihan yang belum dibatalkan, termasuk yang sudah lunas. Spasi tepi dihapus dan huruf besar/kecil tidak dibedakan. Nomor sama pada supplier berbeda diperbolehkan.
+4. Gunakan tanggal kalender `YYYY-MM-DD`, tahun 0001–9999. Invoice tidak boleh melewati hari ini pada zona waktu perusahaan; jatuh tempo tidak boleh sebelum invoice. Invoice lampau boleh dicatat, tetapi jurnal tetap memakai waktu posting saat ini pada periode terbuka.
+5. Tinjau dan posting. Nomor internal memakai urutan `PB-000001`, terpisah dari nomor invoice supplier. Riwayat penerimaan menautkan seluruh tagihan aktifnya.
 
-## Tagihan supplier dan jatuh tempo
+Jurnal tagihan adalah **debit Barang diterima belum ditagih / kredit Utang supplier** sebesar bagian yang ditagih. Stok, biaya rata-rata, kas, pendapatan, dan HPP tidak berubah. Status pemenuhan PO juga tidak berubah karena penagihan.
 
-Pada tab **Tagihan**, pilih **Catat tagihan** atau mulai dari penerimaan aktif pada rincian PO:
+Akun kontrol Utang supplier memakai kode kosong 2200–2299 atau kode sepuluh digit kosong; akun pengguna dan akun penampung penerimaan tidak digunakan ulang. Jurnal manual dan saldo awal tidak dapat mengisi akun ini. Pembukaan utang historis per supplier belum tersedia.
 
-1. Pilih penerimaan aktif dari PO berstatus Diterima yang belum memiliki tagihan aktif. Satu penerimaan hanya ditagih penuh satu kali. Barang, jumlah, satuan, biaya, dan total berasal dari snapshot penerimaan; tidak diisi ulang atau diubah saat penagihan. Mutasi stok setelah penerimaan tidak menghalangi penagihan, dan supplier yang sudah nonaktif tetap dapat ditagih atas barang yang telah diterima.
-2. Isi nomor invoice supplier, tanggal invoice, tanggal jatuh tempo, dan catatan opsional. Nomor invoice berisi 1–100 karakter; kombinasi supplier dan nomor invoice aktif harus unik setelah spasi tepi dihapus dan tanpa membedakan huruf besar/kecil. Misalnya `INV-123` dan ` inv-123 ` milik supplier yang sama dianggap sama. Nomor yang sama pada supplier berbeda diperbolehkan.
-3. Tanggal menggunakan kalender `YYYY-MM-DD`, tahun 0001–9999. Tanggal invoice tidak boleh melewati hari ini menurut zona waktu perusahaan; jatuh tempo tidak boleh sebelum tanggal invoice. Invoice bertanggal lampau boleh dicatat, tetapi **jurnal tetap diposting saat ini** dan hanya pada periode terbuka. Tanggal invoice tidak membuat backdating jurnal atau membuka periode lama.
-4. Tinjau lalu posting. Nomor internal memakai `PB-000001` dan urutan berikutnya, terpisah dari nomor invoice supplier. Nomor terlewati tidak dipakai ulang. Dokumen, jurnal, perubahan versi PO, audit, dan hasil idempotensi disimpan bersama.
+Contoh: PO 10 unit, diterima 4, lalu ditagih 2. Sisa penerimaan PO masih 6 unit; dari 4 unit yang sudah diterima masih ada 2 unit belum ditagih. Menerima atau menagih bagian selanjutnya tidak memerlukan PO baru.
 
-Jurnal tagihan adalah **debit Barang diterima belum ditagih / kredit Utang supplier** sebesar total penerimaan. Contoh penerimaan Rp180.000 menghasilkan tagihan Rp180.000: kewajiban sementara berkurang Rp180.000 dan utang supplier bertambah Rp180.000. Stok, nilai persediaan, biaya rata-rata, kas, pendapatan, serta HPP tetap sama. Status PO tetap Diterima.
+## Pembayaran supplier
 
-Akun Utang supplier dibuat sebagai akun kontrol sistem pada kode kosong 2200–2299; bila rentang penuh, sistem memilih kode sepuluh digit kosong. Akun yang telah ada dan akun penampung penerimaan tidak digunakan ulang. Periksa kode aktual di Daftar akun. Akun ini juga dilindungi dari jurnal manual dan saldo awal, karena saldonya harus cocok dengan tagihan aktif. Pembukaan utang historis per supplier belum tersedia.
+Pada detail tagihan, buka bagian **Pembayaran supplier**. Isi nominal positif sampai sisa utang dan referensi opsional, lalu catat pembayaran. Pembayaran dapat sebagian atau penuh, dengan dua desimal dan maksimal Rp1 triliun. Saldo Kas 1100 harus cukup. Aplikasi mencatat dana yang sudah dibayarkan; tidak melakukan transfer bank otomatis.
 
-Status tagihan aktif adalah **Belum dibayar**. Status jatuh tempo membedakan **Belum jatuh tempo**, **Jatuh tempo hari ini**, dan **Lewat jatuh tempo** menurut hari perusahaan. Saat ini nominal terbayar selalu nol dan sisa utang sama dengan total tagihan aktif; kas belum dapat dibayarkan dari modul ini. Daftar, pencarian, filter, dan CSV memakai maksimal 500 tagihan terbaru, sedangkan ringkasan/chart dan utang per supplier memakai seluruh tagihan dalam satu snapshot database.
+Posting menyimpan dokumen `SP-000001`, jurnal **debit Utang supplier / kredit Kas 1100**, pembaruan saldo/status tagihan, dan audit bersama-sama. Stok dan beban tidak berubah. Status tagihan adalah **Belum dibayar**, **Dibayar sebagian**, **Lunas**, atau **Dibatalkan**. Contoh tagihan Rp180.000 dibayar Rp60.000 menyisakan utang Rp120.000; membayar sisanya membuat tagihan lunas.
 
-## Koreksi tagihan
+Pembayaran berlebih, saldo kas tidak cukup, versi lama, dan penggunaan ulang kunci untuk request berbeda ditolak. Riwayat pembayaran serta jurnal asal dapat dibuka dari tagihan.
 
-Administrator atau Finance dapat memilih **Tinjau pembatalan**, memberi alasan 3–1.000 karakter, lalu **Batalkan tagihan** selama periode saat ini terbuka. Versi dokumen diperiksa untuk mencegah koreksi terhadap data lama. Pembalikan membuat jurnal lawan persis dari jurnal asal: debit Utang supplier / kredit Barang diterima belum ditagih. Tagihan menjadi **Dibatalkan** (`void`) dengan sisa utang nol; dokumen asal, snapshot penerimaan, alasan, dan jurnal asal/pembalik tetap tersimpan. Tidak ada perubahan stok atau kas.
+Pembayaran yang salah dibalik dengan alasan 3–1.000 karakter pada periode terbuka. Pembalikan menambah jurnal lawan persis, mengembalikan kas, dan membuka kembali sisa utang yang sesuai. Pembayaran asal tidak dihapus. Retur aktif pada tagihan harus dibalik terlebih dahulu sebelum pembayaran asal dapat dibalik.
 
-Setelah tagihan dibalik, penerimaan dapat ditagih ulang dengan dokumen PB baru; nomor invoice supplier yang telah dibatalkan boleh digunakan lagi. Jika yang salah hanya nomor/tanggal/catatan tagihan, buat tagihan pengganti atas penerimaan yang sama. Jika jumlah/biaya penerimaan yang salah, pembalikan tagihan lebih dahulu tidak otomatis membolehkan koreksi stok: penerimaan tetap harus memenuhi syarat tanpa mutasi lanjutan. Pengulangan request posting atau pembalikan dengan kunci idempotensi yang sama mengembalikan hasil semula, bukan dokumen tambahan.
+## Retur dan nilai tagihan bersih
 
-## Membaca chart pembelian
+Pilih **Retur ke supplier** pada detail tagihan untuk mencatat sebagian atau seluruh barang yang belum pernah diretur. Stok saat ini harus cukup dan satuan harus cocok. Kredit mengikuti nilai tagihan asal; stok keluar memakai biaya rata-rata saat retur. Selisih dicatat pada akun kontrol beban **Selisih nilai retur pembelian**, memakai kode kosong 5900–5999 atau kode sepuluh digit kosong tanpa mengambil alih akun pengguna.
 
-Chart PO menunjukkan jumlah seluruh PO menurut status Draf, Dikonfirmasi, Diterima, dan Dibatalkan, beserta nominal tersimpan. **Menunggu penerimaan** adalah total PO Dikonfirmasi; **Diterima belum ditagih** adalah total penerimaan aktif yang belum memiliki tagihan aktif. **Utang supplier** berasal dari seluruh tagihan aktif. Penagihan memindahkan nominal dari Diterima belum ditagih ke Utang supplier, sedangkan jumlah PO Diterima tetap sama. Pembalikan tagihan memindahkannya kembali ke kewajiban sementara; pembalikan penerimaan yang aman mengembalikan PO ke Dikonfirmasi.
+**Nilai bersih = total awal − kredit retur aktif. Sisa utang = nilai bersih − pembayaran bersih.** Bila pembayaran yang sudah ada melebihi nilai bersih baru, retur mencatat kas masuk dari supplier sebesar kelebihan tersebut dan mengurangi pembayaran bersih. Konfirmasi dana aktual diperlukan sebelum posting refund. Refund tertunda atau saldo kredit lintas tagihan belum tersedia.
 
-Chart pada tab tagihan menunjukkan nominal sisa utang menurut tiga kelompok jatuh tempo. Ringkasan per supplier menampilkan jumlah tagihan aktif, total utang, dan bagian yang terlambat. Chart ini menunjukkan posisi saat ini, bukan kas keluar atau riwayat pembayaran. Tagihan yang dibatalkan tidak menambah utang atau kelompok jatuh tempo.
+Contoh tagihan Rp180.000 sudah dibayar Rp120.000, kemudian diretur Rp80.000: nilai bersih menjadi Rp100.000, supplier mengembalikan Rp20.000, pembayaran bersih menjadi Rp100.000, dan sisa utang nol. Riwayat pembayaran Rp120.000 tetap tersimpan bersama riwayat refund. Tagihan dengan nilai bersih nol dapat berstatus Lunas walaupun penyelesaiannya berasal dari kredit retur.
 
-## Tahap berikutnya
+Retur komersial tidak membuka kembali jumlah yang sudah diterima atau ditagih pada PO. Barang pengganti atau pembelian kembali dicatat melalui transaksi pengganti. Lihat [panduan retur](./RETURNS.md) untuk jurnal, persediaan, refund, dan pembalikan aman.
 
-Pembayaran supplier sebagian/penuh, koreksi pembayaran, laporan umur utang dengan kelompok hari keterlambatan, dan chart pembayaran menyusul. Penerimaan/tagihan sebagian, variasi biaya invoice, pajak, ongkos tambahan, dan retur komersial belum tersedia. Penerimaan stok manual tetap mengkredit modal awal; gunakan hanya bila memang sesuai transaksi, bukan sebagai pengganti penerimaan PO dan tagihan supplier.
+## Koreksi dan urutan ketergantungan
+
+Tagihan yang sudah diposting tidak dapat diedit atau dihapus. Jika perlu membatalkannya, balikkan **retur aktif → pembayaran aktif → tagihan**, sesuai dokumen yang ada dan syarat masing-masing. Pembalikan tagihan membuat jurnal **debit Utang supplier / kredit Barang diterima belum ditagih**, mengubah status menjadi Dibatalkan, dan memulihkan jumlah penerimaan yang dapat ditagih. Dokumen PB pengganti dapat memakai nomor invoice supplier yang sudah dibatalkan.
+
+Penerimaan dikoreksi dari riwayat PO setelah semua tagihan aktif yang menggunakannya dibalik. Setiap produk harus belum mempunyai mutasi setelah penerimaan, dan jumlah/nilai/biaya rata-rata harus cocok dengan snapshot. Mutasi yang kemudian telah dibalik tetap merupakan riwayat lanjutan. Jika satu barang gagal, seluruh pembalikan penerimaan ditolak.
+
+Pembalikan GR yang memenuhi syarat memulihkan stok dan biaya sebelumnya secara persis serta menambah jurnal/mutasi lawan. Jumlah diterima dan sisa PO dihitung ulang; PO menjadi Dikonfirmasi bila tidak ada penerimaan aktif, atau Diterima sebagian bila masih ada bagian diterima. GR asal tetap tersimpan dan bagian yang dipulihkan dapat diterima kembali melalui GR baru.
+
+Pembalikan retur barang juga memerlukan keadaan stok yang masih cocok dan tanpa mutasi berikutnya. Bila retur sebelumnya menerima refund, pembalikannya mengeluarkan kas kembali kepada supplier sehingga saldo kas harus cukup. Membalik dokumen turunan tidak menjamin mutasi stok lama dapat diputar ulang; gunakan alasan pemblokiran dan periksa riwayat sumbernya.
+
+Penerimaan, tagihan, pembayaran, retur, dan pembalikannya memakai waktu posting saat ini serta pemeriksaan periode akuntansi perusahaan. Semua perubahan satu transaksi disimpan bersama atau ditolak bersama. Penyesuaian stok tidak otomatis menghapus kewajiban supplier.
+
+## Membaca chart dan laporan
+
+Chart PO menunjukkan jumlah seluruh PO menurut status Draf, Dikonfirmasi, Diterima sebagian, Diterima, dan Dibatalkan. Nominal **Menunggu penerimaan** menghitung nilai bagian PO dikonfirmasi yang belum diterima; **Barang diterima, belum ditagih** menghitung sisa nilai penerimaan aktif yang belum ditagih; **Utang supplier** menghitung sisa setelah kredit retur serta pembayaran. Memindahkan kewajiban dari penerimaan ke tagihan tidak mengubah jumlah barang yang diterima.
+
+Chart jatuh tempo membagi sisa utang menjadi Belum jatuh tempo, Jatuh tempo hari ini, dan Lewat jatuh tempo. Bagian **Umur utang dan pembayaran** mengelompokkan sisa menjadi belum terlambat, 1–30, 31–60, 61–90, dan lebih dari 90 hari. Hari jatuh tempo belum dianggap terlambat. Perhitungan memakai hari perusahaan saat ini; pembayaran sebagian dan kredit retur mengurangi nominal yang ditampilkan. Tagihan lunas atau dibatalkan tidak menambah umur utang.
+
+Riwayat kas supplier dapat dipilih untuk 3, 6, atau 12 bulan. Angka keluar dan kembali mencakup pembayaran, pembalikan pembayaran, refund retur, serta pembalikan refund menurut bulan posting; angka neto adalah kas keluar dikurangi kas kembali. Ini bukan umur utang historis pada tanggal lampau.
+
+Daftar PO/tagihan, pencarian, filter, dan CSV daftar memakai paling banyak 500 dokumen terbaru. Ringkasan/chart dan analisis umur utang memakai seluruh dokumen. Rincian umur utang dapat difilter per kelompok dan diekspor CSV. Tautan tagihan, penerimaan, PO, dan jurnal membantu memeriksa sumber angka.
+
+Buka **Akuntansi → Laporan keuangan** untuk laba rugi, neraca, dan arus kas beserta CSV dan rincian jurnal. Laba rugi serta arus kas memakai rentang tanggal posting; neraca memakai akumulasi sampai tanggal akhir. Arus kas mencakup akun Kas 1100. Lihat [panduan laporan keuangan](./FINANCIAL_REPORTS.md).
+
+## Batas yang masih berlaku
+
+Pembelian jasa, perubahan biaya invoice terhadap penerimaan, pajak, ongkir/biaya tambahan, uang muka supplier, refund tertunda, serta kredit lintas tagihan belum mempunyai alur khusus. Instalasi tetap satu perusahaan, satu gudang logis, dan IDR. Untuk pengiriman serta invoice penjualan sebagian, baca [pemenuhan penjualan](./SALES_FULFILLMENT.md).

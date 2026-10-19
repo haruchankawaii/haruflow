@@ -9,7 +9,7 @@ Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa paja
 - Setup perusahaan dan admin, login lokal, role, pengelolaan pengguna, penggantian password, pencabutan sesi, dan audit aktivitas.
 - Profil perusahaan, kontak, zona waktu sebelum posting pertama, serta awalan nomor pesanan dan invoice yang dapat dikonfigurasi. Mata uang tetap IDR.
 - Pelanggan, produk, penerimaan stok, biaya rata-rata bergerak, penyesuaian, dan riwayat stok.
-- Sales order → konfirmasi → pengiriman penuh untuk barang → invoice → pembayaran sebagian/penuh.
+- Sales order → konfirmasi → pengiriman sebagian/penuh untuk barang → invoice sebagian/penuh → pembayaran sebagian/penuh.
 - Produk jasa/nonstok dapat ditagih langsung setelah konfirmasi, tanpa pergerakan stok; pesanan campuran tetap mengirim barang terlebih dahulu.
 - Jurnal otomatis, jurnal manual seimbang, neraca saldo, dan penutupan periode.
 - Saldo awal kas/aset/modal dan stok melalui draf, pemeriksaan, posting satu kali, serta pembalikan sebelum transaksi operasional dimulai. Lihat [panduan saldo awal](./docs/OPENING_BALANCES.md).
@@ -17,10 +17,12 @@ Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa paja
 - Pembalikan jurnal manual dan penerimaan stok terbaru yang memiliki snapshot biaya; dokumen asal dan alasan koreksi tetap tersimpan. Lihat [panduan koreksi dan chart](./docs/CORRECTIONS_AND_CHARTS.md).
 - Dashboard, pencarian, ekspor CSV, dan tampilan cetak invoice.
 - Chart pendapatan/HPP dan mutasi kas dengan pilihan 3/6/12 bulan, serta posisi invoice terbayar/piutang saat ini.
+- Laporan laba rugi, neraca, dan arus kas dengan rentang tanggal, chart, CSV, rincian akun/jurnal, serta klasifikasi arus kas beralasan. Lihat [panduan laporan](./docs/FINANCIAL_REPORTS.md).
+- Retur pelanggan dan supplier sebagian/penuh, kredit tagihan, pencatatan refund aktual, jurnal biaya persediaan, serta pembalikan beralasan. Lihat [panduan retur](./docs/RETURNS.md).
 
-Menu Pembelian menyediakan supplier, PO draf/edit/konfirmasi/pembatalan, penerimaan barang penuh, tagihan supplier beserta jatuh tempo, koreksi beralasan, serta chart status PO dan utang. Penerimaan memperbarui stok, biaya rata-rata, dan jurnal persediaan/barang diterima belum ditagih; tagihan memindahkan kewajiban tersebut ke utang supplier tanpa menambah stok lagi. Pembuatan atau konfirmasi PO belum memposting stok; lihat [panduan pembelian](./docs/PURCHASING.md).
+Menu Pembelian menyediakan supplier, PO draf/edit/konfirmasi/pembatalan, penerimaan dan penagihan sebagian/penuh, pembayaran supplier, koreksi beralasan, serta chart status PO, umur utang, dan pembayaran. Penerimaan memperbarui stok dan jurnal persediaan/barang diterima belum ditagih; tagihan memindahkan kewajiban tersebut ke utang supplier. Pembayaran mengurangi kas serta utang. Jumlah tersisa tetap terlacak; lihat [panduan pembelian](./docs/PURCHASING.md).
 
-Pembayaran supplier, penerimaan/tagihan sebagian, retur komersial, pengiriman sebagian, multicurrency, multi-company, payroll, dan integrasi pajak belum tersedia. Detail lingkup dan tahap selanjutnya ada di [rencana Community](./docs/COMMUNITY_PLAN.md).
+Uang muka, refund tertunda/kredit pelanggan, variasi harga invoice pembelian, ongkos/pajak otomatis, multicurrency, multi-company, payroll, serta integrasi bank/pajak belum tersedia. Arus kas memakai akun Kas 1100; satu jurnal yang mencampur aktivitas dapat diklasifikasikan secara manual sebagai satu kelompok. Detail lingkup ada di [status implementasi](./docs/IMPLEMENTATION_STATUS.md).
 
 ## Menjalankan dengan Docker Compose
 
