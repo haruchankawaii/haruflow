@@ -35,7 +35,7 @@ Form setup memerlukan token lokal dan membuat satu perusahaan sekaligus admin pe
 - Administrator: seluruh aksi serta manajemen pengguna.
 - Sales: pelanggan, pembuatan dan konfirmasi sales order.
 - Warehouse: produk, supplier, PO, penerimaan, adjustment, pengiriman, serta reversal pengiriman.
-- Finance: saldo awal, invoice, pembayaran/reversal, jurnal manual, dan periode pembukuan.
+- Finance: saldo awal, invoice penjualan, pembayaran/reversal pelanggan, tagihan supplier/reversal, jurnal manual, dan periode pembukuan.
 - Viewer: akses baca; tidak dapat mengubah data.
 
 Perubahan role, penonaktifan, dan reset password mencabut sesi pengguna. Admin tidak dapat menonaktifkan atau menurunkan role dirinya sendiri. Pengguna dapat mengganti password sendiri dengan password saat ini; sesi lama dicabut.
@@ -50,15 +50,18 @@ Jika lupa password semua administrator, jalankan `haruflow admin reset-password 
 4. Buat sales order lalu konfirmasi. Konfirmasi belum mereservasi stok.
 5. Posting pengiriman penuh. Aplikasi mengunci stok, menolak stok negatif, serta membukukan HPP.
 6. Buat invoice dari pengiriman lalu catat pembayaran; pembayaran sebagian didukung, uang muka dan overpayment belum didukung.
-7. Periksa neraca saldo, kartu stok, dan piutang sebelum menutup periode.
+7. Untuk pembelian, buat supplier dan PO, terima barang penuh, kemudian catat tagihan supplier beserta tanggal invoice/jatuh tempo. Pembayaran supplier belum tersedia.
+8. Periksa neraca saldo, kartu stok, piutang, barang diterima belum ditagih, dan utang supplier sebelum menutup periode.
 
 Penerimaan stok manual tetap tersedia dan mengkredit modal awal; jangan gunakan sebagai pengganti purchasing/utang supplier. Hindari memasukkan barang awal dua kali melalui saldo awal dan penerimaan stok.
 
-Menu Pembelian menyediakan supplier, PO, serta penerimaan penuh. Pembuatan/konfirmasi PO tidak mengubah stok/jurnal dan dapat dilakukan saat periode akuntansi tertutup. Supplier aktif diperlukan saat membuat/mengubah draf atau mengonfirmasi PO. PO dikonfirmasi dikunci; penerimaan memakai seluruh jumlah/biaya tersimpan dan dapat diproses walaupun supplier kemudian nonaktif. Penerimaan memposting stok serta jurnal debit persediaan/kredit barang diterima belum ditagih, tanpa kas. Tagihan dan pembayaran supplier menyusul; lihat [panduan pembelian](./PURCHASING.md).
+Menu Pembelian menyediakan supplier, PO, penerimaan penuh, serta tagihan supplier dan jatuh tempo. Pembuatan/konfirmasi PO tidak mengubah stok/jurnal dan dapat dilakukan saat periode akuntansi tertutup. Supplier aktif diperlukan saat membuat/mengubah draf atau mengonfirmasi PO. PO dikonfirmasi dikunci; penerimaan memakai seluruh jumlah/biaya tersimpan dan dapat diproses walaupun supplier kemudian nonaktif. Penerimaan memposting stok serta jurnal debit persediaan/kredit barang diterima belum ditagih, tanpa kas.
+
+Finance/Admin mencatat tepat satu tagihan aktif penuh per penerimaan aktif. Barang/biaya/total berasal dari snapshot penerimaan; supplier nonaktif dan mutasi stok lanjutan tidak menghalangi penagihan barang yang telah diterima. Jurnal debit barang diterima belum ditagih/kredit utang supplier memindahkan kewajiban tanpa menambah stok atau mengurangi kas. Nomor invoice supplier harus unik per supplier untuk tagihan aktif setelah trim dan tanpa membedakan huruf besar/kecil. Tanggal invoice/jatuh tempo menggunakan `YYYY-MM-DD` tahun 0001–9999, jatuh tempo tidak sebelum invoice, dan invoice tidak melewati hari perusahaan. Invoice bertanggal lampau tetap memposting jurnal saat ini pada periode terbuka. Ringkasan/chart utang memakai seluruh tagihan dan zona waktu perusahaan; daftar/CSV terbatas 500 terbaru. Pembayaran supplier menyusul; lihat [panduan pembelian](./PURCHASING.md).
 
 Produk berjenis jasa/nonstok tidak memiliki saldo persediaan, biaya rata-rata, atau HPP stok. Pesanan yang seluruh isinya jasa dapat dibuatkan invoice sesudah konfirmasi. Pesanan campuran barang dan jasa tetap memerlukan pengiriman barang sebelum invoice, dan hanya baris barang yang mengurangi stok. Penerimaan dan penyesuaian persediaan menolak produk jasa. Jenis produk tidak dapat diganti setelah digunakan pada pesanan penjualan, PO, atau mutasi stok; jenis pada dokumen lama disimpan sebagai snapshot.
 
-Jurnal manual tidak boleh langsung mengubah akun kontrol piutang (1200), persediaan (1300), atau barang diterima belum ditagih. Akun penampung penerimaan PO dipilih dari kode bebas pada migrasi dan juga tidak dapat diisi lewat saldo awal. Gunakan dokumen operasional agar saldo subledger tetap cocok.
+Jurnal manual tidak boleh langsung mengubah akun kontrol piutang (1200), persediaan (1300), barang diterima belum ditagih, atau utang supplier. Akun penampung penerimaan PO dipilih dari kode bebas 2110–2199 dan akun utang supplier dari 2200–2299; masing-masing memakai kode sepuluh digit kosong bila rentangnya penuh. Akun pengguna yang ada tidak diambil alih. Kedua akun kontrol sistem tersebut juga tidak dapat diisi lewat saldo awal. Gunakan dokumen operasional agar saldo subledger tetap cocok; pembukaan utang historis per supplier belum tersedia.
 
 ## Koreksi transaksi dan penutupan periode
 
@@ -68,11 +71,13 @@ Reversal pengiriman mengembalikan biaya historis pengiriman ke nilai persediaan 
 
 Finance dapat membalik jurnal manual melalui Jurnal umum; seluruh baris dibalik persis dan jurnal asal tetap terhubung ke jurnal pembalik. Warehouse dapat membatalkan penerimaan yang memiliki snapshot biaya sebelum penerimaan dan belum diikuti mutasi stok apa pun pada produk yang sama. Pembatalan mengembalikan jumlah, nilai, dan biaya rata-rata sebelum penerimaan. Penerimaan lama tanpa snapshot tidak ditebak biaya historisnya; gunakan penyesuaian stok setelah memeriksa transaksi terkait. Lihat [panduan koreksi dan chart](./CORRECTIONS_AND_CHARTS.md).
 
-Penerimaan PO dikoreksi melalui riwayat Pembelian, bukan tombol pembatalan penerimaan stok manual. Seluruh barang harus belum memiliki mutasi lanjutan; snapshot jumlah/nilai/biaya, versi PO, serta periode terbuka diperiksa bersama. Pembalikan menambah mutasi/jurnal lawan, memulihkan biaya persis, dan mengembalikan PO ke Dikonfirmasi. Penerimaan asal tetap tersimpan dan dapat digantikan dokumen GR baru. PO dengan penerimaan aktif tidak dapat dibatalkan langsung. Penyesuaian stok tidak otomatis membalik kewajiban penerimaan PO.
+Penerimaan PO dikoreksi melalui riwayat Pembelian, bukan tombol pembatalan penerimaan stok manual. Tagihan supplier aktif harus dibalik terlebih dahulu. Seluruh barang harus belum memiliki mutasi lanjutan; snapshot jumlah/nilai/biaya, versi PO, serta periode terbuka diperiksa bersama. Pembalikan menambah mutasi/jurnal lawan, memulihkan biaya persis, dan mengembalikan PO ke Dikonfirmasi. Penerimaan asal tetap tersimpan dan dapat digantikan dokumen GR baru. PO dengan penerimaan aktif tidak dapat dibatalkan langsung. Penyesuaian stok tidak otomatis membalik kewajiban penerimaan PO.
+
+Tagihan supplier tidak dapat diedit/dihapus setelah posting. Finance/Admin dapat membalik tagihan beralasan pada periode terbuka: jurnal asal dibalik persis, status menjadi Dibatalkan (`void`), dan sisa utangnya nol. Stok/kas tidak berubah. Dokumen, alasan, serta tautan jurnal asal/pembalik tetap tersimpan. Tagihan pengganti dapat diterbitkan atas penerimaan yang sama; nomor invoice supplier yang sudah void boleh dipakai kembali. Pembalikan tagihan tidak menghapus syarat koreksi stok. Posting/pembalikan tagihan juga menaikkan versi PO sehingga pengguna gudang perlu memuat versi baru sebelum bertindak.
 
 Saldo awal hanya dapat dibalik sebelum ada jurnal atau pergerakan stok lain. Pembalikan memulihkan saldo ke nol, menyimpan alasan serta snapshot posting, dan mengembalikan dokumen menjadi draf untuk koreksi. Dokumen pembukaan hanya satu per perusahaan; posting ulang setelah pembalikan tetap memakai konteks yang sama. Setelah transaksi operasional berjalan, koreksi pembukaan tidak dilakukan dengan mereset saldo.
 
-Penutupan periode menolak posting baru sampai tanggal yang ditutup, berdasarkan zona waktu perusahaan. Tanggal tutup hanya dapat maju dan tidak dapat dibuka kembali melalui UI. Semua posting versi awal menggunakan waktu transaksi saat ini; backdating belum didukung. Menutup tanggal hari ini menghentikan posting sampai hari berikutnya. Lakukan pemeriksaan dan backup sebelum menutup periode.
+Penutupan periode menolak posting baru sampai tanggal yang ditutup, berdasarkan zona waktu perusahaan. Tanggal tutup hanya dapat maju dan tidak dapat dibuka kembali melalui UI. Semua jurnal menggunakan waktu transaksi saat ini; tanggal invoice supplier yang lampau tidak melakukan backdating jurnal. Menutup tanggal hari ini menghentikan posting sampai hari berikutnya. Lakukan pemeriksaan dan backup sebelum menutup periode.
 
 ## Backup
 
@@ -112,6 +117,8 @@ Migrasi `0009_document_corrections.sql` menambahkan urutan mutasi yang monoton d
 Migrasi `0010_purchasing.sql` menambahkan supplier, PO, baris snapshot, serta urutan nomor pembelian. Migrasi ini tidak memposting stok atau jurnal. Setelah dipakai, referensi PO ikut mengunci jenis produk dan mencegah penghapusannya. Gunakan executable yang mengenali referensi pembelian tersebut; untuk penurunan versi, pulihkan backup beserta versi aplikasi yang cocok.
 
 Migrasi `0011_purchase_receipts.sql` menambahkan penerimaan PO, snapshot biaya, status Diterima, metadata akun kontrol, dan fungsi riwayat/koreksi. Akun barang diterima belum ditagih dibuat pada kode kosong 2110–2199, atau kode sepuluh digit kosong bila rentang tersebut penuh; akun pengguna tidak diubah. Migrasi tidak memposting ulang transaksi lama. Jalankan setelah menghentikan aplikasi dan backup. Setelah penerimaan baru dipakai, downgrade memerlukan restore backup serta versi aplikasi yang cocok. Uji restore menyertakan snapshot penerimaan dan saldo akun penampung.
+
+Migrasi `0012_supplier_bills.sql` menambahkan tagihan supplier, tanggal invoice/jatuh tempo, urutan PB, aturan unik tagihan aktif, perlindungan dokumen posted, serta metadata penagihan dan blokir koreksi pada penerimaan. Akun kontrol Utang supplier dibuat pada kode kosong 2200–2299 atau kode sepuluh digit kosong tanpa mengambil alih akun pengguna/akun penampung penerimaan. Migrasi tidak membuat tagihan dari penerimaan lama dan tidak mengubah stok, jurnal, atau saldo yang telah ada. Penerimaan lama yang masih aktif dapat ditagih melalui alur baru. Setelah tagihan dipakai, downgrade harus memulihkan backup beserta aplikasi yang sesuai; versi sebelumnya tidak mengenali jurnal tagihan atau ketergantungan koreksinya. Saat memverifikasi restore, periksa dokumen/riwayat pembalikan tagihan, jatuh tempo, nilai belum ditagih, serta saldo akun penampung dan utang supplier.
 
 ## Health, log, dan troubleshooting
 

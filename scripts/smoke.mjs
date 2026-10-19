@@ -123,8 +123,26 @@ if (mode === 'seed') {
   const receiptReversedPurchase = await api(`/purchase-receipts/${firstReceived.active_receipt_id}/reverse`, 'POST', purchaseCorrection);
   assert.deepEqual(await api(`/purchase-receipts/${firstReceived.active_receipt_id}/reverse`, 'POST', purchaseCorrection), receiptReversedPurchase);
   assert.equal(receiptReversedPurchase.status, 'confirmed');
-  await api(`/purchase-orders/${reviewedPurchase.id}/receive`, 'POST', {
+  const billedPurchase = await api(`/purchase-orders/${reviewedPurchase.id}/receive`, 'POST', {
     version: receiptReversedPurchase.version, reference: 'CI reviewed goods receipt', idempotency_key: crypto.randomUUID(),
+  });
+  const { today } = await api('/purchase-bills/summary');
+  const due = new Date(`${today}T12:00:00Z`);
+  due.setUTCDate(due.getUTCDate() + 7);
+  const billInput = {
+    receipt_id: billedPurchase.active_receipt_id, order_version: billedPurchase.version,
+    supplier_invoice_number: 'CI-AP-001', invoice_date: today, due_date: due.toISOString().slice(0, 10),
+    notes: 'CI supplier invoice before review', idempotency_key: crypto.randomUUID(),
+  };
+  const firstBill = await api('/purchase-bills', 'POST', billInput);
+  assert.deepEqual(await api('/purchase-bills', 'POST', billInput), firstBill, 'Retry cannot duplicate supplier bills');
+  const billCorrection = { version: firstBill.version, reason: 'CI corrects supplier invoice reference', idempotency_key: crypto.randomUUID() };
+  const reversedBill = await api(`/purchase-bills/${firstBill.id}/reverse`, 'POST', billCorrection);
+  assert.deepEqual(await api(`/purchase-bills/${firstBill.id}/reverse`, 'POST', billCorrection), reversedBill);
+  const refreshedPurchase = await api(`/purchase-orders/${billedPurchase.id}`);
+  await api('/purchase-bills', 'POST', {
+    ...billInput, order_version: refreshedPurchase.version, supplier_invoice_number: 'CI-AP-002',
+    notes: 'CI reviewed supplier invoice', idempotency_key: crypto.randomUUID(),
   });
 } else {
   await login();
@@ -142,6 +160,11 @@ if (mode === 'mutate') {
   await api('/purchase-orders', 'POST', {
     supplier_id: supplier.id, items: [{ product_id: product.id, quantity: '1', unit_cost: '100' }],
     idempotency_key: crypto.randomUUID(),
+  });
+  const unpaidBill = (await api('/purchase-bills')).items.find(item => item.status === 'unpaid');
+  assert.ok(unpaidBill);
+  await api(`/purchase-bills/${unpaidBill.id}/reverse`, 'POST', {
+    version: unpaidBill.version, reason: 'Must disappear after backup restore', idempotency_key: crypto.randomUUID(),
   });
   const receivedPurchase = (await api('/purchase-orders')).items.find(item => item.status === 'received');
   assert.ok(receivedPurchase);
@@ -201,7 +224,7 @@ if (mode === 'mutate') {
   const orders = await api('/orders');
   assert.ok(orders.items.some(order => order.number === 'SO-000001'), 'Existing numbers survive prefix edits');
   const journals = await api('/accounting/journals');
-  assert.equal(journals.items.length, 16);
+  assert.equal(journals.items.length, 19);
   const correctedJournal = journals.items.find(journal => journal.description === 'CI wrong manual cash');
   assert.equal(correctedJournal.reversal.reason, 'CI removes incorrect manual cash');
   assert.equal(correctedJournal.can_reverse, false);
@@ -237,7 +260,8 @@ if (mode === 'mutate') {
   const currentGoodsReceipt = activePurchase.receipts.find(receipt => receipt.id === activePurchase.active_receipt_id);
   assert.ok(currentGoodsReceipt);
   assert.equal(currentGoodsReceipt.reference, 'CI reviewed goods receipt');
-  assert.equal(currentGoodsReceipt.can_reverse, true);
+  assert.equal(currentGoodsReceipt.can_reverse, false, 'Active supplier bill blocks reversal of its receipt');
+  assert.equal(currentGoodsReceipt.can_bill, false);
   assert.equal(currentGoodsReceipt.total, '180000.00');
   const accounts = await api('/accounting/accounts');
   const accrual = accounts.items.find(account => account.system_role === 'purchase_receipt_accrual');
@@ -245,7 +269,41 @@ if (mode === 'mutate') {
   assert.equal(accrual.kind, 'liability');
   assert.equal(accrual.is_control, true);
   const accrualTrial = trial.items.find(account => account.code === accrual.code);
-  assert.equal(Number(accrualTrial.credit), 180000);
+  assert.ok(accrualTrial);
+  assert.equal(Number(accrualTrial.balance), 0);
+  const payable = accounts.items.find(account => account.system_role === 'purchase_payable');
+  assert.ok(payable);
+  assert.equal(payable.kind, 'liability');
+  assert.equal(payable.is_control, true);
+  assert.equal(Number(trial.items.find(account => account.code === payable.code).credit), 180000);
+  const bills = (await api('/purchase-bills')).items;
+  assert.equal(bills.length, 2);
+  const activeBill = bills.find(bill => bill.status === 'unpaid');
+  const voidBill = bills.find(bill => bill.status === 'void');
+  assert.ok(activeBill);
+  assert.ok(voidBill);
+  assert.equal(activeBill.supplier_invoice_number, 'CI-AP-002');
+  assert.equal(activeBill.total, '180000.00');
+  assert.equal(activeBill.outstanding, '180000.00');
+  assert.equal(activeBill.paid, '0.00');
+  assert.equal(activeBill.receipt_id, currentGoodsReceipt.id);
+  assert.equal(currentGoodsReceipt.bill_id, activeBill.id);
+  assert.equal(currentGoodsReceipt.bill_number, activeBill.number);
+  assert.equal(voidBill.reversal.reason, 'CI corrects supplier invoice reference');
+  assert.equal(voidBill.outstanding, '0.00');
+  assert.deepEqual(await api(`/purchase-bills/${activeBill.id}`), activeBill);
+  const billJournal = await api(`/accounting/journals/${activeBill.journal_id}`);
+  assert.equal(billJournal.source_type, 'purchase_bill');
+  assert.equal(Number(billJournal.lines.find(line => line.account_code === accrual.code).debit), 180000);
+  assert.equal(Number(billJournal.lines.find(line => line.account_code === payable.code).credit), 180000);
+  const billSummary = await api('/purchase-bills/summary');
+  assert.equal(billSummary.counts.unpaid, 1);
+  assert.equal(billSummary.counts.void, 1);
+  assert.equal(Number(billSummary.outstanding_total), 180000);
+  assert.equal(billSummary.suppliers.length, 1);
+  assert.equal(Number(billSummary.suppliers[0].outstanding_total), 180000);
+  assert.equal(billSummary.suppliers[0].supplier_name, 'CI Supplier');
+  assert.equal(Number(billSummary.overdue_total) + Number(billSummary.due_today_total) + Number(billSummary.upcoming_total), 180000);
   const receiptJournal = await api(`/accounting/journals/${currentGoodsReceipt.journal_id}`);
   assert.equal(receiptJournal.source_type, 'purchase_receipt');
   assert.equal(Number(receiptJournal.lines.find(line => line.account_code === '1300').debit), 180000);
@@ -253,9 +311,10 @@ if (mode === 'mutate') {
   const summary = await api('/purchasing/summary');
   assert.deepEqual(summary.counts, { draft: 0, confirmed: 0, received: 1, cancelled: 1 });
   assert.equal(Number(summary.pending_receipt_total), 0);
-  assert.equal(Number(summary.received_unbilled_total), 180000);
+  assert.equal(Number(summary.received_unbilled_total), 0);
+  assert.equal(Number(summary.supplier_payable_total), 180000);
   assert.equal(Number(summary.values.received), 180000);
   const purchaseDetail = await api(`/purchase-orders/${activePurchase.id}`);
   assert.deepEqual(purchaseDetail, activePurchase, 'PO detail and list retain the same snapshots after restore');
-  console.log(`Disposable-instance ${mode} check passed: PO goods receipts, accruals, safe corrections, purchase charts, and restored stock and ledger balances.`);
+  console.log(`Disposable-instance ${mode} check passed: PO receipts, supplier bills and reversals, due summaries, and restored stock, cash and payable balances.`);
 }

@@ -1,7 +1,7 @@
 # Rencana Haruflow Community
 
 Status: rencana acuan; baseline aplikasi Community sudah diimplementasikan. Lihat [status implementasi](./IMPLEMENTATION_STATUS.md) untuk hasil dan pekerjaan tersisa.
-Tanggal: 18 Oktober 2026.  
+Tanggal pembaruan: 19 Oktober 2026.
 Dasar: `haruflow.md` dan kondisi repository yang saat ini berisi README serta lisensi AGPL-3.0-only.
 
 ## 1. Arah produk
@@ -33,7 +33,7 @@ Pemilik instalasi mengelola server, domain/TLS, backup, dan upgrade. Haruflow me
 
 ### Ditunda setelah v0.1
 
-- Purchasing lengkap, supplier invoice, utang usaha, dan retur barang komersial.
+- Purchasing lengkap, pembayaran supplier, penerimaan/tagihan sebagian, dan retur barang komersial. Supplier, PO, penerimaan penuh, tagihan, serta posisi utang/jatuh tempo sudah ditambahkan bertahap setelah baseline; lihat catatan pembaruan di akhir dokumen.
 - Pengiriman sebagian, backorder, konversi satuan, transfer antargudang, lot, serial number, dan expiry.
 - Multi-company, multicurrency, konsolidasi, dan pembatasan akses lintas cabang/gudang.
 - HR, payroll, manufacturing, POS offline, dan aplikasi mobile native.
@@ -217,7 +217,7 @@ v0.1 dapat dirilis jika:
 - Dokumentasi menjelaskan batas produk, konfigurasi produksi, pemulihan, dan pengelolaan secrets.
 - Performa diuji dengan dataset serta hardware yang dilaporkan. Target sementara P95 baca <300 ms dan posting <500 ms dipakai sebagai sasaran pengukuran, bukan SLA atau penghalang rilis tanpa melihat workload.
 
-Urutan usulan setelah pilot: purchasing dan utang usaha → retur serta partial delivery → multiwarehouse → lampiran dan impor CSV dengan dry run → laporan keuangan lebih lengkap. Urutan akhir mengikuti kebutuhan pengguna pilot.
+Urutan pengembangan purchasing saat ini: pembayaran supplier sebagian/penuh dan koreksinya → umur utang dengan kelompok hari serta chart pembayaran → retur serta partial delivery → multiwarehouse → lampiran dan impor CSV dengan dry run → laporan keuangan lebih lengkap. Supplier, PO, penerimaan penuh, tagihan, dan ringkasan jatuh tempo telah diimplementasikan sebagai perluasan baseline. Urutan akhir mengikuti kebutuhan pengguna pilot.
 
 ## 9. Pekerjaan pertama yang siap dieksekusi
 
@@ -229,4 +229,4 @@ Urutan usulan setelah pilot: purchasing dan utang usaha → retur serta partial 
 
 Dokumen ini tetap menjadi rencana acuan. Implementasi aktual, cakupan pengujian, dan batas baseline dicatat terpisah dalam [status implementasi](./IMPLEMENTATION_STATUS.md).
 
-Pembaruan bertahap 19 Oktober 2026: supplier, PO, penerimaan penuh, koreksi penerimaan aman, dan chart status sudah diimplementasikan sebagai perluasan Community. Tagihan supplier, jatuh tempo, serta pembayaran tetap pekerjaan berikutnya. Baca [panduan pembelian](./PURCHASING.md) untuk lingkup dan batas tahap ini.
+Pembaruan bertahap 19 Oktober 2026: supplier, PO, penerimaan penuh, koreksi penerimaan aman, tagihan supplier/jatuh tempo, serta chart status PO dan utang sudah diimplementasikan sebagai perluasan Community. Finance/Admin dapat mencatat satu tagihan penuh per penerimaan aktif, membaliknya dengan alasan, lalu menerbitkan pengganti tanpa menghapus sejarah. Tagihan memakai snapshot penerimaan dan jurnal debit barang diterima belum ditagih/kredit utang supplier, tanpa perubahan stok atau kas. Tanggal invoice tidak melakukan backdating jurnal; periode saat ini harus terbuka. Tagihan aktif mencegah koreksi penerimaannya sampai tagihan dibalik terlebih dahulu. Pembayaran sebagian/penuh, koreksi pembayaran, umur utang per kelompok hari, dan chart pembayaran tetap pekerjaan berikutnya. Baca [panduan pembelian](./PURCHASING.md) untuk lingkup dan batas tahap ini.
