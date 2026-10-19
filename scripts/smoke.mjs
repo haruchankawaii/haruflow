@@ -309,7 +309,7 @@ if (mode === 'mutate') {
   assert.equal(Number(receiptJournal.lines.find(line => line.account_code === '1300').debit), 180000);
   assert.equal(Number(receiptJournal.lines.find(line => line.account_code === accrual.code).credit), 180000);
   const summary = await api('/purchasing/summary');
-  assert.deepEqual(summary.counts, { draft: 0, confirmed: 0, received: 1, cancelled: 1 });
+  assert.deepEqual(summary.counts, { draft: 0, confirmed: 0, partial_received: 0, received: 1, cancelled: 1 });
   assert.equal(Number(summary.pending_receipt_total), 0);
   assert.equal(Number(summary.received_unbilled_total), 0);
   assert.equal(Number(summary.supplier_payable_total), 180000);

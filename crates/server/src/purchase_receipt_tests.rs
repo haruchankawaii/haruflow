@@ -285,7 +285,30 @@ async fn purchase_receipt_posts_all_reviewed_lines_and_grni_without_cash_or_capi
     assert_eq!(received["status"], "received");
     assert_eq!(received["version"], 3);
     assert!(received["received_at"].is_string());
-    assert_eq!(received["items"], confirmed["items"]);
+    for (before, after) in confirmed["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(received["items"].as_array().unwrap())
+    {
+        for field in [
+            "id",
+            "product_id",
+            "product_sku",
+            "product_name",
+            "unit",
+            "quantity",
+            "unit_cost",
+            "total",
+        ] {
+            assert_eq!(before[field], after[field]);
+        }
+        assert_eq!(amount(after, "remaining_quantity"), Decimal::ZERO);
+        assert_eq!(
+            amount(after, "received_quantity"),
+            amount(before, "quantity")
+        );
+    }
     let receipt = active_receipt(&received);
     assert_eq!(receipt["order_id"], confirmed["id"]);
     assert_eq!(receipt["number"], "GR-000001");
@@ -1018,7 +1041,7 @@ async fn purchase_receipt_summary_covers_all_orders_beyond_history_limit_and_tra
     let summary = call(&app, &cookie, "GET", "/api/purchasing/summary", None).await;
     assert_eq!(
         summary["counts"],
-        json!({"draft":501,"confirmed":0,"received":1,"cancelled":0})
+        json!({"draft":501,"confirmed":0,"partial_received":0,"received":1,"cancelled":0})
     );
     assert_eq!(amount(&summary["values"], "draft"), d("501"));
     assert_eq!(amount(&summary["values"], "received"), d("13.89"));
@@ -1036,7 +1059,7 @@ async fn purchase_receipt_summary_covers_all_orders_beyond_history_limit_and_tra
     let summary = call(&app, &cookie, "GET", "/api/purchasing/summary", None).await;
     assert_eq!(
         summary["counts"],
-        json!({"draft":501,"confirmed":1,"received":0,"cancelled":0})
+        json!({"draft":501,"confirmed":1,"partial_received":0,"received":0,"cancelled":0})
     );
     assert_eq!(amount(&summary, "pending_receipt_total"), d("13.89"));
     assert_eq!(amount(&summary, "received_unbilled_total"), Decimal::ZERO);
@@ -1103,4 +1126,397 @@ async fn purchase_receipt_upgrade_preserves_custom_account_and_blocks_control_ac
     .await
     .unwrap();
     assert_eq!(credit, amount(active_receipt(&received), "total"));
+}
+
+fn partial_body(order: &Value, quantities: &[(&Value, &str)]) -> Value {
+    json!({"version":order["version"],"idempotency_key":Uuid::new_v4(),
+        "items":quantities.iter().map(|(line,quantity)|json!({"order_line_id":line["id"],"quantity":quantity})).collect::<Vec<_>>()})
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn partial_purchase_receipts_allocate_rounding_and_reverse_exact_cost(pool: PgPool) {
+    let (app, _, cookie) = fixture(&pool).await;
+    let supplier = supplier(&app, &cookie).await;
+    let product = product(&app, &cookie, "PARTIAL-ROUND").await;
+    manual_receipt(&app, &cookie, &product, "2", "7.1234").await;
+    let before = stock(&pool, &product).await;
+    let draft = order(
+        &app,
+        &cookie,
+        &supplier,
+        json!([{"product_id":product["id"],"quantity":"3","unit_cost":"3.3333"}]),
+    )
+    .await;
+    let confirmed = confirm(&app, &cookie, &draft).await;
+    let body = partial_body(&confirmed, &[(&confirmed["items"][0], "1")]);
+    let first = call(
+        &app,
+        &cookie,
+        "POST",
+        &receive_path(&confirmed),
+        Some(body.clone()),
+    )
+    .await;
+    assert_eq!(first["status"], "partial_received");
+    assert_eq!(amount(&first["items"][0], "received_quantity"), d("1"));
+    assert_eq!(amount(&first["items"][0], "remaining_quantity"), d("2"));
+    assert_eq!(amount(active_receipt(&first), "total"), d("3.33"));
+    assert_eq!(
+        call(&app, &cookie, "POST", &receive_path(&confirmed), Some(body)).await,
+        first
+    );
+    let second = call(
+        &app,
+        &cookie,
+        "POST",
+        &receive_path(&first),
+        Some(partial_body(&first, &[(&first["items"][0], "1")])),
+    )
+    .await;
+    assert_eq!(amount(active_receipt(&second), "total"), d("3.34"));
+    let final_order = receive(&app, &cookie, &second).await;
+    assert_eq!(final_order["status"], "received");
+    assert_eq!(amount(active_receipt(&final_order), "total"), d("3.33"));
+    assert_eq!(amount(&final_order["items"][0], "received_value"), d("10"));
+    assert_eq!(stock(&pool, &product).await.2, before.2 + d("10"));
+    let reversed = call(
+        &app,
+        &cookie,
+        "POST",
+        &reverse_path(active_receipt(&final_order)),
+        Some(reverse_body(&final_order)),
+    )
+    .await;
+    assert_eq!(reversed["status"], "partial_received");
+    assert_eq!(amount(&reversed["items"][0], "remaining_quantity"), d("1"));
+    assert_eq!(
+        stock(&pool, &product).await,
+        (
+            before.0 + d("2"),
+            crate::domain::average(before.2 + d("6.67"), before.0 + d("2")),
+            before.2 + d("6.67")
+        )
+    );
+    let summary = call(&app, &cookie, "GET", "/api/purchasing/summary", None).await;
+    assert_eq!(amount(&summary, "pending_receipt_total"), d("3.33"));
+    assert_eq!(amount(&summary, "received_unbilled_total"), d("6.67"));
+    assert_inventory_matches_ledger(&pool).await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn partial_purchase_receipts_reject_overreceipt_duplicates_and_stale_concurrent_versions(
+    pool: PgPool,
+) {
+    let (app, _, cookie) = fixture(&pool).await;
+    let supplier = supplier(&app, &cookie).await;
+    let product = product(&app, &cookie, "PARTIAL-LIMIT").await;
+    let draft = order(
+        &app,
+        &cookie,
+        &supplier,
+        json!([{"product_id":product["id"],"quantity":"3","unit_cost":"10"}]),
+    )
+    .await;
+    let confirmed = confirm(&app, &cookie, &draft).await;
+    let original = posting_snapshot(&pool).await;
+    for body in [
+        partial_body(&confirmed, &[(&confirmed["items"][0], "3.001")]),
+        partial_body(
+            &confirmed,
+            &[(&confirmed["items"][0], "1"), (&confirmed["items"][0], "1")],
+        ),
+        partial_body(&confirmed, &[]),
+        partial_body(&confirmed, &[(&json!({"id":Uuid::new_v4()}), "1")]),
+        partial_body(&confirmed, &[(&confirmed["items"][0], "1\u{0000}")]),
+    ] {
+        let (status, value) =
+            request(&app, &cookie, "POST", &receive_path(&confirmed), Some(body)).await;
+        assert!(
+            status == StatusCode::BAD_REQUEST || status == StatusCode::CONFLICT,
+            "{status}: {value}"
+        );
+        assert_eq!(posting_snapshot(&pool).await, original);
+    }
+    let path = receive_path(&confirmed);
+    let (a, b) = tokio::join!(
+        request(
+            &app,
+            &cookie,
+            "POST",
+            &path,
+            Some(partial_body(&confirmed, &[(&confirmed["items"][0], "1")]))
+        ),
+        request(
+            &app,
+            &cookie,
+            "POST",
+            &path,
+            Some(partial_body(&confirmed, &[(&confirmed["items"][0], "2")]))
+        )
+    );
+    assert!(a.0.is_success() ^ b.0.is_success());
+    assert!(a.0 == StatusCode::CONFLICT || b.0 == StatusCode::CONFLICT);
+    let fresh = call(
+        &app,
+        &cookie,
+        "GET",
+        &format!("/api/purchase-orders/{}", id(&confirmed)),
+        None,
+    )
+    .await;
+    let quantity = stock(&pool, &product).await.0;
+    assert!(quantity == d("1") || quantity == d("2"));
+    assert_eq!(amount(&fresh["items"][0], "received_quantity"), quantity);
+    let (cancel_status,_)=request(&app,&cookie,"POST",&format!("/api/purchase-orders/{}/cancel",id(&fresh)),Some(json!({"version":fresh["version"],"reason":"Cannot cancel received stock","idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(cancel_status, StatusCode::CONFLICT);
+    assert_inventory_matches_ledger(&pool).await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn partial_purchase_disjoint_receipts_can_reverse_without_latest_header_pointer(
+    pool: PgPool,
+) {
+    let (app, _, cookie) = fixture(&pool).await;
+    let supplier = supplier(&app, &cookie).await;
+    let a = product(&app, &cookie, "PARTIAL-A").await;
+    let b = product(&app, &cookie, "PARTIAL-B").await;
+    let draft = order(
+        &app,
+        &cookie,
+        &supplier,
+        json!([
+        {"product_id":a["id"],"quantity":"2","unit_cost":"10"},
+        {"product_id":b["id"],"quantity":"2","unit_cost":"20"}]),
+    )
+    .await;
+    let confirmed = confirm(&app, &cookie, &draft).await;
+    let first = call(
+        &app,
+        &cookie,
+        "POST",
+        &receive_path(&confirmed),
+        Some(partial_body(&confirmed, &[(&confirmed["items"][0], "2")])),
+    )
+    .await;
+    let first_id = active_receipt(&first)["id"].clone();
+    let second = receive(&app, &cookie, &first).await;
+    assert_eq!(second["status"], "received");
+    let receipt = second["receipts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == first_id)
+        .unwrap();
+    assert_eq!(receipt["can_reverse"], true);
+    let reversed = call(
+        &app,
+        &cookie,
+        "POST",
+        &reverse_path(receipt),
+        Some(reverse_body(&second)),
+    )
+    .await;
+    assert_eq!(reversed["status"], "partial_received");
+    assert_eq!(
+        stock(&pool, &a).await,
+        (Decimal::ZERO, Decimal::ZERO, Decimal::ZERO)
+    );
+    assert_eq!(stock(&pool, &b).await.0, d("2"));
+    assert_eq!(reversed["active_receipt_id"], second["active_receipt_id"]);
+    assert_eq!(amount(&reversed["items"][0], "remaining_quantity"), d("2"));
+    assert_inventory_matches_ledger(&pool).await;
+}
+
+async fn fresh_order(app: &Router, cookie: &str, order: &Value) -> Value {
+    call(
+        app,
+        cookie,
+        "GET",
+        &format!("/api/purchase-orders/{}", id(order)),
+        None,
+    )
+    .await
+}
+async fn partial_bill(
+    app: &Router,
+    cookie: &str,
+    order: &Value,
+    receipt: &Value,
+    invoice: &str,
+    quantity: Option<&str>,
+) -> Value {
+    let fresh = fresh_order(app, cookie, order).await;
+    let today =
+        call(app, cookie, "GET", "/api/purchase-bills/summary", None).await["today"].clone();
+    let mut body = json!({"receipt_id":receipt["id"],"order_version":fresh["version"],"supplier_invoice_number":invoice,
+        "invoice_date":today,"due_date":today,"idempotency_key":Uuid::new_v4()});
+    if let Some(quantity) = quantity {
+        body["items"] = json!([{"receipt_line_id":receipt["items"][0]["id"],"quantity":quantity}]);
+    }
+    call(app, cookie, "POST", "/api/purchase-bills", Some(body)).await
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn partial_purchase_bills_preserve_rounding_reissue_and_paid_receipt_dependencies(
+    pool: PgPool,
+) {
+    let (app, _, cookie) = fixture(&pool).await;
+    let supplier = supplier(&app, &cookie).await;
+    let product = product(&app, &cookie, "PARTIAL-BILL").await;
+    let draft = order(
+        &app,
+        &cookie,
+        &supplier,
+        json!([{"product_id":product["id"],"quantity":"3","unit_cost":"3.3333"}]),
+    )
+    .await;
+    let confirmed = confirm(&app, &cookie, &draft).await;
+    let received = receive(&app, &cookie, &confirmed).await;
+    let receipt = active_receipt(&received);
+    let before = stock(&pool, &product).await;
+    let first = partial_bill(&app, &cookie, &received, receipt, "BILL-SPLIT-1", Some("1")).await;
+    let second = partial_bill(&app, &cookie, &received, receipt, "BILL-SPLIT-2", Some("1")).await;
+    let third = partial_bill(&app, &cookie, &received, receipt, "BILL-SPLIT-3", None).await;
+    assert_eq!(amount(&first, "total"), d("3.33"));
+    assert_eq!(amount(&second, "total"), d("3.34"));
+    assert_eq!(amount(&third, "total"), d("3.33"));
+    let full = fresh_order(&app, &cookie, &received).await;
+    assert_eq!(active_receipt(&full)["bills"].as_array().unwrap().len(), 3);
+    assert_eq!(active_receipt(&full)["can_bill"], false);
+    assert_eq!(active_receipt(&full)["can_reverse"], false);
+    assert_eq!(stock(&pool, &product).await, before);
+    let summary = call(&app, &cookie, "GET", "/api/purchasing/summary", None).await;
+    assert_eq!(amount(&summary, "received_unbilled_total"), Decimal::ZERO);
+    assert_eq!(amount(&summary, "supplier_payable_total"), d("10"));
+    call(&app,&cookie,"POST",&format!("/api/purchase-bills/{}/reverse",id(&second)),Some(json!({"version":second["version"],"reason":"Supplier corrected partial invoice","idempotency_key":Uuid::new_v4()}))).await;
+    let reopened = fresh_order(&app, &cookie, &received).await;
+    assert_eq!(active_receipt(&reopened)["can_bill"], true);
+    assert_eq!(
+        amount(
+            &active_receipt(&reopened)["items"][0],
+            "remaining_bill_quantity"
+        ),
+        d("1")
+    );
+    let replacement = partial_bill(&app, &cookie, &received, receipt, "BILL-SPLIT-2", None).await;
+    assert_eq!(amount(&replacement, "total"), d("3.34"));
+    let append=sqlx::query("INSERT INTO purchase_bill_lines(id,bill_id,receipt_line_id,position,product_id,product_sku,product_name,unit,quantity,unit_cost,value) SELECT $1,bill_id,receipt_line_id,position,product_id,product_sku,product_name,unit,quantity,unit_cost,value FROM purchase_bill_lines WHERE bill_id=$2")
+        .bind(Uuid::new_v4()).bind(uid(&replacement)).execute(&pool).await.unwrap_err();
+    assert!(
+        append
+            .as_database_error()
+            .unwrap()
+            .message()
+            .contains("append")
+    );
+    // A settled invoice still owns received goods; it never becomes billable twice.
+    call(&app,&cookie,"POST","/api/accounting/journals",Some(json!({"description":"Cash for supplier payment","lines":[{"account_code":"1100","debit":"10","credit":"0"},{"account_code":"3000","debit":"0","credit":"10"}],"idempotency_key":Uuid::new_v4()}))).await;
+    let paid=call(&app,&cookie,"POST",&format!("/api/purchase-bills/{}/payments",id(&replacement)),Some(json!({"version":replacement["version"],"amount":"3.34","idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(paid["status"], "paid");
+    let fresh = fresh_order(&app, &cookie, &received).await;
+    assert_eq!(active_receipt(&fresh)["can_bill"], false);
+    assert_eq!(active_receipt(&fresh)["can_reverse"], false);
+    assert_eq!(stock(&pool, &product).await, before);
+    assert_inventory_matches_ledger(&pool).await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn partial_purchase_billing_each_active_receipt_and_concurrent_allocation_is_atomic(
+    pool: PgPool,
+) {
+    let (app, _, cookie) = fixture(&pool).await;
+    let supplier = supplier(&app, &cookie).await;
+    let product = product(&app, &cookie, "PARTIAL-BILL-RACE").await;
+    let draft = order(
+        &app,
+        &cookie,
+        &supplier,
+        json!([{"product_id":product["id"],"quantity":"3","unit_cost":"10"}]),
+    )
+    .await;
+    let confirmed = confirm(&app, &cookie, &draft).await;
+    let first = call(
+        &app,
+        &cookie,
+        "POST",
+        &receive_path(&confirmed),
+        Some(partial_body(&confirmed, &[(&confirmed["items"][0], "1")])),
+    )
+    .await;
+    let receipt = active_receipt(&first).clone();
+    // Bill the first receipt while its PO still has unreceived items.
+    let bill = partial_bill(&app, &cookie, &first, &receipt, "PARTIAL-RECEIPT-ONE", None).await;
+    assert_eq!(amount(&bill, "total"), d("10"));
+    let received = receive(&app, &cookie, &fresh_order(&app, &cookie, &first).await).await;
+    let second = active_receipt(&received).clone();
+    assert_ne!(receipt["id"], second["id"]);
+    let today =
+        call(&app, &cookie, "GET", "/api/purchase-bills/summary", None).await["today"].clone();
+    let body = |invoice: &str| {
+        json!({"receipt_id":second["id"],"order_version":received["version"],"supplier_invoice_number":invoice,
+        "invoice_date":today,"due_date":today,"items":[{"receipt_line_id":second["items"][0]["id"],"quantity":"2"}],"idempotency_key":Uuid::new_v4()})
+    };
+    let (a, b) = tokio::join!(
+        request(
+            &app,
+            &cookie,
+            "POST",
+            "/api/purchase-bills",
+            Some(body("RACE-A"))
+        ),
+        request(
+            &app,
+            &cookie,
+            "POST",
+            "/api/purchase-bills",
+            Some(body("RACE-B"))
+        )
+    );
+    assert!(a.0.is_success() ^ b.0.is_success(), "{a:?} {b:?}");
+    assert!(a.0 == StatusCode::CONFLICT || b.0 == StatusCode::CONFLICT);
+    let summary = call(&app, &cookie, "GET", "/api/purchasing/summary", None).await;
+    assert_eq!(amount(&summary, "received_unbilled_total"), Decimal::ZERO);
+    assert_eq!(amount(&summary, "supplier_payable_total"), d("30"));
+    assert_inventory_matches_ledger(&pool).await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn partial_purchase_never_strands_remaining_goods_with_zero_value(pool: PgPool) {
+    let (app, _, cookie) = fixture(&pool).await;
+    let supplier = supplier(&app, &cookie).await;
+    let product = product(&app, &cookie, "PARTIAL-CENT").await;
+    let draft = order(
+        &app,
+        &cookie,
+        &supplier,
+        json!([{"product_id":product["id"],"quantity":"1","unit_cost":"0.01"}]),
+    )
+    .await;
+    let confirmed = confirm(&app, &cookie, &draft).await;
+    let original = posting_snapshot(&pool).await;
+    let (status, _) = request(
+        &app,
+        &cookie,
+        "POST",
+        &receive_path(&confirmed),
+        Some(partial_body(
+            &confirmed,
+            &[(&confirmed["items"][0], "0.999")],
+        )),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(posting_snapshot(&pool).await, original);
+    let received = receive(&app, &cookie, &confirmed).await;
+    assert_eq!(received["status"], "received");
+    assert_eq!(stock(&pool, &product).await.2, d("0.01"));
+    let receipt = active_receipt(&received);
+    let today =
+        call(&app, &cookie, "GET", "/api/purchase-bills/summary", None).await["today"].clone();
+    let(status,_)=request(&app,&cookie,"POST","/api/purchase-bills",Some(json!({"receipt_id":receipt["id"],"order_version":received["version"],"supplier_invoice_number":"TINY-SPLIT",
+        "invoice_date":today,"due_date":today,"items":[{"receipt_line_id":receipt["items"][0]["id"],"quantity":"0.999"}],"idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let bill = partial_bill(&app, &cookie, &received, receipt, "TINY-FULL", None).await;
+    assert_eq!(amount(&bill, "total"), d("0.01"));
+    assert_inventory_matches_ledger(&pool).await;
 }

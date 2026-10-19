@@ -211,7 +211,10 @@ const ORDER_JSON: &str = r#"jsonb_build_object(
     'cancellation_reason',o.cancellation_reason,'received_at',o.received_at,'active_receipt_id',o.active_receipt_id,
     'receipts',purchase_receipt_history(o.id),'items',COALESCE((SELECT jsonb_agg(jsonb_build_object(
     'id',l.id,'product_id',l.product_id,'product_sku',l.product_sku,'product_name',l.product_name,'unit',l.unit,
-    'quantity',l.quantity::text,'unit_cost',l.unit_cost::text,'total',l.total::text) ORDER BY l.position)
+    'quantity',l.quantity::text,'unit_cost',l.unit_cost::text,'total',l.total::text,
+    'received_quantity',purchase_order_received_quantity(o.id,l.product_id)::text,
+    'remaining_quantity',(l.quantity-purchase_order_received_quantity(o.id,l.product_id))::text,
+    'received_value',purchase_order_received_value(o.id,l.product_id)::text) ORDER BY l.position)
     FROM purchase_order_lines l WHERE l.order_id=o.id),'[]'::jsonb))"#;
 
 fn order_select() -> String {
@@ -588,7 +591,10 @@ async fn cancel_order(
     if row.get::<String, _>("status") == "cancelled" {
         return Err(AppError::conflict("Purchase order is already cancelled"));
     }
-    if row.get::<String, _>("status") == "received" {
+    if matches!(
+        row.get::<String, _>("status").as_str(),
+        "received" | "partial_received"
+    ) {
         return Err(AppError::conflict(
             "Reverse the active goods receipt before cancelling the purchase order",
         ));

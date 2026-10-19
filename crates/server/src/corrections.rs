@@ -43,7 +43,10 @@ pub fn router() -> Router<AppState> {
         .route("/accounting/period/close", post(close_period))
         .route("/inventory/adjustments", post(adjust_stock))
         .route("/orders/{id}/cancel", post(cancel_order))
-        .route("/orders/{id}/reverse-shipment", post(reverse_shipment))
+        .route(
+            "/orders/{id}/reverse-shipment",
+            post(crate::partial_sales::reverse_latest_shipment),
+        )
         .route("/invoices/{id}/reverse", post(reverse_invoice))
         .route("/invoices/{id}/payments", get(payments))
         .route(
@@ -391,7 +394,13 @@ async fn cancel_order(
             "Only draft or confirmed orders can be cancelled",
         ));
     }
-    sqlx::query("UPDATE sales_orders SET status='cancelled' WHERE id=$1")
+    let posted:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM shipment_postings WHERE order_id=$1 AND NOT reversed) OR EXISTS(SELECT 1 FROM invoices WHERE order_id=$1 AND status<>'void')").bind(id).fetch_one(&mut *tx).await?;
+    if posted {
+        return Err(AppError::conflict(
+            "Reverse active invoices and shipments before cancelling the order",
+        ));
+    }
+    sqlx::query("UPDATE sales_orders SET status='cancelled',version=version+1 WHERE id=$1")
         .bind(id)
         .execute(&mut *tx)
         .await?;
@@ -574,10 +583,7 @@ async fn reverse_invoice(
         .bind(id)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE sales_orders SET status=CASE WHEN EXISTS(SELECT 1 FROM shipment_postings WHERE order_id=$1 AND NOT reversed) THEN 'shipped' ELSE 'confirmed' END,invoiced_at=NULL WHERE id=$1")
-        .bind(order_id)
-        .execute(&mut *tx)
-        .await?;
+    crate::partial_sales::refresh(&mut tx, order_id).await?;
     audit(
         &mut tx,
         &user,
@@ -588,125 +594,6 @@ async fn reverse_invoice(
     )
     .await?;
     let result: Value = sqlx::query_scalar(INVOICE_SELECT)
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
-    remember(&mut tx, body.idempotency_key, &request, &result).await?;
-    tx.commit().await?;
-    Ok(Json(result))
-}
-
-async fn reverse_shipment(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<Uuid>,
-    Json(body): Json<ReasonInput>,
-) -> AppResult<Json<Value>> {
-    user.require(&["warehouse"])?;
-    let request = payload("shipment.reverse", &user, &json!({"id":id,"body":body}));
-    let mut tx = state.db.begin().await?;
-    if let Some(result) = cached(&mut tx, body.idempotency_key, &request).await? {
-        tx.commit().await?;
-        return Ok(Json(result));
-    }
-    check_open(&mut tx).await?;
-    let reason = reason(&body.reason)?;
-    let status: String =
-        sqlx::query_scalar("SELECT status FROM sales_orders WHERE id=$1 FOR UPDATE")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(AppError::not_found)?;
-    if status != "shipped" {
-        return Err(AppError::conflict(
-            "Only a shipped order without an active invoice can have its shipment reversed",
-        ));
-    }
-    let active_invoice: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM invoices WHERE order_id=$1 AND status<>'void')",
-    )
-    .bind(id)
-    .fetch_one(&mut *tx)
-    .await?;
-    if active_invoice {
-        return Err(AppError::conflict(
-            "Reverse the invoice before reversing its shipment",
-        ));
-    }
-    let posting_id: Uuid = sqlx::query_scalar(
-        "SELECT id FROM shipment_postings WHERE order_id=$1 AND NOT reversed FOR UPDATE",
-    )
-    .bind(id)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or_else(|| AppError::conflict("No active shipment found"))?;
-    let movements=sqlx::query("SELECT id,product_id,quantity,unit_cost,value FROM inventory_movements WHERE shipment_posting_id=$1 AND kind='shipment' ORDER BY product_id")
-        .bind(posting_id).fetch_all(&mut *tx).await?;
-    if movements.is_empty() {
-        return Err(AppError::conflict("Shipment has no stock movements"));
-    }
-    let reversal_id = reversal_record(&mut tx, &user, "shipment", posting_id, &reason).await?;
-    let mut total = Decimal::ZERO;
-    for movement in movements {
-        let product_id: Uuid = movement.get("product_id");
-        let quantity = -movement.get::<Decimal, _>("quantity");
-        let value: Decimal = movement.get("value");
-        let product =
-            sqlx::query("SELECT quantity,inventory_value FROM products WHERE id=$1 FOR UPDATE")
-                .bind(product_id)
-                .fetch_one(&mut *tx)
-                .await?;
-        let new_quantity = product.get::<Decimal, _>("quantity") + quantity;
-        let new_value = product.get::<Decimal, _>("inventory_value") + value;
-        if new_quantity > Decimal::from(1_000_000_000u64)
-            || new_value > Decimal::from(1_000_000_000_000u64)
-        {
-            return Err(AppError::bad_request(
-                "Inventory limit would be exceeded by reversal",
-            ));
-        }
-        sqlx::query(
-            "UPDATE products SET quantity=$2,inventory_value=$3,average_cost=$4 WHERE id=$1",
-        )
-        .bind(product_id)
-        .bind(new_quantity)
-        .bind(new_value)
-        .bind(domain::average(new_value, new_quantity))
-        .execute(&mut *tx)
-        .await?;
-        sqlx::query("INSERT INTO inventory_movements(id,product_id,kind,quantity,unit_cost,value,reference,order_id,created_by,reverses_id,shipment_posting_id) VALUES($1,$2,'shipment_reversal',$3,$4,$5,$6,$7,$8,$9,$10)")
-            .bind(Uuid::new_v4()).bind(product_id).bind(quantity).bind(movement.get::<Decimal,_>("unit_cost")).bind(value).bind(&reason)
-            .bind(id).bind(user.id).bind(movement.get::<Uuid,_>("id")).bind(posting_id).execute(&mut *tx).await?;
-        total += value;
-    }
-    journal(
-        &mut tx,
-        &user,
-        "reversal",
-        reversal_id,
-        &format!("Reverse shipment: {reason}"),
-        ("1300", "5000"),
-        total,
-    )
-    .await?;
-    sqlx::query("UPDATE shipment_postings SET reversed=true WHERE id=$1")
-        .bind(posting_id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("UPDATE sales_orders SET status='confirmed',shipped_at=NULL WHERE id=$1")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-    audit(
-        &mut tx,
-        &user,
-        "shipment.reversed",
-        "sales_order",
-        id,
-        json!({"reason":reason,"reversal_id":reversal_id}),
-    )
-    .await?;
-    let result: Value = sqlx::query_scalar(ORDER_SELECT)
         .bind(id)
         .fetch_one(&mut *tx)
         .await?;

@@ -27,8 +27,11 @@ pub fn router() -> Router<AppState> {
         .route("/orders", get(orders).post(create_order))
         .route("/orders/{id}", get(order_detail))
         .route("/orders/{id}/confirm", post(confirm_order))
-        .route("/orders/{id}/ship", post(ship_order))
-        .route("/orders/{id}/invoice", post(invoice_order))
+        .route("/orders/{id}/ship", post(crate::partial_sales::ship_order))
+        .route(
+            "/orders/{id}/invoice",
+            post(crate::partial_sales::invoice_order),
+        )
         .route("/invoices", get(invoices))
         .route("/invoices/{id}/payments", post(pay_invoice))
         .route("/accounting/accounts", get(accounts))
@@ -150,7 +153,7 @@ async fn dashboard(State(state): State<AppState>, _user: AuthUser) -> AppResult<
                 SELECT o.created_at,jsonb_build_object('id',o.id,'number',o.number,'customer_id',o.customer_id,
                 'customer_name',c.name,'status',o.status,'total',o.total::text,'paid',COALESCE(i.paid,0)::text,'created_at',o.created_at,
                 'has_stock_items',EXISTS(SELECT 1 FROM sales_order_lines sl WHERE sl.order_id=o.id AND sl.product_kind='stock')) item
-                FROM sales_orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN invoices i ON i.order_id=o.id AND i.status<>'void'
+                FROM sales_orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN LATERAL (SELECT sum(paid) paid FROM invoices WHERE order_id=o.id AND status<>'void') i ON true
                 ORDER BY o.created_at DESC LIMIT 6) x),'[]'::jsonb),
             'monthly_sales',COALESCE((SELECT jsonb_agg(jsonb_build_object('month',x.sales_month,'total',x.total::text) ORDER BY x.sales_month) FROM (
                 SELECT to_char(created_at AT TIME ZONE (SELECT timezone FROM company),'YYYY-MM') AS sales_month,sum(total) total FROM invoices
@@ -393,21 +396,10 @@ async fn movements(State(state): State<AppState>, _user: AuthUser) -> AppResult<
     Ok(Json(json!({"items":items})))
 }
 
-pub(crate) const ORDER_SELECT: &str = r#"SELECT jsonb_build_object('id',o.id,'number',o.number,'customer_id',o.customer_id,
-    'customer_name',c.name,'status',o.status,'total',o.total::text,'paid',COALESCE(i.paid,0)::text,
-    'has_stock_items',EXISTS(SELECT 1 FROM sales_order_lines sl WHERE sl.order_id=o.id AND sl.product_kind='stock'),
-    'invoice_id',i.id,'created_at',o.created_at,'items',COALESCE((SELECT jsonb_agg(jsonb_build_object(
-    'id',l.id,'product_id',l.product_id,'sku',l.product_sku,'name',l.product_name,'product_kind',l.product_kind,'quantity',l.quantity::text,
-    'unit_price',l.unit_price::text,'total',l.total::text) ORDER BY l.product_sku) FROM sales_order_lines l WHERE l.order_id=o.id),'[]'::jsonb))
-    FROM sales_orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN invoices i ON i.order_id=o.id AND i.status<>'void' WHERE o.id=$1"#;
+pub(crate) const ORDER_SELECT: &str = "SELECT sales_order_document($1)";
 
 async fn orders(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
-    let items: Value = sqlx::query_scalar(r#"SELECT COALESCE(jsonb_agg(x.item ORDER BY x.created_at DESC),'[]'::jsonb) FROM (
-        SELECT o.created_at,jsonb_build_object('id',o.id,'number',o.number,'customer_id',o.customer_id,'customer_name',c.name,
-        'status',o.status,'total',o.total::text,'paid',COALESCE(i.paid,0)::text,'invoice_id',i.id,'created_at',o.created_at,
-        'has_stock_items',EXISTS(SELECT 1 FROM sales_order_lines sl WHERE sl.order_id=o.id AND sl.product_kind='stock')) item
-        FROM sales_orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN invoices i ON i.order_id=o.id AND i.status<>'void'
-        ORDER BY o.created_at DESC LIMIT 500) x"#).fetch_one(&state.db).await?;
+    let items:Value=sqlx::query_scalar("SELECT COALESCE(jsonb_agg(sales_order_document(id) ORDER BY created_at DESC,id DESC),'[]'::jsonb) FROM (SELECT id,created_at FROM sales_orders ORDER BY created_at DESC,id DESC LIMIT 500) o").fetch_one(&state.db).await?;
     Ok(Json(json!({"items":items})))
 }
 
@@ -567,7 +559,7 @@ async fn confirm_order(
     if status != "draft" {
         return Err(AppError::conflict("Only draft orders can be confirmed"));
     }
-    sqlx::query("UPDATE sales_orders SET status='confirmed',confirmed_at=now() WHERE id=$1")
+    sqlx::query("UPDATE sales_orders SET status='confirmed',confirmed_at=now(),version=version+1 WHERE id=$1")
         .bind(id)
         .execute(&mut *tx)
         .await?;
@@ -589,210 +581,10 @@ async fn confirm_order(
     Ok(Json(result))
 }
 
-async fn ship_order(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<Uuid>,
-    Json(body): Json<ActionInput>,
-) -> AppResult<Json<Value>> {
-    user.require(&["warehouse"])?;
-    let request = payload("order.ship", &user, &json!({"id":id,"body":body}));
-    let mut tx = state.db.begin().await?;
-    if let Some(result) = cached(&mut tx, body.idempotency_key, &request).await? {
-        tx.commit().await?;
-        return Ok(Json(result));
-    }
-    crate::corrections::check_open(&mut tx).await?;
-    let order = sqlx::query("SELECT status,number FROM sales_orders WHERE id=$1 FOR UPDATE")
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or_else(|| AppError::bad_request("Order not found"))?;
-    if order.get::<String, _>("status") != "confirmed" {
-        return Err(AppError::conflict("Only confirmed orders can be shipped"));
-    }
-    // Services are fulfilled without an inventory posting; mixed orders move stock only.
-    let lines = sqlx::query(
-        "SELECT product_id,quantity FROM sales_order_lines WHERE order_id=$1 AND product_kind='stock' ORDER BY product_id",
-    )
-    .bind(id)
-    .fetch_all(&mut *tx)
-    .await?;
-    if lines.is_empty() {
-        return Err(AppError::conflict(
-            "Service-only orders can be invoiced directly without shipment",
-        ));
-    }
-    let posting_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO shipment_postings(id,order_id) VALUES($1,$2)")
-        .bind(posting_id)
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-    // Every shipment locks products in the same order, avoiding cross-order deadlocks.
-    let mut cost_total = Decimal::ZERO;
-    for line in lines {
-        let product_id: Uuid = line.get("product_id");
-        let quantity: Decimal = line.get("quantity");
-        let product = sqlx::query(
-            "SELECT sku,quantity,average_cost,inventory_value FROM products WHERE id=$1 FOR UPDATE",
-        )
-        .bind(product_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        let on_hand: Decimal = product.get("quantity");
-        if on_hand < quantity {
-            return Err(AppError::conflict(format!(
-                "Insufficient stock for {}",
-                product.get::<String, _>("sku")
-            )));
-        }
-        let average: Decimal = product.get("average_cost");
-        let value: Decimal = product.get("inventory_value");
-        let cost = domain::shipment_cost(quantity, on_hand, average, value);
-        let remaining = on_hand - quantity;
-        let remaining_value = value - cost;
-        sqlx::query(
-            "UPDATE products SET quantity=$2,inventory_value=$3,average_cost=$4 WHERE id=$1",
-        )
-        .bind(product_id)
-        .bind(remaining)
-        .bind(remaining_value)
-        .bind(if remaining == Decimal::ZERO {
-            Decimal::ZERO
-        } else {
-            average
-        })
-        .execute(&mut *tx)
-        .await?;
-        sqlx::query("INSERT INTO inventory_movements(id,product_id,kind,quantity,unit_cost,value,reference,order_id,created_by,shipment_posting_id) VALUES($1,$2,'shipment',$3,$4,$5,$6,$7,$8,$9)")
-            .bind(Uuid::new_v4()).bind(product_id).bind(-quantity).bind(average).bind(cost)
-            .bind(order.get::<String,_>("number")).bind(id).bind(user.id).bind(posting_id).execute(&mut *tx).await?;
-        cost_total += cost;
-    }
-    journal(
-        &mut tx,
-        &user,
-        "shipment",
-        posting_id,
-        &format!("Shipment {}", order.get::<String, _>("number")),
-        ("5000", "1300"),
-        cost_total,
-    )
-    .await?;
-    sqlx::query("UPDATE sales_orders SET status='shipped',shipped_at=now() WHERE id=$1")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-    audit(
-        &mut tx,
-        &user,
-        "order.shipped",
-        "sales_order",
-        id,
-        json!({"cost":cost_total.to_string()}),
-    )
-    .await?;
-    let result: Value = sqlx::query_scalar(ORDER_SELECT)
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
-    remember(&mut tx, body.idempotency_key, &request, &result).await?;
-    tx.commit().await?;
-    Ok(Json(result))
-}
-
-async fn invoice_order(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<Uuid>,
-    Json(body): Json<ActionInput>,
-) -> AppResult<Json<Value>> {
-    user.require(&["finance"])?;
-    let request = payload("order.invoice", &user, &json!({"id":id,"body":body}));
-    let mut tx = state.db.begin().await?;
-    if let Some(result) = cached(&mut tx, body.idempotency_key, &request).await? {
-        tx.commit().await?;
-        return Ok(Json(result));
-    }
-    crate::corrections::check_open(&mut tx).await?;
-    let order =
-        sqlx::query("SELECT status,total,customer_id FROM sales_orders WHERE id=$1 FOR UPDATE")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(|| AppError::bad_request("Order not found"))?;
-    let has_stock_items: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM sales_order_lines WHERE order_id=$1 AND product_kind='stock')",
-    )
-    .bind(id)
-    .fetch_one(&mut *tx)
-    .await?;
-    let status: String = order.get("status");
-    if status != "shipped" && !(status == "confirmed" && !has_stock_items) {
-        return Err(AppError::conflict(
-            "Confirm service orders or ship stock orders before invoicing",
-        ));
-    }
-    let invoice_id = Uuid::new_v4();
-    let number: String = sqlx::query_scalar(
-        "SELECT invoice_prefix||'-'||lpad(nextval('invoice_number')::text,6,'0') FROM company",
-    )
-    .fetch_one(&mut *tx)
-    .await?;
-    let total: Decimal = order.get("total");
-    sqlx::query(
-        "INSERT INTO invoices(id,number,order_id,customer_id,total) VALUES($1,$2,$3,$4,$5)",
-    )
-    .bind(invoice_id)
-    .bind(&number)
-    .bind(id)
-    .bind(order.get::<Uuid, _>("customer_id"))
-    .bind(total)
-    .execute(&mut *tx)
-    .await?;
-    journal(
-        &mut tx,
-        &user,
-        "invoice",
-        invoice_id,
-        &format!("Invoice {number}"),
-        ("1200", "4000"),
-        total,
-    )
-    .await?;
-    sqlx::query("UPDATE sales_orders SET status='invoiced',invoiced_at=now() WHERE id=$1")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-    audit(
-        &mut tx,
-        &user,
-        "invoice.posted",
-        "invoice",
-        invoice_id,
-        json!({"order_id":id,"total":total.to_string()}),
-    )
-    .await?;
-    let result: Value = sqlx::query_scalar(INVOICE_SELECT)
-        .bind(invoice_id)
-        .fetch_one(&mut *tx)
-        .await?;
-    remember(&mut tx, body.idempotency_key, &request, &result).await?;
-    tx.commit().await?;
-    Ok(Json(result))
-}
-
-pub(crate) const INVOICE_SELECT: &str = r#"SELECT jsonb_build_object('id',i.id,'number',i.number,'order_id',i.order_id,
-    'customer_id',i.customer_id,'customer_name',c.name,'status',i.status,'total',i.total::text,'paid',i.paid::text,
-    'outstanding',(CASE WHEN i.status='void' THEN 0 ELSE i.total-i.paid END)::text,'created_at',i.created_at)
-    FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=$1"#;
+pub(crate) const INVOICE_SELECT: &str = "SELECT sales_invoice_document($1)";
 
 async fn invoices(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
-    let items: Value = sqlx::query_scalar(r#"SELECT COALESCE(jsonb_agg(x.item ORDER BY x.created_at DESC),'[]'::jsonb) FROM (
-        SELECT i.created_at,jsonb_build_object('id',i.id,'number',i.number,'order_id',i.order_id,'customer_id',i.customer_id,
-        'customer_name',c.name,'status',i.status,'total',i.total::text,'paid',i.paid::text,'outstanding',(CASE WHEN i.status='void' THEN 0 ELSE i.total-i.paid END)::text,'created_at',i.created_at) item
-        FROM invoices i JOIN customers c ON c.id=i.customer_id ORDER BY i.created_at DESC LIMIT 500) x"#).fetch_one(&state.db).await?;
+    let items:Value=sqlx::query_scalar("SELECT COALESCE(jsonb_agg(sales_invoice_document(id) ORDER BY created_at DESC,id DESC),'[]'::jsonb) FROM (SELECT id,created_at FROM invoices ORDER BY created_at DESC,id DESC LIMIT 500) i").fetch_one(&state.db).await?;
     Ok(Json(json!({"items":items})))
 }
 

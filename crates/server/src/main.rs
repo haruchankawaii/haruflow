@@ -12,6 +12,9 @@ mod document_correction_tests;
 mod document_corrections;
 mod domain;
 mod error;
+#[cfg(test)]
+mod financial_report_tests;
+mod financial_reports;
 mod insights;
 #[cfg(test)]
 mod insights_tests;
@@ -19,6 +22,9 @@ mod master_data;
 mod opening;
 #[cfg(test)]
 mod opening_tests;
+mod partial_sales;
+#[cfg(test)]
+mod partial_sales_tests;
 #[cfg(test)]
 mod purchase_receipt_tests;
 mod purchase_receipts;
@@ -30,6 +36,9 @@ mod service_tests;
 #[cfg(test)]
 mod supplier_bill_tests;
 mod supplier_bills;
+#[cfg(test)]
+mod supplier_payment_tests;
+mod supplier_payments;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -173,6 +182,9 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(purchasing::router())
         .merge(purchase_receipts::router())
         .merge(supplier_bills::router())
+        .merge(supplier_payments::router())
+        .merge(partial_sales::router())
+        .merge(financial_reports::router())
         .fallback(|| async { error::AppError::not_found() })
         .layer(middleware::from_fn(api_guard));
     Router::new()

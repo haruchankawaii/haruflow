@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 const BILLS: &str = "/api/purchase-bills";
 
-async fn request(
+pub(crate) async fn request(
     app: &Router,
     cookie: &str,
     method: &str,
@@ -43,12 +43,18 @@ async fn request(
             .unwrap_or_else(|_| json!({"raw":String::from_utf8_lossy(&bytes)})),
     )
 }
-async fn call(app: &Router, cookie: &str, method: &str, path: &str, body: Option<Value>) -> Value {
+pub(crate) async fn call(
+    app: &Router,
+    cookie: &str,
+    method: &str,
+    path: &str,
+    body: Option<Value>,
+) -> Value {
     let (status, value) = request(app, cookie, method, path, body).await;
     assert!(status.is_success(), "{method} {path}: {status}: {value}");
     value
 }
-async fn actor(pool: &PgPool, role: &str) -> (Uuid, String) {
+pub(crate) async fn actor(pool: &PgPool, role: &str) -> (Uuid, String) {
     let id = Uuid::new_v4();
     sqlx::query("INSERT INTO users(id,name,email,password_hash,role) VALUES($1,'Supplier bill tester',$2,'unused-fixture',$3)")
         .bind(id).bind(format!("{id}@example.test")).bind(role).execute(pool).await.unwrap();
@@ -63,7 +69,7 @@ async fn actor(pool: &PgPool, role: &str) -> (Uuid, String) {
     .unwrap();
     (id, format!("hf_session={token}"))
 }
-async fn fixture(pool: &PgPool) -> (Router, Uuid, String) {
+pub(crate) async fn fixture(pool: &PgPool) -> (Router, Uuid, String) {
     sqlx::query(
         "INSERT INTO company(id,name,timezone) VALUES($1,'Supplier bill test','Asia/Jakarta')",
     )
@@ -120,7 +126,7 @@ fn reverse_receipt_path(order: &Value) -> String {
 fn reverse_receipt(order: &Value) -> Value {
     json!({"version":order["version"],"reason":"Penerimaan barang harus dikoreksi","idempotency_key":Uuid::new_v4()})
 }
-async fn supplier(app: &Router, cookie: &str, code: &str) -> Value {
+pub(crate) async fn supplier(app: &Router, cookie: &str, code: &str) -> Value {
     call(
         app,
         cookie,
@@ -132,10 +138,15 @@ async fn supplier(app: &Router, cookie: &str, code: &str) -> Value {
     )
     .await
 }
-async fn product(app: &Router, cookie: &str, sku: &str) -> Value {
+pub(crate) async fn product(app: &Router, cookie: &str, sku: &str) -> Value {
     call(app,cookie,"POST","/api/products",Some(json!({"sku":sku,"name":format!("Barang {sku}"),"kind":"stock","unit":"kg","price":"80"}))).await
 }
-async fn received(app: &Router, cookie: &str, supplier: &Value, product: &Value) -> Value {
+pub(crate) async fn received(
+    app: &Router,
+    cookie: &str,
+    supplier: &Value,
+    product: &Value,
+) -> Value {
     let draft=call(app,cookie,"POST","/api/purchase-orders",Some(json!({"supplier_id":supplier["id"],"items":[{"product_id":product["id"],"quantity":"1.125","unit_cost":"12.3456"}],"idempotency_key":Uuid::new_v4()}))).await;
     let confirmed = call(
         app,
@@ -154,7 +165,7 @@ async fn received(app: &Router, cookie: &str, supplier: &Value, product: &Value)
     )
     .await
 }
-async fn get_order(app: &Router, cookie: &str, order: &Value) -> Value {
+pub(crate) async fn get_order(app: &Router, cookie: &str, order: &Value) -> Value {
     call(
         app,
         cookie,
@@ -164,7 +175,7 @@ async fn get_order(app: &Router, cookie: &str, order: &Value) -> Value {
     )
     .await
 }
-async fn bill_body(pool: &PgPool, order: &Value, number: &str) -> Value {
+pub(crate) async fn bill_body(pool: &PgPool, order: &Value, number: &str) -> Value {
     let today: String =
         sqlx::query_scalar("SELECT (now() AT TIME ZONE timezone)::date::text FROM company")
             .fetch_one(pool)
@@ -172,7 +183,13 @@ async fn bill_body(pool: &PgPool, order: &Value, number: &str) -> Value {
             .unwrap();
     json!({"receipt_id":receipt(order)["id"],"order_version":order["version"],"supplier_invoice_number":number,"invoice_date":"2020-01-01","due_date":today,"notes":"Catatan tagihan asli","idempotency_key":Uuid::new_v4()})
 }
-async fn bill(pool: &PgPool, app: &Router, cookie: &str, order: &Value, number: &str) -> Value {
+pub(crate) async fn bill(
+    pool: &PgPool,
+    app: &Router,
+    cookie: &str,
+    order: &Value,
+    number: &str,
+) -> Value {
     call(
         app,
         cookie,
@@ -182,7 +199,7 @@ async fn bill(pool: &PgPool, app: &Router, cookie: &str, order: &Value, number: 
     )
     .await
 }
-async fn snapshot(pool: &PgPool) -> Value {
+pub(crate) async fn snapshot(pool: &PgPool) -> Value {
     sqlx::query_scalar("SELECT jsonb_build_object('products',(SELECT jsonb_agg(jsonb_build_object('id',id,'quantity',quantity,'average_cost',average_cost,'value',inventory_value) ORDER BY id) FROM products),'orders',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM purchase_orders p),'bills',(SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM purchase_bills b),'journals',(SELECT count(*) FROM journal_entries),'movements',(SELECT count(*) FROM inventory_movements),'reversals',(SELECT count(*) FROM posting_reversals),'audits',(SELECT count(*) FROM audit_events))").fetch_one(pool).await.unwrap()
 }
 async fn stock_and_operating_balances(pool: &PgPool) -> Value {
@@ -901,7 +918,7 @@ async fn supplier_bill_summary_uses_company_calendar_and_all_bills_beyond_the_hi
     assert!(summary["as_of"].is_string());
     assert_eq!(
         summary["counts"],
-        json!({"unpaid":504,"void":1,"overdue":502,"due_today":1,"upcoming":1})
+        json!({"unpaid":504,"void":1,"partial":0,"paid":0,"overdue":502,"due_today":1,"upcoming":1})
     );
     assert_eq!(amount(&summary, "outstanding_total"), d("542.67"));
     assert_eq!(amount(&summary, "overdue_total"), d("514.89"));

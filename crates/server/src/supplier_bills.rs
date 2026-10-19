@@ -35,7 +35,16 @@ struct BillInput {
     invoice_date: String,
     due_date: String,
     notes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    items: Option<Vec<BillLineInput>>,
     idempotency_key: Uuid,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct BillLineInput {
+    receipt_line_id: Uuid,
+    quantity: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -46,7 +55,12 @@ struct ReverseInput {
     idempotency_key: Uuid,
 }
 
-fn clean_text(value: &str, min: usize, max: usize, multiline: bool) -> AppResult<String> {
+pub(crate) fn clean_text(
+    value: &str,
+    min: usize,
+    max: usize,
+    multiline: bool,
+) -> AppResult<String> {
     // Check the original input before trimming or serializing it into PostgreSQL
     // JSONB, which cannot represent NUL. Boundary whitespace must not hide controls.
     if value
@@ -91,27 +105,38 @@ const BILL_SELECT: &str = r#"
         'supplier_name',b.supplier_name,'supplier_invoice_number',b.supplier_invoice_number,
         'receipt_id',b.receipt_id,'receipt_number',r.number,'order_id',b.order_id,'order_number',o.number,
         'invoice_date',b.invoice_date::text,'due_date',b.due_date::text,'total',b.total::text,
-        'paid','0.00','outstanding',CASE WHEN b.status='void' THEN '0.00' ELSE b.total::text END,
+        'paid',b.paid::text,'outstanding',CASE WHEN b.status='void' THEN '0.00' ELSE (b.total-b.paid)::text END,
         'status',b.status,'due_status',CASE WHEN b.status='void' THEN 'void'
+            WHEN b.status='paid' THEN 'paid'
             WHEN b.due_date<cfg.today THEN 'overdue' WHEN b.due_date=cfg.today THEN 'due_today' ELSE 'upcoming' END,
         'version',b.version,'notes',b.notes,'journal_id',b.journal_id,'created_at',b.created_at,
         'can_reverse',purchase_bill_blocked_reason(b.id) IS NULL,
         'reversal_blocked_reason',purchase_bill_blocked_reason(b.id),
+        'can_pay',b.status IN ('unpaid','partial') AND cfg.period_open,
+        'payments',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',p.id,'number',p.number,
+            'amount',p.amount::text,'reference',p.reference,'journal_id',p.journal_id,'created_at',p.created_at,
+            'can_reverse',pv.id IS NULL AND b.status<>'void' AND cfg.period_open,
+            'reversal',CASE WHEN pv.id IS NULL THEN NULL ELSE jsonb_build_object('id',pv.id,'reason',pv.reason,
+                'created_at',pv.created_at,'journal_id',pj.id) END) ORDER BY p.created_at,p.id)
+            FROM supplier_payments p LEFT JOIN posting_reversals pv ON pv.source_type='supplier_payment' AND pv.source_id=p.id
+            LEFT JOIN journal_entries pj ON pj.source_type='reversal' AND pj.source_id=pv.id WHERE p.bill_id=b.id),'[]'::jsonb),
         'reversal',CASE WHEN rv.id IS NULL THEN NULL ELSE jsonb_build_object(
             'id',rv.id,'reason',rv.reason,'created_at',rv.created_at,'journal_id',rj.id) END,
         'items',COALESCE((SELECT jsonb_agg(jsonb_build_object(
-            'id',l.id,'movement_id',l.movement_id,'product_id',l.product_id,'product_sku',l.product_sku,
+            'id',l.id,'receipt_line_id',l.receipt_line_id,'movement_id',rl.movement_id,'product_id',l.product_id,'product_sku',l.product_sku,
             'product_name',l.product_name,'unit',l.unit,'quantity',l.quantity::text,
             'unit_cost',l.unit_cost::text,'value',l.value::text) ORDER BY l.position)
-            FROM purchase_receipt_lines l WHERE l.receipt_id=b.receipt_id),'[]'::jsonb)
+            FROM purchase_bill_lines l JOIN purchase_receipt_lines rl ON rl.id=l.receipt_line_id WHERE l.bill_id=b.id),'[]'::jsonb)
     ) AS document
     FROM purchase_bills b JOIN purchase_receipts r ON r.id=b.receipt_id JOIN purchase_orders o ON o.id=b.order_id
-    CROSS JOIN (SELECT (now() AT TIME ZONE timezone)::date today FROM company) cfg
+    CROSS JOIN (SELECT (now() AT TIME ZONE timezone)::date today,
+        closed_through IS NULL OR (now() AT TIME ZONE timezone)::date>closed_through period_open
+        FROM company CROSS JOIN accounting_period WHERE accounting_period.singleton) cfg
     LEFT JOIN posting_reversals rv ON rv.source_type='purchase_bill' AND rv.source_id=b.id
     LEFT JOIN journal_entries rj ON rj.source_type='reversal' AND rj.source_id=rv.id
 "#;
 
-async fn read_bill(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> AppResult<Value> {
+pub(crate) async fn read_bill(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> AppResult<Value> {
     sqlx::query_scalar(&format!(
         "SELECT document FROM ({BILL_SELECT} WHERE b.id=$1) bill"
     ))
@@ -169,6 +194,22 @@ async fn create(
         }
         None => None,
     };
+    let mut selected = std::collections::BTreeMap::new();
+    if let Some(items) = &body.items {
+        if items.is_empty() || items.len() > 100 {
+            return Err(AppError::bad_request("Pilih 1–100 baris penerimaan."));
+        }
+        for item in items {
+            let quantity = crate::business::parse(&item.quantity, 3, "Jumlah tagihan")?;
+            if quantity <= Decimal::ZERO
+                || selected.insert(item.receipt_line_id, quantity).is_some()
+            {
+                return Err(AppError::bad_request(
+                    "Jumlah harus positif dan baris tidak boleh ganda.",
+                ));
+            }
+        }
+    }
     let request = payload("purchase_bill.create", &user, &body);
     let mut tx = state.db.begin().await?;
     if let Some(result) = cached(&mut tx, body.idempotency_key, &request).await? {
@@ -204,7 +245,52 @@ async fn create(
     if let Some(reason) = blocked {
         return Err(AppError::conflict(reason));
     }
-    let total: Decimal = receipt.get("total");
+    let receipt_lines=sqlx::query("SELECT l.*,purchase_receipt_billed_quantity(l.id) billed_quantity,purchase_receipt_billed_value(l.id) billed_value FROM purchase_receipt_lines l WHERE receipt_id=$1 ORDER BY position")
+        .bind(body.receipt_id).fetch_all(&mut *tx).await?;
+    let mut allocations = Vec::new();
+    let mut total = Decimal::ZERO;
+    for line in receipt_lines {
+        let line_id: Uuid = line.get("id");
+        let quantity: Decimal = line.get("quantity");
+        let billed_quantity: Decimal = line.get("billed_quantity");
+        let billed_value: Decimal = line.get("billed_value");
+        let value: Decimal = line.get("value");
+        let remaining = quantity - billed_quantity;
+        let requested = if body.items.is_some() {
+            selected.remove(&line_id).unwrap_or_default()
+        } else {
+            remaining
+        };
+        if requested > remaining {
+            return Err(AppError::conflict(
+                "Jumlah tagihan melebihi sisa penerimaan yang belum ditagih.",
+            ));
+        }
+        if requested <= Decimal::ZERO {
+            continue;
+        }
+        let allocated = if requested == remaining {
+            value - billed_value
+        } else {
+            (crate::domain::money((billed_quantity + requested) / quantity * value) - billed_value)
+                .min((value - billed_value - Decimal::new(1, 2)).max(Decimal::ZERO))
+        };
+        if allocated <= Decimal::ZERO {
+            return Err(AppError::bad_request(
+                "Jumlah terlalu kecil untuk menghasilkan nilai tagihan satu sen. Perbesar jumlah pada baris ini.",
+            ));
+        }
+        if allocated < Decimal::ZERO || allocated > value - billed_value {
+            return Err(AppError::conflict("Nilai alokasi tagihan tidak cocok."));
+        }
+        total += allocated;
+        allocations.push((line, requested, allocated));
+    }
+    if !selected.is_empty() || allocations.is_empty() || total <= Decimal::ZERO {
+        return Err(AppError::bad_request(
+            "Pilih barang dari penerimaan ini dengan total tagihan lebih besar dari nol.",
+        ));
+    }
     let id = Uuid::new_v4();
     let journal_id = Uuid::new_v4();
     let sequence: i64 = sqlx::query_scalar("SELECT nextval('purchase_bill_number')")
@@ -231,6 +317,12 @@ async fn create(
         .bind(order.get::<String,_>("supplier_code")).bind(order.get::<String,_>("supplier_name"))
         .bind(&supplier_invoice_number).bind(invoice_date).bind(due_date).bind(notes).bind(total).bind(journal_id).bind(user.id)
         .execute(&mut *tx).await?;
+    for (position, (line, quantity, value)) in allocations.iter().enumerate() {
+        sqlx::query("INSERT INTO purchase_bill_lines(id,bill_id,receipt_line_id,position,product_id,product_sku,product_name,unit,quantity,unit_cost,value) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
+            .bind(Uuid::new_v4()).bind(id).bind(line.get::<Uuid,_>("id")).bind((position+1) as i32)
+            .bind(line.get::<Uuid,_>("product_id")).bind(line.get::<String,_>("product_sku")).bind(line.get::<String,_>("product_name"))
+            .bind(line.get::<String,_>("unit")).bind(quantity).bind(line.get::<Decimal,_>("unit_cost")).bind(value).execute(&mut *tx).await?;
+    }
     sqlx::query("UPDATE purchase_orders SET updated_at=now(),version=version+1 WHERE id=$1")
         .bind(order_id)
         .execute(&mut *tx)
@@ -278,8 +370,12 @@ async fn reverse(
     .fetch_one(&mut *tx)
     .await?;
     check_version(body.version, bill.get("version"))?;
-    if bill.get::<String, _>("status") != "unpaid" {
-        return Err(AppError::conflict("Tagihan supplier sudah dibalik."));
+    let blocked: Option<String> = sqlx::query_scalar("SELECT purchase_bill_blocked_reason($1)")
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+    if let Some(reason) = blocked {
+        return Err(AppError::conflict(reason));
     }
     let reversal_id = Uuid::new_v4();
     let journal_id = Uuid::new_v4();
@@ -318,22 +414,24 @@ async fn reverse(
 async fn summary(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
     let result: Value = sqlx::query_scalar(r#"
         WITH cfg AS (SELECT timezone,(now() AT TIME ZONE timezone)::date today FROM company),
-        active AS (SELECT b.*,cfg.today FROM purchase_bills b CROSS JOIN cfg WHERE b.status='unpaid'),
+        active AS (SELECT b.*,b.total-b.paid outstanding,cfg.today FROM purchase_bills b CROSS JOIN cfg WHERE b.status IN ('unpaid','partial')),
         supplier_totals AS (
             SELECT a.supplier_id,s.code supplier_code,s.name supplier_name,count(*) bill_count,
-                sum(a.total) outstanding_total,COALESCE(sum(a.total) FILTER (WHERE a.due_date<a.today),0) overdue_total
+                sum(a.outstanding) outstanding_total,COALESCE(sum(a.outstanding) FILTER (WHERE a.due_date<a.today),0) overdue_total
             FROM active a JOIN suppliers s ON s.id=a.supplier_id GROUP BY a.supplier_id,s.code,s.name
         )
         SELECT jsonb_build_object('today',cfg.today::text,'timezone',cfg.timezone,'as_of',now(),
             'counts',jsonb_build_object('unpaid',(SELECT count(*) FROM active),
                 'void',(SELECT count(*) FROM purchase_bills WHERE status='void'),
+                'partial',(SELECT count(*) FROM purchase_bills WHERE status='partial'),
+                'paid',(SELECT count(*) FROM purchase_bills WHERE status='paid'),
                 'overdue',(SELECT count(*) FROM active WHERE due_date<today),
                 'due_today',(SELECT count(*) FROM active WHERE due_date=today),
                 'upcoming',(SELECT count(*) FROM active WHERE due_date>today)),
-            'outstanding_total',COALESCE((SELECT sum(total) FROM active),0)::text,
-            'overdue_total',COALESCE((SELECT sum(total) FROM active WHERE due_date<today),0)::text,
-            'due_today_total',COALESCE((SELECT sum(total) FROM active WHERE due_date=today),0)::text,
-            'upcoming_total',COALESCE((SELECT sum(total) FROM active WHERE due_date>today),0)::text,
+            'outstanding_total',COALESCE((SELECT sum(outstanding) FROM active),0)::text,
+            'overdue_total',COALESCE((SELECT sum(outstanding) FROM active WHERE due_date<today),0)::text,
+            'due_today_total',COALESCE((SELECT sum(outstanding) FROM active WHERE due_date=today),0)::text,
+            'upcoming_total',COALESCE((SELECT sum(outstanding) FROM active WHERE due_date>today),0)::text,
             'suppliers',COALESCE((SELECT jsonb_agg(jsonb_build_object('supplier_id',supplier_id,
                 'supplier_code',supplier_code,'supplier_name',supplier_name,'bill_count',bill_count,
                 'outstanding_total',outstanding_total::text,'overdue_total',overdue_total::text)

@@ -16,6 +16,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{Postgres, Row, Transaction};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 pub fn router() -> Router<AppState> {
@@ -31,6 +32,15 @@ struct ReceiveInput {
     version: i32,
     idempotency_key: Uuid,
     reference: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    items: Option<Vec<ReceiveItem>>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReceiveItem {
+    order_line_id: Uuid,
+    quantity: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -79,6 +89,15 @@ async fn receive(
         .filter(|value| !value.trim().is_empty())
         .map(|value| clean_text(value, 1, 200, false))
         .transpose()?;
+    if let Some(items) = &body.items {
+        if items.is_empty() || items.len() > 100 {
+            return Err(AppError::bad_request("Select 1–100 goods receipt lines"));
+        }
+        for item in items {
+            domain::decimal(&item.quantity, 3, "Receipt quantity")
+                .map_err(AppError::bad_request)?;
+        }
+    }
     let request = payload(
         "purchase_order.receive",
         &user,
@@ -91,25 +110,61 @@ async fn receive(
     }
     check_open(&mut tx).await?;
     let order = lock_order(&mut tx, id, body.version).await?;
-    if order.get::<String, _>("status") != "confirmed"
-        || order.get::<Option<Uuid>, _>("active_receipt_id").is_some()
-    {
+    if !matches!(
+        order.get::<String, _>("status").as_str(),
+        "confirmed" | "partial_received"
+    ) {
         return Err(AppError::conflict(
-            "Only confirmed purchase orders without an active receipt can be received",
+            "Only confirmed purchase orders with remaining quantities can be received",
         ));
     }
     // The confirmed supplier snapshot remains valid even if that supplier was
     // subsequently made inactive. Stock products are locked in UUID order.
     sqlx::query("SELECT id FROM products WHERE id IN (SELECT product_id FROM purchase_order_lines WHERE order_id=$1) ORDER BY id FOR UPDATE")
         .bind(id).fetch_all(&mut *tx).await?;
-    let lines = sqlx::query("SELECT l.*,p.kind,p.unit AS stock_unit,p.quantity AS stock_quantity,p.average_cost AS stock_average,p.inventory_value AS stock_value FROM purchase_order_lines l JOIN products p ON p.id=l.product_id WHERE l.order_id=$1 ORDER BY l.position")
+    let all_lines = sqlx::query("SELECT l.*,p.kind,p.unit AS stock_unit,p.quantity AS stock_quantity,p.average_cost AS stock_average,p.inventory_value AS stock_value,purchase_order_received_quantity(l.order_id,l.product_id) AS received_quantity,purchase_order_received_value(l.order_id,l.product_id) AS received_value FROM purchase_order_lines l JOIN products p ON p.id=l.product_id WHERE l.order_id=$1 ORDER BY l.position")
         .bind(id).fetch_all(&mut *tx).await?;
-    if lines.is_empty() || lines.len() > 100 {
+    if all_lines.is_empty() || all_lines.len() > 100 {
         return Err(AppError::conflict(
             "Purchase order requires 1–100 stock products",
         ));
     }
+    let mut selected = BTreeMap::new();
+    if let Some(items) = &body.items {
+        if items.is_empty() || items.len() > 100 {
+            return Err(AppError::bad_request("Select 1–100 goods receipt lines"));
+        }
+        for item in items {
+            let quantity = domain::decimal(&item.quantity, 3, "Receipt quantity")
+                .map_err(AppError::bad_request)?;
+            if selected.insert(item.order_line_id, quantity).is_some() {
+                return Err(AppError::bad_request("Duplicate goods receipt line"));
+            }
+        }
+    } else {
+        for line in &all_lines {
+            let remaining =
+                line.get::<Decimal, _>("quantity") - line.get::<Decimal, _>("received_quantity");
+            if remaining > Decimal::ZERO {
+                selected.insert(line.get::<Uuid, _>("id"), remaining);
+            }
+        }
+    }
+    if selected.keys().any(|id| {
+        !all_lines
+            .iter()
+            .any(|line| line.get::<Uuid, _>("id") == *id)
+    }) {
+        return Err(AppError::bad_request(
+            "Goods receipt contains a line outside this purchase order",
+        ));
+    }
+    let lines: Vec<_> = all_lines
+        .into_iter()
+        .filter(|line| selected.contains_key(&line.get::<Uuid, _>("id")))
+        .collect();
     let mut total = Decimal::ZERO;
+    let mut allocated_values = BTreeMap::new();
     // Validate the whole receipt before writing any of its lines.
     for line in &lines {
         if line.get::<String, _>("kind") != "stock" {
@@ -123,9 +178,34 @@ async fn receive(
                 line.get::<String, _>("stock_unit")
             )));
         }
-        let quantity =
-            line.get::<Decimal, _>("stock_quantity") + line.get::<Decimal, _>("quantity");
-        let value = line.get::<Decimal, _>("stock_value") + line.get::<Decimal, _>("total");
+        let received = line.get::<Decimal, _>("received_quantity");
+        let selected_quantity = selected[&line.get::<Uuid, _>("id")];
+        let remaining = line.get::<Decimal, _>("quantity") - received;
+        if selected_quantity > remaining {
+            return Err(AppError::conflict(
+                "Receipt quantity exceeds the remaining purchase order quantity",
+            ));
+        }
+        let prior_value = line.get::<Decimal, _>("received_value");
+        let remaining_value = line.get::<Decimal, _>("total") - prior_value;
+        let allocated = if selected_quantity == remaining {
+            remaining_value
+        } else {
+            (domain::money((received + selected_quantity) * line.get::<Decimal, _>("unit_cost"))
+                - prior_value)
+                .max(Decimal::ZERO)
+                // A later document needs a positive cent to finish this line;
+                // do not consume its final cent while stock quantity remains.
+                .min((remaining_value - Decimal::new(1, 2)).max(Decimal::ZERO))
+        };
+        if allocated <= Decimal::ZERO {
+            return Err(AppError::bad_request(
+                "Every selected receipt line needs a positive rounded value; increase the quantity",
+            ));
+        }
+        allocated_values.insert(line.get::<Uuid, _>("id"), allocated);
+        let quantity = line.get::<Decimal, _>("stock_quantity") + selected_quantity;
+        let value = line.get::<Decimal, _>("stock_value") + allocated;
         if quantity > Decimal::from(1_000_000_000u64) {
             return Err(AppError::bad_request("Stock quantity limit exceeded"));
         }
@@ -134,11 +214,11 @@ async fn receive(
                 "Product inventory value limit exceeded",
             ));
         }
-        total += line.get::<Decimal, _>("total");
+        total += allocated;
     }
-    if total != order.get::<Decimal, _>("total") || total <= Decimal::ZERO {
-        return Err(AppError::conflict(
-            "Purchase order total does not match its lines",
+    if total <= Decimal::ZERO {
+        return Err(AppError::bad_request(
+            "Selected receipt must have a positive rounded value; increase the quantity",
         ));
     }
     let receipt_id = Uuid::new_v4();
@@ -163,8 +243,8 @@ async fn receive(
         .execute(&mut *tx).await?;
     for line in lines {
         let product_id: Uuid = line.get("product_id");
-        let quantity: Decimal = line.get("quantity");
-        let value: Decimal = line.get("total");
+        let quantity = selected[&line.get::<Uuid, _>("id")];
+        let value = allocated_values[&line.get::<Uuid, _>("id")];
         let before_quantity: Decimal = line.get("stock_quantity");
         let before_value: Decimal = line.get("stock_value");
         let before_average: Decimal = line.get("stock_average");
@@ -189,7 +269,7 @@ async fn receive(
             .bind(line.get::<String,_>("unit")).bind(quantity).bind(line.get::<Decimal,_>("unit_cost"))
             .bind(value).bind(before_quantity).bind(before_average).bind(before_value).execute(&mut *tx).await?;
     }
-    sqlx::query("UPDATE purchase_orders SET status='received',active_receipt_id=$2,received_at=now(),updated_at=now(),version=version+1 WHERE id=$1")
+    sqlx::query("UPDATE purchase_orders SET status=CASE WHEN EXISTS(SELECT 1 FROM purchase_order_lines l WHERE l.order_id=$1 AND l.quantity>purchase_order_received_quantity($1,l.product_id)) THEN 'partial_received' ELSE 'received' END,active_receipt_id=$2,received_at=now(),updated_at=now(),version=version+1 WHERE id=$1")
         .bind(id).bind(receipt_id).execute(&mut *tx).await?;
     let result = read_order(&mut tx, id).await?;
     audit(&mut tx,&user,"purchase_order.received","purchase_order",id,
@@ -226,11 +306,12 @@ async fn reverse(
             .ok_or_else(AppError::not_found)?;
     let order_id: Uuid = receipt.get("order_id");
     let order = lock_order(&mut tx, order_id, body.version).await?;
-    if order.get::<String, _>("status") != "received"
-        || order.get::<Option<Uuid>, _>("active_receipt_id") != Some(id)
-    {
+    if !matches!(
+        order.get::<String, _>("status").as_str(),
+        "received" | "partial_received"
+    ) {
         return Err(AppError::conflict(
-            "Only the active goods receipt of a received purchase order can be reversed",
+            "Only active goods receipts can be reversed",
         ));
     }
     sqlx::query("SELECT id FROM products WHERE id IN (SELECT product_id FROM purchase_receipt_lines WHERE receipt_id=$1) ORDER BY id FOR UPDATE")
@@ -283,7 +364,7 @@ async fn reverse(
             .bind(&reason).bind(user.id).bind(id).bind(line.get::<Uuid,_>("movement_id"))
             .execute(&mut *tx).await?;
     }
-    sqlx::query("UPDATE purchase_orders SET status='confirmed',active_receipt_id=NULL,received_at=NULL,updated_at=now(),version=version+1 WHERE id=$1")
+    sqlx::query("WITH active AS (SELECT r.id,r.created_at FROM purchase_receipts r WHERE r.order_id=$1 AND NOT EXISTS(SELECT 1 FROM posting_reversals v WHERE v.source_type='purchase_receipt' AND v.source_id=r.id) ORDER BY r.created_at DESC,r.number DESC LIMIT 1) UPDATE purchase_orders SET status=CASE WHEN EXISTS(SELECT 1 FROM active) THEN 'partial_received' ELSE 'confirmed' END,active_receipt_id=(SELECT id FROM active),received_at=(SELECT created_at FROM active),updated_at=now(),version=version+1 WHERE id=$1")
         .bind(order_id).execute(&mut *tx).await?;
     let result = read_order(&mut tx, order_id).await?;
     audit(&mut tx,&user,"purchase_receipt.reversed","purchase_receipt",id,
@@ -301,17 +382,21 @@ async fn summary(State(state): State<AppState>, _user: AuthUser) -> AppResult<Js
         SELECT jsonb_build_object(
             'counts',jsonb_build_object('draft',COALESCE((SELECT count FROM status_totals WHERE status='draft'),0),
                 'confirmed',COALESCE((SELECT count FROM status_totals WHERE status='confirmed'),0),
+                'partial_received',COALESCE((SELECT count FROM status_totals WHERE status='partial_received'),0),
                 'received',COALESCE((SELECT count FROM status_totals WHERE status='received'),0),
                 'cancelled',COALESCE((SELECT count FROM status_totals WHERE status='cancelled'),0)),
             'values',jsonb_build_object('draft',COALESCE((SELECT value FROM status_totals WHERE status='draft'),0)::text,
                 'confirmed',COALESCE((SELECT value FROM status_totals WHERE status='confirmed'),0)::text,
+                'partial_received',COALESCE((SELECT value FROM status_totals WHERE status='partial_received'),0)::text,
                 'received',COALESCE((SELECT value FROM status_totals WHERE status='received'),0)::text,
                 'cancelled',COALESCE((SELECT value FROM status_totals WHERE status='cancelled'),0)::text),
-            'pending_receipt_total',COALESCE((SELECT value FROM status_totals WHERE status='confirmed'),0)::text,
-            'received_unbilled_total',COALESCE((SELECT sum(r.total) FROM purchase_orders o
-                JOIN purchase_receipts r ON r.id=o.active_receipt_id WHERE o.status='received'
-                AND NOT EXISTS(SELECT 1 FROM purchase_bills b WHERE b.receipt_id=r.id AND b.status='unpaid')),0)::text,
-            'supplier_payable_total',COALESCE((SELECT sum(total) FROM purchase_bills WHERE status='unpaid'),0)::text,
+            'pending_receipt_total',COALESCE((SELECT sum(l.total-purchase_order_received_value(o.id,l.product_id))
+                FROM purchase_orders o JOIN purchase_order_lines l ON l.order_id=o.id
+                WHERE o.status IN ('confirmed','partial_received')),0)::text,
+            'received_unbilled_total',COALESCE((SELECT sum(l.value-purchase_receipt_billed_value(l.id)) FROM purchase_receipt_lines l
+                JOIN purchase_receipts r ON r.id=l.receipt_id WHERE NOT EXISTS(
+                    SELECT 1 FROM posting_reversals v WHERE v.source_type='purchase_receipt' AND v.source_id=r.id)),0)::text,
+            'supplier_payable_total',COALESCE((SELECT sum(total-paid) FROM purchase_bills WHERE status<>'void'),0)::text,
             'as_of',now())
         "#).fetch_one(&state.db).await?;
     Ok(Json(result))
