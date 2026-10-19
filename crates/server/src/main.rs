@@ -32,6 +32,9 @@ mod purchasing;
 #[cfg(test)]
 mod purchasing_tests;
 #[cfg(test)]
+mod sales_return_tests;
+mod sales_returns;
+#[cfg(test)]
 mod service_tests;
 #[cfg(test)]
 mod supplier_bill_tests;
@@ -39,6 +42,9 @@ mod supplier_bills;
 #[cfg(test)]
 mod supplier_payment_tests;
 mod supplier_payments;
+#[cfg(test)]
+mod supplier_return_tests;
+mod supplier_returns;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -183,6 +189,8 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(purchase_receipts::router())
         .merge(supplier_bills::router())
         .merge(supplier_payments::router())
+        .merge(supplier_returns::router())
+        .merge(sales_returns::router())
         .merge(partial_sales::router())
         .merge(financial_reports::router())
         .fallback(|| async { error::AppError::not_found() })

@@ -136,7 +136,7 @@ pub(crate) async fn ship_order(
         .await?;
     let mut total = Decimal::ZERO;
     for (line_id, product_id, quantity) in chosen {
-        let product=sqlx::query("SELECT sku,kind,quantity,average_cost,inventory_value FROM products WHERE id=$1 FOR UPDATE")
+        let product=sqlx::query("SELECT sku,kind,unit,quantity,average_cost,inventory_value FROM products WHERE id=$1 FOR UPDATE")
             .bind(product_id).fetch_one(&mut *tx).await?;
         let before_quantity: Decimal = product.get("quantity");
         let before_value: Decimal = product.get("inventory_value");
@@ -165,8 +165,8 @@ pub(crate) async fn ship_order(
         let movement_id = Uuid::new_v4();
         sqlx::query("INSERT INTO inventory_movements(id,product_id,kind,quantity,unit_cost,value,reference,order_id,created_by,shipment_posting_id) VALUES($1,$2,'shipment',$3,$4,$5,$6,$7,$8,$9)")
             .bind(movement_id).bind(product_id).bind(-quantity).bind(before_average).bind(cost).bind(order.get::<String,_>("number")).bind(id).bind(user.id).bind(posting_id).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO shipment_allocations(id,shipment_id,line_id,quantity,movement_id,before_quantity,before_value,before_average) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
-            .bind(Uuid::new_v4()).bind(posting_id).bind(line_id).bind(quantity).bind(movement_id).bind(before_quantity).bind(before_value).bind(before_average).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO shipment_allocations(id,shipment_id,line_id,quantity,movement_id,before_quantity,before_value,before_average,product_unit) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)")
+            .bind(Uuid::new_v4()).bind(posting_id).bind(line_id).bind(quantity).bind(movement_id).bind(before_quantity).bind(before_value).bind(before_average).bind(product.get::<String,_>("unit")).execute(&mut *tx).await?;
         total += cost;
     }
     journal(

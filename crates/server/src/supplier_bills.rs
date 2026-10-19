@@ -105,7 +105,8 @@ const BILL_SELECT: &str = r#"
         'supplier_name',b.supplier_name,'supplier_invoice_number',b.supplier_invoice_number,
         'receipt_id',b.receipt_id,'receipt_number',r.number,'order_id',b.order_id,'order_number',o.number,
         'invoice_date',b.invoice_date::text,'due_date',b.due_date::text,'total',b.total::text,
-        'paid',b.paid::text,'outstanding',CASE WHEN b.status='void' THEN '0.00' ELSE (b.total-b.paid)::text END,
+        'credit_total',b.credit_total::text,'net_total',(b.total-b.credit_total)::text,
+        'paid',b.paid::text,'outstanding',CASE WHEN b.status='void' THEN '0.00' ELSE (b.total-b.credit_total-b.paid)::text END,
         'status',b.status,'due_status',CASE WHEN b.status='void' THEN 'void'
             WHEN b.status='paid' THEN 'paid'
             WHEN b.due_date<cfg.today THEN 'overdue' WHEN b.due_date=cfg.today THEN 'due_today' ELSE 'upcoming' END,
@@ -113,9 +114,12 @@ const BILL_SELECT: &str = r#"
         'can_reverse',purchase_bill_blocked_reason(b.id) IS NULL,
         'reversal_blocked_reason',purchase_bill_blocked_reason(b.id),
         'can_pay',b.status IN ('unpaid','partial') AND cfg.period_open,
+        'can_return',b.status<>'void' AND cfg.period_open AND EXISTS(SELECT 1 FROM purchase_bill_lines l JOIN products p ON p.id=l.product_id
+            WHERE l.bill_id=b.id AND l.quantity>supplier_bill_returned_quantity(l.id) AND p.quantity>0 AND p.kind='stock' AND p.unit=l.unit),
+        'returns',supplier_return_history(b.id),
         'payments',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',p.id,'number',p.number,
             'amount',p.amount::text,'reference',p.reference,'journal_id',p.journal_id,'created_at',p.created_at,
-            'can_reverse',pv.id IS NULL AND b.status<>'void' AND cfg.period_open,
+            'can_reverse',pv.id IS NULL AND b.status<>'void' AND b.credit_total=0 AND cfg.period_open,
             'reversal',CASE WHEN pv.id IS NULL THEN NULL ELSE jsonb_build_object('id',pv.id,'reason',pv.reason,
                 'created_at',pv.created_at,'journal_id',pj.id) END) ORDER BY p.created_at,p.id)
             FROM supplier_payments p LEFT JOIN posting_reversals pv ON pv.source_type='supplier_payment' AND pv.source_id=p.id
@@ -125,7 +129,10 @@ const BILL_SELECT: &str = r#"
         'items',COALESCE((SELECT jsonb_agg(jsonb_build_object(
             'id',l.id,'receipt_line_id',l.receipt_line_id,'movement_id',rl.movement_id,'product_id',l.product_id,'product_sku',l.product_sku,
             'product_name',l.product_name,'unit',l.unit,'quantity',l.quantity::text,
-            'unit_cost',l.unit_cost::text,'value',l.value::text) ORDER BY l.position)
+            'unit_cost',l.unit_cost::text,'value',l.value::text,
+            'returned_quantity',supplier_bill_returned_quantity(l.id)::text,
+            'remaining_return_quantity',(l.quantity-supplier_bill_returned_quantity(l.id))::text,
+            'returned_credit',supplier_bill_returned_credit(l.id)::text) ORDER BY l.position)
             FROM purchase_bill_lines l JOIN purchase_receipt_lines rl ON rl.id=l.receipt_line_id WHERE l.bill_id=b.id),'[]'::jsonb)
     ) AS document
     FROM purchase_bills b JOIN purchase_receipts r ON r.id=b.receipt_id JOIN purchase_orders o ON o.id=b.order_id
@@ -414,7 +421,7 @@ async fn reverse(
 async fn summary(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
     let result: Value = sqlx::query_scalar(r#"
         WITH cfg AS (SELECT timezone,(now() AT TIME ZONE timezone)::date today FROM company),
-        active AS (SELECT b.*,b.total-b.paid outstanding,cfg.today FROM purchase_bills b CROSS JOIN cfg WHERE b.status IN ('unpaid','partial')),
+        active AS (SELECT b.*,b.total-b.credit_total-b.paid outstanding,cfg.today FROM purchase_bills b CROSS JOIN cfg WHERE b.status IN ('unpaid','partial')),
         supplier_totals AS (
             SELECT a.supplier_id,s.code supplier_code,s.name supplier_name,count(*) bill_count,
                 sum(a.outstanding) outstanding_total,COALESCE(sum(a.outstanding) FILTER (WHERE a.due_date<a.today),0) overdue_total

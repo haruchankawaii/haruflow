@@ -143,7 +143,7 @@ async fn dashboard(State(state): State<AppState>, _user: AuthUser) -> AppResult<
     let result: Value = sqlx::query_scalar(r#"
         SELECT jsonb_build_object(
             'revenue',COALESCE((SELECT sum(credit-debit) FROM journal_lines WHERE account_code='4000'),0)::text,
-            'outstanding',COALESCE((SELECT sum(total-paid) FROM invoices WHERE status<>'void'),0)::text,
+            'outstanding',COALESCE((SELECT sum(total-credit_total-paid) FROM invoices WHERE status<>'void'),0)::text,
             'inventory_value',COALESCE((SELECT sum(inventory_value) FROM products),0)::text,
             'cash',COALESCE((SELECT sum(debit-credit) FROM journal_lines WHERE account_code='1100'),0)::text,
             'orders_count',(SELECT count(*) FROM sales_orders),
@@ -156,7 +156,7 @@ async fn dashboard(State(state): State<AppState>, _user: AuthUser) -> AppResult<
                 FROM sales_orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN LATERAL (SELECT sum(paid) paid FROM invoices WHERE order_id=o.id AND status<>'void') i ON true
                 ORDER BY o.created_at DESC LIMIT 6) x),'[]'::jsonb),
             'monthly_sales',COALESCE((SELECT jsonb_agg(jsonb_build_object('month',x.sales_month,'total',x.total::text) ORDER BY x.sales_month) FROM (
-                SELECT to_char(created_at AT TIME ZONE (SELECT timezone FROM company),'YYYY-MM') AS sales_month,sum(total) total FROM invoices
+                SELECT to_char(created_at AT TIME ZONE (SELECT timezone FROM company),'YYYY-MM') AS sales_month,sum(total-credit_total) total FROM invoices
                 WHERE status<>'void' AND created_at>=(date_trunc('month',now() AT TIME ZONE (SELECT timezone FROM company))-interval '5 months') AT TIME ZONE (SELECT timezone FROM company) GROUP BY 1) x),'[]'::jsonb))
     "#).fetch_one(&state.db).await?;
     Ok(Json(result))
@@ -374,6 +374,9 @@ async fn movements(State(state): State<AppState>, _user: AuthUser) -> AppResult<
             'reference',m.reference,'order_id',m.order_id,'created_at',m.created_at,'reverses_movement_id',m.reverses_id,
             'purchase_receipt_id',m.purchase_receipt_id,'purchase_order_id',pr.order_id,
             'purchase_order_number',po.number,
+            'sales_return_id',m.sales_return_id,'sales_return_number',sr.number,'sales_return_invoice_id',sr.invoice_id,
+            'supplier_return_id',m.supplier_return_id,'supplier_return_number',sur.number,'supplier_return_bill_id',sur.bill_id,
+            'shipment_id',m.shipment_posting_id,
             'can_reverse',m.kind='receipt' AND r.id IS NULL AND m.before_quantity IS NOT NULL AND NOT EXISTS(
                 SELECT 1 FROM inventory_movements later WHERE later.product_id=m.product_id AND later.movement_seq>m.movement_seq)
                 AND (SELECT closed_through IS NULL OR (now() AT TIME ZONE (SELECT timezone FROM company))::date>closed_through FROM accounting_period WHERE singleton),
@@ -388,15 +391,20 @@ async fn movements(State(state): State<AppState>, _user: AuthUser) -> AppResult<
         FROM inventory_movements m JOIN products p ON p.id=m.product_id
         LEFT JOIN posting_reversals r ON (r.source_type='receipt' AND r.source_id=m.id AND m.kind='receipt')
             OR (r.source_type='purchase_receipt' AND r.source_id=m.purchase_receipt_id AND m.kind='purchase_receipt')
+            OR (r.source_type='sales_return' AND r.source_id=m.sales_return_id AND m.kind='sales_return')
+            OR (r.source_type='supplier_return' AND r.source_id=m.supplier_return_id AND m.kind='supplier_return')
         LEFT JOIN journal_entries rj ON rj.source_type='reversal' AND rj.source_id=r.id
         LEFT JOIN purchase_receipts pr ON pr.id=m.purchase_receipt_id
         LEFT JOIN purchase_orders po ON po.id=pr.order_id
+        LEFT JOIN sales_returns sr ON sr.id=m.sales_return_id
+        LEFT JOIN supplier_returns sur ON sur.id=m.supplier_return_id
         ORDER BY m.movement_seq DESC LIMIT 500) x"#)
         .fetch_one(&state.db).await?;
     Ok(Json(json!({"items":items})))
 }
 
-pub(crate) const ORDER_SELECT: &str = "SELECT sales_order_document($1)";
+pub(crate) const ORDER_SELECT: &str =
+    "SELECT sales_order_document($1) WHERE EXISTS(SELECT 1 FROM sales_orders WHERE id=$1)";
 
 async fn orders(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
     let items:Value=sqlx::query_scalar("SELECT COALESCE(jsonb_agg(sales_order_document(id) ORDER BY created_at DESC,id DESC),'[]'::jsonb) FROM (SELECT id,created_at FROM sales_orders ORDER BY created_at DESC,id DESC LIMIT 500) o").fetch_one(&state.db).await?;
@@ -581,7 +589,8 @@ async fn confirm_order(
     Ok(Json(result))
 }
 
-pub(crate) const INVOICE_SELECT: &str = "SELECT sales_invoice_document($1)";
+pub(crate) const INVOICE_SELECT: &str =
+    "SELECT sales_invoice_document($1) WHERE EXISTS(SELECT 1 FROM invoices WHERE id=$1)";
 
 async fn invoices(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
     let items:Value=sqlx::query_scalar("SELECT COALESCE(jsonb_agg(sales_invoice_document(id) ORDER BY created_at DESC,id DESC),'[]'::jsonb) FROM (SELECT id,created_at FROM invoices ORDER BY created_at DESC,id DESC LIMIT 500) i").fetch_one(&state.db).await?;
@@ -602,6 +611,16 @@ async fn pay_invoice(
     Json(body): Json<PaymentInput>,
 ) -> AppResult<Json<Value>> {
     user.require(&["finance"])?;
+    let amount = domain::payment_amount(&body.amount).map_err(AppError::bad_request)?;
+    let reference = optional_text(body.reference.clone(), 200, "Reference")?;
+    if reference
+        .as_deref()
+        .is_some_and(|value| value.chars().any(char::is_control))
+    {
+        return Err(AppError::bad_request(
+            "Payment reference cannot contain control characters",
+        ));
+    }
     let request = payload("invoice.payment", &user, &json!({"id":id,"body":body}));
     let mut tx = state.db.begin().await?;
     if let Some(result) = cached(&mut tx, body.idempotency_key, &request).await? {
@@ -609,20 +628,19 @@ async fn pay_invoice(
         return Ok(Json(result));
     }
     crate::corrections::check_open(&mut tx).await?;
-    let amount = parse(&body.amount, 2, "Amount")?;
-    let reference = optional_text(body.reference, 200, "Reference")?;
-    let invoice =
-        sqlx::query("SELECT total,paid,number,status FROM invoices WHERE id=$1 FOR UPDATE")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(|| AppError::bad_request("Invoice not found"))?;
+    let invoice = sqlx::query(
+        "SELECT total,credit_total,paid,number,status FROM invoices WHERE id=$1 FOR UPDATE",
+    )
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::bad_request("Invoice not found"))?;
     if invoice.get::<String, _>("status") == "void" {
         return Err(AppError::conflict(
             "A reversed invoice cannot receive payments",
         ));
     }
-    let total: Decimal = invoice.get("total");
+    let total = invoice.get::<Decimal, _>("total") - invoice.get::<Decimal, _>("credit_total");
     let paid: Decimal = invoice.get("paid");
     if amount > total - paid {
         return Err(AppError::conflict(
@@ -641,7 +659,7 @@ async fn pay_invoice(
     .execute(&mut *tx)
     .await?;
     let new_paid = paid + amount;
-    sqlx::query("UPDATE invoices SET paid=$2,status=$3 WHERE id=$1")
+    sqlx::query("UPDATE invoices SET paid=$2,status=$3,version=version+1 WHERE id=$1")
         .bind(id)
         .bind(new_paid)
         .bind(if new_paid == total { "paid" } else { "partial" })

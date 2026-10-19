@@ -19,6 +19,20 @@ pub fn money(value: Decimal) -> Decimal {
     value.round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero)
 }
 
+pub fn payment_amount(input: &str) -> Result<Decimal, String> {
+    let value =
+        Decimal::from_str(input).map_err(|_| "Nominal harus berupa angka desimal.".to_owned())?;
+    if value <= Decimal::ZERO
+        || value > Decimal::from(1_000_000_000_000u64)
+        || value.normalize().scale() > 2
+    {
+        return Err(
+            "Nominal harus positif, maksimal 1 triliun, dan paling banyak dua desimal.".into(),
+        );
+    }
+    Ok(value)
+}
+
 pub fn average(value: Decimal, quantity: Decimal) -> Decimal {
     if quantity == Decimal::ZERO {
         Decimal::ZERO
@@ -43,6 +57,17 @@ pub fn shipment_cost(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn payment_amount_covers_document_money_limit_without_changing_quantity_limits() {
+        assert_eq!(
+            payment_amount("1000000000000.00").unwrap(),
+            Decimal::from(1_000_000_000_000u64)
+        );
+        for invalid in ["0", "-1", "1.001", "1000000000000.01", "1\0"] {
+            assert!(payment_amount(invalid).is_err());
+        }
+        assert!(decimal("1000000001", 3, "Quantity").is_err());
+    }
     fn d(s: &str) -> Decimal {
         Decimal::from_str(s).unwrap()
     }

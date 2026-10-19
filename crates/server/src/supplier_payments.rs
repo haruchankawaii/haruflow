@@ -1,7 +1,7 @@
 use crate::{
     AppState,
     auth::AuthUser,
-    business::{audit, cached, parse, payload, remember},
+    business::{audit, cached, payload, remember},
     corrections::check_open,
     error::{AppError, AppResult},
     purchasing::check_version,
@@ -59,7 +59,7 @@ async fn analysis(
     let result:Value=sqlx::query_scalar(r#"
         WITH cfg AS (SELECT timezone,(now() AT TIME ZONE timezone)::date today,
             date_trunc('month',now() AT TIME ZONE timezone) current_month FROM company),
-        outstanding AS (SELECT b.*,b.total-b.paid remaining,c.today-b.due_date days_overdue,
+        outstanding AS (SELECT b.*,b.total-b.credit_total-b.paid remaining,c.today-b.due_date days_overdue,
             CASE WHEN b.due_date>=c.today THEN 'current' WHEN c.today-b.due_date<=30 THEN 'days_1_30'
             WHEN c.today-b.due_date<=60 THEN 'days_31_60' WHEN c.today-b.due_date<=90 THEN 'days_61_90' ELSE 'over_90' END bucket
             FROM purchase_bills b CROSS JOIN cfg c WHERE b.status IN ('unpaid','partial')),
@@ -69,14 +69,14 @@ async fn analysis(
             COALESCE(sum(l.credit),0) paid,COALESCE(sum(l.debit),0) reversed
             FROM journal_entries j JOIN journal_lines l ON l.journal_id=j.id AND l.account_code='1100'
             LEFT JOIN posting_reversals r ON j.source_type='reversal' AND r.id=j.source_id CROSS JOIN cfg c
-            WHERE (j.source_type='supplier_payment' OR r.source_type='supplier_payment')
+            WHERE (j.source_type IN ('supplier_payment','supplier_return') OR r.source_type IN ('supplier_payment','supplier_return'))
               AND j.created_at>=(c.current_month-($1::int-1)*interval '1 month') AT TIME ZONE c.timezone AND j.created_at<=now() GROUP BY 1)
         SELECT jsonb_build_object('today',cfg.today::text,'timezone',cfg.timezone,'as_of',now(),'months',$1::int,
             'aging', (SELECT jsonb_agg(jsonb_build_object('key',k.key,'count',(SELECT count(*) FROM outstanding WHERE bucket=k.key),
                 'total',COALESCE((SELECT sum(remaining) FROM outstanding WHERE bucket=k.key),0)::text) ORDER BY position) FROM buckets k),
             'bills',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',id,'number',number,'supplier_id',supplier_id,'supplier_name',supplier_name,
                 'supplier_invoice_number',supplier_invoice_number,'due_date',due_date::text,'days_overdue',greatest(days_overdue,0),
-                'bucket',bucket,'total',total::text,'paid',paid::text,'outstanding',remaining::text) ORDER BY due_date,id) FROM outstanding),'[]'::jsonb),
+                'bucket',bucket,'total',total::text,'credit_total',credit_total::text,'net_total',(total-credit_total)::text,'paid',paid::text,'outstanding',remaining::text) ORDER BY due_date,id) FROM outstanding),'[]'::jsonb),
             'series',(SELECT jsonb_agg(jsonb_build_object('month',to_char(m.starts,'YYYY-MM'),'paid',COALESCE(c.paid,0)::text,
                 'reversed',COALESCE(c.reversed,0)::text,'net',(COALESCE(c.paid,0)-COALESCE(c.reversed,0))::text) ORDER BY m.starts)
                 FROM months m LEFT JOIN cash c ON c.starts=m.starts),
@@ -92,7 +92,7 @@ async fn pay(
     Json(body): Json<PaymentInput>,
 ) -> AppResult<Json<Value>> {
     user.require(&["finance"])?;
-    let amount = parse(&body.amount, 2, "Amount")?;
+    let amount = crate::domain::payment_amount(&body.amount).map_err(AppError::bad_request)?;
     if amount <= Decimal::ZERO {
         return Err(AppError::bad_request(
             "Pembayaran harus lebih besar dari nol.",
@@ -125,14 +125,14 @@ async fn pay(
         .fetch_one(&mut *tx)
         .await?;
     let bill = sqlx::query(
-        "SELECT status,total,paid,version,number FROM purchase_bills WHERE id=$1 FOR UPDATE",
+        "SELECT status,total,credit_total,paid,version,number FROM purchase_bills WHERE id=$1 FOR UPDATE",
     )
     .bind(id)
     .fetch_one(&mut *tx)
     .await?;
     check_version(body.version, bill.get("version"))?;
     let paid: Decimal = bill.get("paid");
-    let total: Decimal = bill.get("total");
+    let total: Decimal = bill.get::<Decimal, _>("total") - bill.get::<Decimal, _>("credit_total");
     if bill.get::<String, _>("status") == "void" || amount > total - paid {
         return Err(AppError::conflict(
             "Pembayaran melampaui sisa utang atau tagihan sudah dibatalkan.",
@@ -164,7 +164,7 @@ async fn pay(
         .bind(Uuid::new_v4()).bind(journal_id).bind(payable).bind(amount).bind(Uuid::new_v4()).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO supplier_payments(id,number,bill_id,amount,reference,journal_id,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)")
         .bind(payment_id).bind(number).bind(id).bind(amount).bind(reference).bind(journal_id).bind(user.id).execute(&mut *tx).await?;
-    sqlx::query("UPDATE purchase_bills SET paid=paid+$2,status=CASE WHEN paid+$2=total THEN 'paid' ELSE 'partial' END,version=version+1 WHERE id=$1")
+    sqlx::query("UPDATE purchase_bills SET paid=paid+$2,status=CASE WHEN paid+$2=total-credit_total THEN 'paid' ELSE 'partial' END,version=version+1 WHERE id=$1")
         .bind(id).bind(amount).execute(&mut *tx).await?;
     let result = read_bill(&mut tx, id).await?;
     audit(
@@ -207,15 +207,22 @@ async fn reverse(
         .fetch_one(&mut *tx)
         .await?;
     let bill_id: Uuid = payment.get("bill_id");
-    let bill = sqlx::query("SELECT version,status,paid FROM purchase_bills WHERE id=$1 FOR UPDATE")
-        .bind(bill_id)
-        .fetch_one(&mut *tx)
-        .await?;
+    let bill = sqlx::query(
+        "SELECT version,status,paid,credit_total FROM purchase_bills WHERE id=$1 FOR UPDATE",
+    )
+    .bind(bill_id)
+    .fetch_one(&mut *tx)
+    .await?;
     check_version(body.version, bill.get("version"))?;
     let reversed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM posting_reversals WHERE source_type='supplier_payment' AND source_id=$1)").bind(id).fetch_one(&mut *tx).await?;
     if reversed || bill.get::<String, _>("status") == "void" {
         return Err(AppError::conflict(
             "Pembayaran sudah dibalik atau tagihan tidak aktif.",
+        ));
+    }
+    if bill.get::<Decimal, _>("credit_total") > Decimal::ZERO {
+        return Err(AppError::conflict(
+            "Balikkan seluruh retur supplier aktif sebelum membalik pembayaran.",
         ));
     }
     let amount: Decimal = payment.get("amount");

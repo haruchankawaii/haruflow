@@ -396,7 +396,7 @@ async fn summary(State(state): State<AppState>, _user: AuthUser) -> AppResult<Js
             'received_unbilled_total',COALESCE((SELECT sum(l.value-purchase_receipt_billed_value(l.id)) FROM purchase_receipt_lines l
                 JOIN purchase_receipts r ON r.id=l.receipt_id WHERE NOT EXISTS(
                     SELECT 1 FROM posting_reversals v WHERE v.source_type='purchase_receipt' AND v.source_id=r.id)),0)::text,
-            'supplier_payable_total',COALESCE((SELECT sum(total-paid) FROM purchase_bills WHERE status<>'void'),0)::text,
+            'supplier_payable_total',COALESCE((SELECT sum(total-credit_total-paid) FROM purchase_bills WHERE status<>'void'),0)::text,
             'as_of',now())
         "#).fetch_one(&state.db).await?;
     Ok(Json(result))

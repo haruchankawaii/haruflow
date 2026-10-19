@@ -65,8 +65,8 @@ async fn insights(
             SELECT sum(revenue) AS revenue,sum(cogs) AS cogs,
                 sum(cash_in) AS cash_in,sum(cash_out) AS cash_out FROM series
         ), receivables AS (
-            SELECT COALESCE(sum(total),0.00) AS invoiced,COALESCE(sum(paid),0.00) AS paid,
-                COALESCE(sum(total-paid),0.00) AS outstanding,
+            SELECT COALESCE(sum(total-credit_total),0.00) AS invoiced,COALESCE(sum(paid),0.00) AS paid,
+                COALESCE(sum(total-credit_total-paid),0.00) AS outstanding,
                 count(*) FILTER (WHERE status='unpaid') AS unpaid_count,
                 count(*) FILTER (WHERE status='partial') AS partial_count,
                 count(*) FILTER (WHERE status='paid') AS paid_count

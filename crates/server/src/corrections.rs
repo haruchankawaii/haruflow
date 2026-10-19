@@ -475,6 +475,12 @@ async fn reverse_payment(
     if invoice.get::<String, _>("status") == "void" {
         return Err(AppError::conflict("Invoice is already reversed"));
     }
+    let active_returns:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sales_returns r WHERE r.invoice_id=$1 AND NOT EXISTS(SELECT 1 FROM posting_reversals p WHERE p.source_type='sales_return' AND p.source_id=r.id))").bind(id).fetch_one(&mut *tx).await?;
+    if active_returns {
+        return Err(AppError::conflict(
+            "Reverse active customer returns before reversing payments",
+        ));
+    }
     let payment = sqlx::query("SELECT amount FROM payments WHERE id=$1 AND invoice_id=$2")
         .bind(payment_id)
         .bind(id)
@@ -504,7 +510,7 @@ async fn reverse_payment(
         amount,
     )
     .await?;
-    sqlx::query("UPDATE invoices SET paid=$2,status=$3 WHERE id=$1")
+    sqlx::query("UPDATE invoices SET paid=$2,status=$3,version=version+1 WHERE id=$1")
         .bind(id)
         .bind(new_paid)
         .bind(if new_paid == Decimal::ZERO {
@@ -563,6 +569,12 @@ async fn reverse_invoice(
     if invoice.get::<String, _>("status") == "void" {
         return Err(AppError::conflict("Invoice is already reversed"));
     }
+    let active_returns:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sales_returns r WHERE r.invoice_id=$1 AND NOT EXISTS(SELECT 1 FROM posting_reversals p WHERE p.source_type='sales_return' AND p.source_id=r.id))").bind(id).fetch_one(&mut *tx).await?;
+    if active_returns {
+        return Err(AppError::conflict(
+            "Reverse active customer returns before reversing the invoice",
+        ));
+    }
     if invoice.get::<Decimal, _>("paid") != Decimal::ZERO {
         return Err(AppError::conflict(
             "Reverse all payments before reversing the invoice",
@@ -579,7 +591,7 @@ async fn reverse_invoice(
         invoice.get("total"),
     )
     .await?;
-    sqlx::query("UPDATE invoices SET status='void' WHERE id=$1")
+    sqlx::query("UPDATE invoices SET status='void',version=version+1 WHERE id=$1")
         .bind(id)
         .execute(&mut *tx)
         .await?;

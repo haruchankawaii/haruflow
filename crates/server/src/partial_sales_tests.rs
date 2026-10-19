@@ -564,10 +564,17 @@ async fn migration_backfills_legacy_allocations_without_changing_postings(pool: 
     sqlx::query("INSERT INTO inventory_movements(id,product_id,kind,quantity,unit_cost,value,order_id,created_by,shipment_posting_id) VALUES($1,$2,'shipment',-1,3.3333,3.33,$3,$4,$5)").bind(movement).bind(product).bind(order).bind(user).bind(shipment).execute(&mut *tx).await.unwrap();
     sqlx::query("INSERT INTO invoices(id,number,order_id,customer_id,total,paid,status) VALUES($1,'INV-OLD',$2,$3,5,5,'paid')").bind(invoice).bind(order).bind(customer).execute(&mut *tx).await.unwrap();
     tx.commit().await.unwrap();
-    let snapshot:Value=sqlx::query_scalar("SELECT jsonb_build_object('products',(SELECT jsonb_agg(to_jsonb(p)) FROM products p),'movements',(SELECT jsonb_agg(to_jsonb(m)) FROM inventory_movements m),'journal_count',(SELECT count(*) FROM journal_entries))").fetch_one(&pool).await.unwrap();
+    // Later return migrations add nullable origin links; all original movement
+    // fields must remain byte-for-byte equal across the allocation backfill.
+    let snapshot:Value=sqlx::query_scalar("SELECT jsonb_build_object('products',(SELECT jsonb_agg(to_jsonb(p)) FROM products p),'movements',(SELECT jsonb_agg(to_jsonb(m)-'supplier_return_id'-'sales_return_id') FROM inventory_movements m),'journal_count',(SELECT count(*) FROM journal_entries))").fetch_one(&pool).await.unwrap();
     sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
-    let after:Value=sqlx::query_scalar("SELECT jsonb_build_object('products',(SELECT jsonb_agg(to_jsonb(p)) FROM products p),'movements',(SELECT jsonb_agg(to_jsonb(m)) FROM inventory_movements m),'journal_count',(SELECT count(*) FROM journal_entries))").fetch_one(&pool).await.unwrap();
+    let after:Value=sqlx::query_scalar("SELECT jsonb_build_object('products',(SELECT jsonb_agg(to_jsonb(p)) FROM products p),'movements',(SELECT jsonb_agg(to_jsonb(m)-'supplier_return_id'-'sales_return_id') FROM inventory_movements m),'journal_count',(SELECT count(*) FROM journal_entries))").fetch_one(&pool).await.unwrap();
     assert_eq!(snapshot, after);
+    let no_return_links: bool = sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM inventory_movements WHERE supplier_return_id IS NOT NULL OR sales_return_id IS NOT NULL)").fetch_one(&pool).await.unwrap();
+    assert!(
+        no_return_links,
+        "Legacy movements must not acquire return origins"
+    );
     let doc: Value = sqlx::query_scalar("SELECT sales_order_document($1)")
         .bind(order)
         .fetch_one(&pool)
