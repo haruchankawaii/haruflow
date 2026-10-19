@@ -200,6 +200,150 @@
 .purchase-bills-tab-content {
   margin-top: 20px;
 }
+.supplier-payment-panel {
+  padding: 24px 28px;
+  border-block: 1px solid #e4e9dc;
+  margin-bottom: 24px;
+}
+.supplier-payment-panel h3,
+.payables-analysis h2 {
+  font-size: 16px;
+  color: #526647;
+  font-weight: 500;
+}
+.supplier-payment-panel .muted,
+.payables-analysis .muted {
+  font-size: 11px;
+  line-height: 1.7;
+}
+.supplier-payment-form {
+  padding: 18px;
+  background: #f6f8f2;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+.supplier-payment-form .bill-form-grid {
+  grid-template-columns: 1fr 1fr;
+}
+.supplier-payment-form h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #526647;
+}
+.payables-analysis {
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.payables-analysis .table-toolbar {
+  gap: 15px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.payables-analysis select {
+  margin-left: 8px;
+  padding: 7px;
+  border: 1px solid #e4e9dc;
+  border-radius: 6px;
+  background: white;
+}
+.payables-analysis label {
+  font-size: 11px;
+  color: #687761;
+}
+.payables-analysis-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  padding: 0 24px 22px;
+}
+.payables-analysis-grid h3 {
+  font-size: 12px;
+  font-weight: 500;
+  color: #687761;
+  margin: 0 0 16px;
+}
+.payables-aging-row,
+.payables-month {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 4px;
+  font-size: 11px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: #687761;
+}
+.payables-aging-row {
+  cursor: pointer;
+  border-radius: 6px;
+}
+.payables-aging-row.selected {
+  background: #edf2e7;
+}
+.payables-aging-row strong,
+.payables-month strong {
+  font-weight: 500;
+  text-align: right;
+}
+.payables-aging-row small,
+.payables-month small {
+  display: block;
+  margin-top: 4px;
+  font-size: 9px;
+  color: #89947d;
+  line-height: 1.6;
+}
+.payables-month > span:last-child {
+  text-align: right;
+}
+.payables-bar-track {
+  display: block;
+  height: 8px;
+  background: #f0f3ec;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 4px 0;
+}
+.payables-bar-track i {
+  display: block;
+  height: 100%;
+  background: #87a777;
+  border-radius: 4px;
+}
+.payables-bar-track.refund i {
+  background: #c89572;
+}
+.payables-aging-details {
+  border-top: 1px solid #e4e9dc;
+  padding: 18px 24px;
+}
+.payables-aging-details summary {
+  font-size: 12px;
+  color: #526647;
+  cursor: pointer;
+  margin-bottom: 14px;
+}
+@media (max-width: 1000px) {
+  .payables-analysis-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .supplier-payment-panel {
+    padding: 18px;
+  }
+  .supplier-payment-form .bill-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .payables-aging-row,
+  .payables-month {
+    grid-template-columns: 1.2fr 0.8fr 1fr;
+    gap: 7px;
+  }
+}
 .purchase-top-tabs {
   margin-bottom: 20px;
   padding: 2px 2px 12px;

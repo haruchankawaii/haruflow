@@ -16,11 +16,23 @@ export function orderHasStockItems(
 }
 
 export function nextOrderAction(
-  order: Pick<Order, "status" | "has_stock_items" | "items">,
+  order: Pick<
+    Order,
+    "status" | "has_stock_items" | "items" | "can_ship" | "can_invoice"
+  >,
   role: Role,
 ): "confirm" | "ship" | "invoice" | null {
   if (order.status === "draft" && ["admin", "sales"].includes(role))
     return "confirm";
+  if (
+    typeof order.can_ship === "boolean" ||
+    typeof order.can_invoice === "boolean"
+  ) {
+    if (order.can_ship && ["admin", "warehouse"].includes(role)) return "ship";
+    if (order.can_invoice && ["admin", "finance"].includes(role))
+      return "invoice";
+    return null;
+  }
   if (
     order.status === "confirmed" &&
     orderHasStockItems(order) &&

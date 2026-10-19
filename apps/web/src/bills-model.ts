@@ -1,8 +1,24 @@
 import { moneyCents } from "./dashboard-charts";
 import type { PurchaseOrder, PurchaseReceipt } from "./purchasing-model";
+import type { ReturnableItem, ReturnRecord } from "./returns-model";
 
-export type BillDueStatus = "upcoming" | "due_today" | "overdue" | "void";
+export type BillDueStatus =
+  "upcoming" | "due_today" | "overdue" | "void" | "paid";
+export interface SupplierPayment {
+  id: string;
+  number: string;
+  amount: string;
+  reference: string | null;
+  journal_id: string;
+  created_at: string;
+  can_reverse: boolean;
+  reversal: PurchaseReceipt["reversal"];
+}
 export interface SupplierBill {
+  credit_total: string;
+  net_total: string;
+  can_return: boolean;
+  returns: ReturnRecord[];
   id: string;
   number: string;
   supplier_id: string;
@@ -18,13 +34,15 @@ export interface SupplierBill {
   total: string;
   paid: string;
   outstanding: string;
-  status: "unpaid" | "void";
+  status: "unpaid" | "partial" | "paid" | "void";
+  can_pay: boolean;
+  payments: SupplierPayment[];
   due_status: BillDueStatus;
   version: number;
   notes: string | null;
   journal_id: string;
   created_at: string;
-  items: PurchaseReceipt["items"];
+  items: (PurchaseReceipt["items"][number] & ReturnableItem)[];
   reversal: PurchaseReceipt["reversal"];
   can_reverse: boolean;
   reversal_blocked_reason: string | null;
@@ -33,7 +51,10 @@ export interface SupplierBillsSummary {
   today: string;
   timezone: string;
   as_of: string;
-  counts: Record<"unpaid" | BillDueStatus, number>;
+  counts: Record<"unpaid" | Exclude<BillDueStatus, "paid">, number> & {
+    paid?: number;
+    partial?: number;
+  };
   outstanding_total: string;
   overdue_total: string;
   due_today_total: string;
@@ -52,6 +73,7 @@ export const billDueNames: Record<BillDueStatus, string> = {
   due_today: "Jatuh tempo hari ini",
   overdue: "Lewat jatuh tempo",
   void: "Dibatalkan",
+  paid: "Lunas",
 };
 export function billChartRows(summary: SupplierBillsSummary) {
   const statuses = ["upcoming", "due_today", "overdue"] as const;
@@ -108,12 +130,63 @@ export function billDraftIssue(draft: BillDraft, today: string): string {
 export function eligibleBillReceipts(orders: PurchaseOrder[]) {
   return orders.flatMap((order) =>
     order.receipts
-      .filter(
-        (receipt) =>
-          order.active_receipt_id === receipt.id &&
-          !receipt.reversal &&
-          receipt.can_bill,
-      )
+      .filter((receipt) => !receipt.reversal && receipt.can_bill)
       .map((receipt) => ({ order, receipt })),
   );
+}
+
+export function billAllocationPreview(
+  receipt: PurchaseReceipt | undefined,
+  quantities: Record<string, string>,
+) {
+  const items: { receipt_line_id: string; quantity: string }[] = [];
+  let total = 0n;
+  let issue = "";
+  const qty = (v: string) => {
+    const [w, f = ""] = v.split(".");
+    return BigInt(w) * 1000n + BigInt(f.padEnd(3, "0"));
+  };
+  for (const line of receipt?.items ?? []) {
+    const value =
+      quantities[line.id] ?? line.remaining_bill_quantity ?? line.quantity;
+    if (!/^\d+(\.\d{1,3})?$/.test(value)) {
+      issue = "Jumlah tagihan maksimal tiga desimal.";
+      continue;
+    }
+    const requested = qty(value),
+      remaining = qty(line.remaining_bill_quantity ?? line.quantity);
+    if (requested > remaining) {
+      issue = "Jumlah tagihan melampaui sisa penerimaan.";
+      continue;
+    }
+    if (requested === 0n) continue;
+    const original = qty(line.quantity),
+      already = qty(line.billed_quantity ?? "0"),
+      originalValue = moneyCents(line.value),
+      billedValue = moneyCents(line.billed_value ?? "0");
+    let allocated =
+      requested === remaining
+        ? originalValue - billedValue
+        : ((already + requested) * originalValue * 2n + original) /
+            (2n * original) -
+          billedValue;
+    if (requested < remaining) {
+      const maximum = originalValue - billedValue - 1n;
+      allocated = allocated > maximum ? maximum : allocated;
+    }
+    if (allocated <= 0n) {
+      issue = "Perbesar jumlah barang agar nilai baris minimal satu sen.";
+      continue;
+    }
+    if (allocated < 0n) {
+      issue = "Nilai tagihan tidak cocok. Muat data terbaru.";
+      continue;
+    }
+    total += allocated;
+    items.push({ receipt_line_id: line.id, quantity: value });
+  }
+  if (!items.length || total <= 0n)
+    issue =
+      issue || "Pilih jumlah barang dengan total tagihan lebih besar dari nol.";
+  return { items, total, issue };
 }

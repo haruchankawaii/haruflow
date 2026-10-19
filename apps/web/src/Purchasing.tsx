@@ -49,6 +49,7 @@ import {
   purchasePreview,
   purchaseProducts,
   requestIdentity,
+  receiptPreview,
   type PurchaseDraft,
   type PurchaseOrder,
   type PurchaseReceipt,
@@ -100,6 +101,9 @@ export default function Purchasing({
   });
   const [creatingBill, setCreatingBill] = useState(false);
   const [billingOrderId, setBillingOrderId] = useState<string | undefined>();
+  const [billingReceiptId, setBillingReceiptId] = useState<
+    string | undefined
+  >();
   const [focusReceipt, setFocusReceipt] = useState<string | undefined>();
   const [createOrder, setCreateOrder] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(
@@ -181,11 +185,11 @@ export default function Purchasing({
           <strong>Dari rencana belanja sampai utang supplier tercatat.</strong>
           <p>
             Simpan draf, tinjau biaya, lalu konfirmasi kesepakatan dengan
-            supplier. Saat seluruh barang tiba, catat penerimaan untuk menambah
-            stok dan nilai persediaan, beserta kewajiban barang diterima belum
-            ditagih. Catat invoice supplier untuk memindahkannya menjadi utang
-            dengan jatuh tempo. Pembayaran supplier tersedia pada tahap
-            berikutnya.
+            supplier. Saat barang tiba, catat penerimaan sebagian atau penuh
+            untuk menambah stok dan nilai persediaan, beserta kewajiban barang
+            diterima belum ditagih. Catat invoice supplier untuk memindahkannya
+            menjadi utang dengan jatuh tempo, lalu catat pembayaran dari
+            tagihan.
           </p>
         </div>
       </div>
@@ -331,6 +335,7 @@ export default function Purchasing({
                   <>
                     <option value="draft">Draf</option>
                     <option value="confirmed">Dikonfirmasi</option>
+                    <option value="partial_received">Diterima sebagian</option>
                     <option value="received">Diterima</option>
                     <option value="cancelled">Dibatalkan</option>
                   </>
@@ -612,9 +617,10 @@ export default function Purchasing({
           canManage={canManage}
           canBill={canBill}
           focusReceipt={focusReceipt}
-          onCreateBill={(orderId) => {
+          onCreateBill={(orderId, receiptId) => {
             setSelectedOrder(null);
             setBillingOrderId(orderId);
+            setBillingReceiptId(receiptId);
             setCreatingBill(true);
           }}
           onBill={(id) => {
@@ -634,14 +640,17 @@ export default function Purchasing({
       {creatingBill && (
         <SupplierBillForm
           initialOrderId={billingOrderId}
+          initialReceiptId={billingReceiptId}
           revision={revision}
           onClose={() => {
             setCreatingBill(false);
             setBillingOrderId(undefined);
+            setBillingReceiptId(undefined);
           }}
           onSaved={(id) => {
             setCreatingBill(false);
             setBillingOrderId(undefined);
+            setBillingReceiptId(undefined);
             setSelectedBill(id);
             setTab("bills");
             saved();
@@ -1273,7 +1282,7 @@ function PurchaseOrderDetail({
   canManage: boolean;
   canBill: boolean;
   focusReceipt?: string;
-  onCreateBill: (orderId: string) => void;
+  onCreateBill: (orderId: string, receiptId?: string) => void;
   onBill: (billId: string) => void;
   revision: number;
   onClose: () => void;
@@ -1291,12 +1300,16 @@ function PurchaseOrderDetail({
   const [journalId, setJournalId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [reference, setReference] = useState("");
+  const [receiveQuantities, setReceiveQuantities] = useState<
+    Record<string, string>
+  >({});
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const identity = useRef<RequestIdentity | null>(null);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const order = resource.data;
+  const receiveReview = order ? receiptPreview(order, receiveQuantities) : null;
   const receipt = order?.receipts.find((item) => item.id === receiptId);
   const reviewRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -1328,6 +1341,10 @@ function PurchaseOrderDetail({
       return;
     }
     if (action === "reverse" && !receipt) return;
+    if (action === "receive" && !receiveReview?.valid) {
+      setError(receiveReview?.issue ?? "Periksa jumlah penerimaan.");
+      return;
+    }
     busyRef.current = true;
     setBusy(true);
     setError("");
@@ -1337,7 +1354,9 @@ function PurchaseOrderDetail({
       ...(action === "cancel" || action === "reverse"
         ? { reason: reason.trim() }
         : {}),
-      ...(action === "receive" ? { reference: reference.trim() || null } : {}),
+      ...(action === "receive"
+        ? { reference: reference.trim() || null, items: receiveReview!.items }
+        : {}),
     };
     identity.current = requestIdentity(identity.current, {
       action,
@@ -1441,6 +1460,7 @@ function PurchaseOrderDetail({
                   <tr>
                     <th>Barang</th>
                     <th className="align-right">Jumlah</th>
+                    <th className="align-right">Diterima / sisa</th>
                     <th className="align-right">Biaya beli / satuan</th>
                     <th className="align-right">Total</th>
                   </tr>
@@ -1456,6 +1476,10 @@ function PurchaseOrderDetail({
                       </td>
                       <td className="align-right">
                         {exactDecimal(item.quantity)} {item.unit}
+                      </td>
+                      <td className="align-right">
+                        {exactDecimal(item.received_quantity)} /{" "}
+                        {exactDecimal(item.remaining_quantity)} {item.unit}
                       </td>
                       <td className="align-right">
                         {exactCost(item.unit_cost)}
@@ -1490,8 +1514,8 @@ function PurchaseOrderDetail({
               <p className="purchase-history-note">
                 Nama supplier, barang, satuan, dan biaya pada dokumen ini
                 menggunakan data tersimpan. Draf dan konfirmasi PO belum
-                mengubah stok atau jurnal. Penerimaan mencatat seluruh barang
-                sekaligus; penerimaan sebagian tersedia pada tahap berikutnya.
+                mengubah stok atau jurnal. Penerimaan dapat dicatat sebagian;
+                sisa jumlah tetap terlacak sampai seluruh PO diterima.
               </p>
             </div>
             {order.receipts.length > 0 && (
@@ -1510,7 +1534,7 @@ function PurchaseOrderDetail({
                     canManage={canManage}
                     canBill={canBill}
                     onBill={onBill}
-                    onCreateBill={() => onCreateBill(order.id)}
+                    onCreateBill={() => onCreateBill(order.id, item.id)}
                     busy={busy || !!action}
                     onJournal={setJournalId}
                     onReverse={() => {
@@ -1544,7 +1568,7 @@ function PurchaseOrderDetail({
                     {action === "confirm"
                       ? "Konfirmasi kesepakatan pembelian"
                       : action === "receive"
-                        ? "Terima seluruh barang dari PO"
+                        ? "Terima barang dari PO"
                         : action === "reverse"
                           ? `Koreksi penerimaan ${receipt?.number ?? ""}`
                           : "Batalkan pesanan pembelian"}
@@ -1554,29 +1578,71 @@ function PurchaseOrderDetail({
                   {action === "confirm"
                     ? `Pastikan supplier, barang, dan total ${exactMoney(order.total)} sudah benar. Setelah konfirmasi, isi PO tidak dapat diedit.`
                     : action === "receive"
-                      ? `Periksa seluruh barang pada daftar di atas. Penerimaan memakai jumlah dan biaya dari PO, dengan total ${exactMoney(order.total)}. Catat hanya setelah semua barang benar-benar tiba dan sesuai pesanan.`
+                      ? "Isi jumlah barang yang benar-benar tiba. Isi 0 untuk barang yang belum datang. Biaya memakai kesepakatan PO; sisa pesanan dapat diterima kemudian."
                       : action === "reverse"
-                        ? `Seluruh barang pada ${receipt?.number ?? "penerimaan ini"} akan dikeluarkan kembali dan jurnal sebesar ${exactMoney(receipt?.total ?? "0")} dibalik. PO kembali Dikonfirmasi dan dapat diterima ulang. Jika biaya atau isi PO salah, batalkan PO setelah pembalikan lalu buat PO pengganti.`
+                        ? `Seluruh barang pada ${receipt?.number ?? "penerimaan ini"} akan dikeluarkan kembali dan jurnal sebesar ${exactMoney(receipt?.total ?? "0")} dibalik. Sisa PO dihitung ulang dan dapat diterima kembali. Koreksi hanya tersedia sebelum ada mutasi stok berikutnya.`
                         : "Pesanan akan tetap tersimpan dengan status Dibatalkan beserta alasan di bawah."}
                 </p>
                 {action === "receive" && (
                   <>
+                    <div className="table-scroll">
+                      <table className="purchase-detail-lines">
+                        <thead>
+                          <tr>
+                            <th>Barang</th>
+                            <th>Sisa PO</th>
+                            <th>Terima sekarang</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {order.items.map((item) => (
+                            <tr key={item.id}>
+                              <td>
+                                {item.product_name} · {item.unit}
+                              </td>
+                              <td>{exactDecimal(item.remaining_quantity)}</td>
+                              <td>
+                                <input
+                                  aria-label={`Terima ${item.product_name}`}
+                                  type="number"
+                                  min="0"
+                                  max={item.remaining_quantity}
+                                  step="0.001"
+                                  value={receiveQuantities[item.id] ?? "0"}
+                                  disabled={busy}
+                                  onChange={(event) =>
+                                    setReceiveQuantities((previous) => ({
+                                      ...previous,
+                                      [item.id]: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                     <div className="purchase-posting-preview">
                       <div>
                         <span>Persediaan bertambah</span>
-                        <strong>{exactMoney(order.total)}</strong>
+                        <strong>
+                          {exactMoney(receiveReview?.total ?? 0n)}
+                        </strong>
                       </div>
                       <div>
                         <span>
                           Kewajiban barang diterima belum ditagih bertambah
                         </span>
-                        <strong>{exactMoney(order.total)}</strong>
+                        <strong>
+                          {exactMoney(receiveReview?.total ?? 0n)}
+                        </strong>
                       </div>
                     </div>
                     <p className="purchase-receive-note">
                       Biaya rata-rata stok dihitung otomatis. Kas belum berubah.
                       Setelah diterima, finance dapat mencatat tagihan supplier.
-                      Pembayaran tersedia pada tahap berikutnya.
+                      Tagihan dapat dibuat sebagian sesuai barang yang ditagih.
                     </p>
                     <FormField
                       label="Referensi penerimaan"
@@ -1642,7 +1708,7 @@ function PurchaseOrderDetail({
                       : action === "confirm"
                         ? "Konfirmasi PO"
                         : action === "receive"
-                          ? "Catat penerimaan penuh"
+                          ? "Catat penerimaan"
                           : action === "reverse"
                             ? "Balikkan penerimaan"
                             : "Batalkan PO"}
@@ -1679,18 +1745,22 @@ function PurchaseOrderDetail({
           !resource.loading &&
           !resource.error &&
           !action &&
-          (order.status === "draft" || order.status === "confirmed") && (
+          (order.status === "draft" ||
+            order.status === "confirmed" ||
+            order.status === "partial_received") && (
             <>
-              <button
-                className="text-button danger-text"
-                disabled={busy}
-                onClick={() => {
-                  setAction("cancel");
-                  setError("");
-                }}
-              >
-                Batalkan PO
-              </button>
+              {order.status !== "partial_received" && (
+                <button
+                  className="text-button danger-text"
+                  disabled={busy}
+                  onClick={() => {
+                    setAction("cancel");
+                    setError("");
+                  }}
+                >
+                  Batalkan PO
+                </button>
+              )}
               {order.status === "draft" && (
                 <>
                   <button
@@ -1712,13 +1782,22 @@ function PurchaseOrderDetail({
                   </button>
                 </>
               )}
-              {order.status === "confirmed" && (
+              {(order.status === "confirmed" ||
+                order.status === "partial_received") && (
                 <button
                   className="button primary"
                   disabled={busy}
                   onClick={() => {
                     setAction("receive");
                     setReference("");
+                    setReceiveQuantities(
+                      Object.fromEntries(
+                        order.items.map((item) => [
+                          item.id,
+                          item.remaining_quantity,
+                        ]),
+                      ),
+                    );
                     setError("");
                     setConflict(false);
                   }}
@@ -1787,6 +1866,7 @@ function PurchaseReceiptHistory({
               <tr>
                 <th>Barang diterima</th>
                 <th className="align-right">Jumlah</th>
+                <th className="align-right">Ditagih / sisa</th>
                 <th className="align-right">Biaya / satuan</th>
                 <th className="align-right">Nilai persediaan</th>
               </tr>
@@ -1803,6 +1883,10 @@ function PurchaseReceiptHistory({
                   <td className="align-right">
                     {exactDecimal(item.quantity)} {item.unit}
                   </td>
+                  <td className="align-right">
+                    {exactDecimal(item.billed_quantity)} /{" "}
+                    {exactDecimal(item.remaining_bill_quantity)} {item.unit}
+                  </td>
                   <td className="align-right">{exactCost(item.unit_cost)}</td>
                   <td className="align-right">{exactMoney(item.value)}</td>
                 </tr>
@@ -1818,17 +1902,18 @@ function PurchaseReceiptHistory({
         </div>
       )}
       <div className="purchase-receipt-actions">
-        {receipt.bill_id && (
+        {receipt.bills.map((bill) => (
           <button
+            key={bill.id}
             type="button"
             className="text-button"
             disabled={busy}
-            onClick={() => onBill(receipt.bill_id!)}
+            onClick={() => onBill(bill.id)}
           >
-            <FileText size={14} /> Lihat tagihan {receipt.bill_number}
+            <FileText size={14} /> Lihat tagihan {bill.number}
           </button>
-        )}
-        {canBill && receipt.can_bill && !receipt.bill_id && (
+        ))}
+        {canBill && receipt.can_bill && (
           <button
             type="button"
             className="text-button"

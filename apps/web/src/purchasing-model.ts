@@ -22,6 +22,9 @@ export interface PurchaseItem {
   quantity: string;
   unit_cost: string;
   total: string;
+  received_quantity: string;
+  remaining_quantity: string;
+  received_value: string;
 }
 export interface PurchaseOrder {
   id: string;
@@ -29,7 +32,7 @@ export interface PurchaseOrder {
   supplier_id: string;
   supplier_code: string;
   supplier_name: string;
-  status: "draft" | "confirmed" | "received" | "cancelled";
+  status: "draft" | "confirmed" | "partial_received" | "received" | "cancelled";
   expected_date: string | null;
   notes: string | null;
   total: string;
@@ -62,6 +65,9 @@ export interface PurchaseReceipt {
     quantity: string;
     unit_cost: string;
     value: string;
+    billed_quantity: string;
+    remaining_bill_quantity: string;
+    billed_value: string;
   }[];
   reversal: {
     id: string;
@@ -73,12 +79,14 @@ export interface PurchaseReceipt {
   reversal_blocked_reason: string | null;
   bill_id: string | null;
   bill_number: string | null;
+  bills: { id: string; number: string; status: string; total: string }[];
   can_bill: boolean;
   bill_blocked_reason: string | null;
 }
 export const purchaseStatuses = [
   "draft",
   "confirmed",
+  "partial_received",
   "received",
   "cancelled",
 ] as const;
@@ -146,6 +154,51 @@ export function purchaseLineCents(
   const unitCost = scaled(cost, 4);
   if (qty === null || unitCost === null) return null;
   return (qty * unitCost + 50_000n) / 100_000n;
+}
+export function receiptPreview(
+  order: PurchaseOrder,
+  quantities: Record<string, string>,
+) {
+  let total = 0n;
+  let issue = "";
+  const items: { order_line_id: string; quantity: string }[] = [];
+  for (const line of order.items) {
+    const raw = quantities[line.id] ?? "0";
+    const quantity = scaled(raw, 3);
+    const remaining = scaled(line.remaining_quantity, 3) ?? 0n;
+    if (quantity === null || quantity < 0n || quantity > remaining) {
+      issue ||=
+        "Jumlah penerimaan harus 0 sampai sisa PO, dengan maksimal 3 desimal.";
+      continue;
+    }
+    if (quantity === 0n) continue;
+    items.push({ order_line_id: line.id, quantity: raw });
+    const received = scaled(line.received_quantity, 3) ?? 0n;
+    const cost = scaled(line.unit_cost, 4) ?? 0n;
+    const before = moneyCents(line.received_value);
+    const cap = moneyCents(line.total) - before;
+    const partialCap = cap > 0n ? cap - 1n : 0n;
+    const rounded =
+      ((received + quantity) * cost + 50_000n) / 100_000n - before;
+    const allocated =
+      quantity === remaining
+        ? cap
+        : rounded < 0n
+          ? 0n
+          : rounded > partialCap
+            ? partialCap
+            : rounded;
+    if (allocated <= 0n)
+      issue ||=
+        "Nilai setiap baris penerimaan harus lebih dari nol setelah pembulatan; perbesar jumlah atau isi 0 untuk melewati barang.";
+    total += allocated;
+  }
+  if (items.length === 0)
+    issue ||= "Isi jumlah barang yang benar-benar diterima.";
+  if (total <= 0n)
+    issue ||=
+      "Nilai penerimaan setelah pembulatan harus lebih dari nol; perbesar jumlah.";
+  return { total, items, issue, valid: !issue };
 }
 export function purchasePreview(draft: PurchaseDraft) {
   let total = 0n;

@@ -42,6 +42,8 @@ export interface Product {
   kind?: "stock" | "service";
 }
 export interface OrderLine {
+  id?: string;
+  line_id?: string;
   product_id: string;
   product_name?: string;
   sku?: string;
@@ -49,6 +51,26 @@ export interface OrderLine {
   unit_price: string;
   total?: string;
   product_kind?: "stock" | "service";
+  shipped_quantity?: string;
+  unshipped_quantity?: string;
+  invoiced_quantity?: string;
+  invoiced_total?: string;
+  invoiceable_quantity?: string;
+  uninvoiced_quantity?: string;
+}
+export interface SalesShipment {
+  id: string;
+  created_at: string;
+  reversed: boolean;
+  reversal_reason?: string;
+  can_reverse: boolean;
+  items: {
+    line_id: string;
+    sku: string;
+    name: string;
+    quantity: string;
+    value: string;
+  }[];
 }
 export interface Order {
   id: string;
@@ -61,6 +83,11 @@ export interface Order {
   created_at: string;
   items?: OrderLine[];
   has_stock_items?: boolean;
+  version?: number;
+  can_ship?: boolean;
+  can_invoice?: boolean;
+  shipments?: SalesShipment[];
+  invoices?: Invoice[];
 }
 export interface Invoice {
   id: string;
@@ -73,9 +100,14 @@ export interface Invoice {
   paid: string;
   created_at: string;
   outstanding?: string;
+  version?: number;
+  credit_total?: string;
+  net_total?: string;
+  items?: OrderLine[];
 }
 export interface Movement {
   id: string;
+  order_id?: string | null;
   product_name: string;
   sku?: string;
   kind: string;
@@ -91,6 +123,13 @@ export interface Movement {
   purchase_receipt_id?: string | null;
   purchase_order_id?: string | null;
   purchase_order_number?: string | null;
+  shipment_id?: string | null;
+  sales_return_id?: string | null;
+  sales_return_number?: string | null;
+  sales_return_invoice_id?: string | null;
+  supplier_return_id?: string | null;
+  supplier_return_number?: string | null;
+  supplier_return_bill_id?: string | null;
 }
 export interface DocumentReversalInfo {
   id: string;

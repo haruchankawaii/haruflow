@@ -383,6 +383,40 @@ export default function Inventory({
                           </a>
                         </div>
                       )}
+                      {item.sales_return_invoice_id && (
+                        <div>
+                          <a
+                            className="text-button"
+                            href={`?invoice=${encodeURIComponent(item.sales_return_invoice_id)}#sales`}
+                          >
+                            {item.sales_return_number ??
+                              "Lihat retur pelanggan"}{" "}
+                            · Invoice asal
+                          </a>
+                        </div>
+                      )}
+                      {item.supplier_return_bill_id && (
+                        <div>
+                          <a
+                            className="text-button"
+                            href={`?bill=${encodeURIComponent(item.supplier_return_bill_id)}#purchasing`}
+                          >
+                            {item.supplier_return_number ??
+                              "Lihat retur supplier"}{" "}
+                            · Tagihan asal
+                          </a>
+                        </div>
+                      )}
+                      {item.shipment_id && item.order_id && (
+                        <div>
+                          <a
+                            className="text-button"
+                            href={`?order=${encodeURIComponent(item.order_id)}#sales`}
+                          >
+                            Lihat pengiriman pesanan
+                          </a>
+                        </div>
+                      )}
                     </td>
                     <td className="muted">{date(item.created_at)}</td>
                     <td className="align-right font-medium">

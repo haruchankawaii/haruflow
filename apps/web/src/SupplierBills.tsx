@@ -41,6 +41,10 @@ import {
   type SupplierBillsSummary,
 } from "./bills-model";
 import "./supplier-bills.css";
+import { SupplierPayments } from "./SupplierPayments";
+import { ReturnsPanel } from "./ReturnsPanel";
+import { SupplierPayablesInsights } from "./SupplierPayablesInsights";
+import { billAllocationPreview } from "./bills-model";
 
 export function SupplierBills({
   revision,
@@ -75,6 +79,7 @@ export function SupplierBills({
   const pagination = usePagination(items, `${search}|${status}|${due}`);
   return (
     <>
+      <SupplierPayablesInsights revision={revision} onSelect={onSelect} />
       {summary.loading ? (
         <Loading />
       ) : summary.error ? (
@@ -120,6 +125,8 @@ export function SupplierBills({
                   "Status",
                   "Posisi jatuh tempo",
                   "Total",
+                  "Kredit retur",
+                  "Tagihan bersih",
                   "Dibayar",
                   "Sisa utang",
                   "Catatan",
@@ -134,9 +141,17 @@ export function SupplierBills({
                   bill.receipt_number,
                   bill.invoice_date,
                   bill.due_date,
-                  bill.status === "void" ? "Dibatalkan" : "Belum dibayar",
+                  bill.status === "void"
+                    ? "Dibatalkan"
+                    : bill.status === "paid"
+                      ? "Lunas"
+                      : bill.status === "partial"
+                        ? "Dibayar sebagian"
+                        : "Belum dibayar",
                   billDueNames[bill.due_status],
                   bill.total,
+                  bill.credit_total,
+                  bill.net_total,
                   bill.paid,
                   bill.outstanding,
                   bill.notes,
@@ -159,6 +174,8 @@ export function SupplierBills({
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">Semua status</option>
               <option value="unpaid">Belum dibayar</option>
+              <option value="partial">Dibayar sebagian</option>
+              <option value="paid">Lunas</option>
               <option value="void">Dibatalkan</option>
             </select>
           </label>
@@ -268,8 +285,8 @@ export function SupplierBills({
       </section>
       <p className="purchase-history-note">
         Daftar, pencarian, dan ekspor mencakup hingga 500 tagihan terbaru.
-        Grafik dan ringkasan supplier mencakup seluruh tagihan aktif. Pembayaran
-        supplier tersedia pada tahap berikutnya.
+        Grafik dan ringkasan supplier mencakup seluruh sisa utang. Pembayaran
+        serta koreksinya tersedia pada detail tagihan.
       </p>
     </>
   );
@@ -278,7 +295,13 @@ export function SupplierBills({
 function BillStatus({ bill }: { bill: SupplierBill }) {
   return (
     <span className={`bill-status ${bill.status}`}>
-      {bill.status === "void" ? "Dibatalkan" : "Belum dibayar"}
+      {bill.status === "void"
+        ? "Dibatalkan"
+        : bill.status === "paid"
+          ? "Lunas"
+          : bill.status === "partial"
+            ? "Dibayar sebagian"
+            : "Belum dibayar"}
     </span>
   );
 }
@@ -376,7 +399,7 @@ function BillStatusChart({
         Seluruh tagihan aktif sepanjang waktu, termasuk di luar 500 dokumen
         terbaru. Tidak mengikuti filter daftar. Jatuh tempo mengikuti tanggal
         perusahaan, bukan tanggal perangkat. Ini ringkasan jatuh tempo; kelompok
-        umur utang dan pembayaran menyusul.
+        umur utang dan pembayaran tersedia pada ringkasan di atas.
       </p>
     </section>
   );
@@ -441,11 +464,13 @@ function SupplierBalanceReport({ summary }: { summary: SupplierBillsSummary }) {
 
 export function SupplierBillForm({
   initialOrderId,
+  initialReceiptId,
   revision,
   onClose,
   onSaved,
 }: {
   initialOrderId?: string;
+  initialReceiptId?: string;
   revision: number;
   onClose: () => void;
   onSaved: (id: string) => void;
@@ -460,11 +485,15 @@ export function SupplierBillForm({
   );
   const sources = eligibleBillReceipts(orders.data?.items ?? []);
   const [orderId, setOrderId] = useState(initialOrderId ?? "");
+  const [receiptId, setReceiptId] = useState(initialReceiptId ?? "");
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
   const order = useBillSource(orderId, revision);
   const source = order.data?.receipts.find(
     (receipt) =>
-      receipt.id === order.data?.active_receipt_id && !receipt.reversal,
+      (receiptId ? receipt.id === receiptId : receipt.can_bill) &&
+      !receipt.reversal,
   );
+  const allocation = billAllocationPreview(source, quantities);
   const [draft, setDraft] = useState<BillDraft>({
     supplier_invoice_number: "",
     invoice_date: "",
@@ -498,8 +527,8 @@ export function SupplierBillForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busyRef.current || !order.data || !source || !eligible) return;
-    if (issue) {
-      setError(issue);
+    if (issue || allocation.issue) {
+      setError(issue || allocation.issue);
       return;
     }
     busyRef.current = true;
@@ -513,6 +542,7 @@ export function SupplierBillForm({
       invoice_date: draft.invoice_date,
       due_date: draft.due_date,
       notes: draft.notes.trim() || null,
+      items: allocation.items,
     };
     identity.current = requestIdentity(identity.current, payload);
     try {
@@ -533,7 +563,7 @@ export function SupplierBillForm({
     <Modal
       wide
       title="Catat tagihan supplier"
-      description="Satu tagihan penuh dari satu penerimaan PO aktif."
+      description="Pilih jumlah barang yang akan ditagih dari penerimaan PO."
       onClose={() => {
         if (!busyRef.current) onClose();
       }}
@@ -551,24 +581,33 @@ export function SupplierBillForm({
             >
               <select
                 required
-                value={orderId}
+                value={orderId && source ? `${orderId}|${source.id}` : ""}
                 disabled={busy}
                 onChange={(event) => {
-                  setOrderId(event.target.value);
+                  const [nextOrder, nextReceipt] =
+                    event.target.value.split("|");
+                  setOrderId(nextOrder ?? "");
+                  setReceiptId(nextReceipt ?? "");
+                  setQuantities({});
                   setError("");
                   setConflict(false);
                 }}
               >
                 <option value="">Pilih penerimaan PO…</option>
                 {sources.map((item) => (
-                  <option value={item.order.id} key={item.receipt.id}>
+                  <option
+                    value={`${item.order.id}|${item.receipt.id}`}
+                    key={item.receipt.id}
+                  >
                     {item.receipt.number} · {item.order.number} ·{" "}
                     {item.order.supplier_name}
                   </option>
                 ))}
                 {initialOrderId &&
                   !sources.some((item) => item.order.id === initialOrderId) && (
-                    <option value={initialOrderId}>
+                    <option
+                      value={`${initialOrderId}|${source?.id ?? initialReceiptId ?? ""}`}
+                    >
                       Penerimaan dari PO yang dibuka
                     </option>
                   )}
@@ -581,8 +620,8 @@ export function SupplierBillForm({
             !initialOrderId && (
               <p className="bill-notice">
                 <Info size={16} />
-                Belum ada penerimaan yang dapat ditagih. Catat penerimaan penuh
-                dari PO terlebih dahulu.
+                Belum ada penerimaan yang dapat ditagih. Catat penerimaan dari
+                PO terlebih dahulu.
               </p>
             )}
           {summary.loading ? (
@@ -621,7 +660,61 @@ export function SupplierBillForm({
                     </span>
                   </div>
                   {source && (
-                    <BillItems items={source.items} total={source.total} />
+                    <>
+                      <div className="table-scroll">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Barang</th>
+                              <th>Sisa belum ditagih</th>
+                              <th>Jumlah ditagih</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {source.items
+                              .filter(
+                                (line) =>
+                                  Number(line.remaining_bill_quantity) > 0,
+                              )
+                              .map((line) => (
+                                <tr key={line.id}>
+                                  <td>
+                                    {line.product_name}
+                                    <small className="bill-cell-sub">
+                                      {line.unit}
+                                    </small>
+                                  </td>
+                                  <td>
+                                    {exactDecimal(line.remaining_bill_quantity)}
+                                  </td>
+                                  <td>
+                                    <input
+                                      aria-label={`Jumlah tagihan ${line.product_name}`}
+                                      inputMode="decimal"
+                                      value={
+                                        quantities[line.id] ??
+                                        line.remaining_bill_quantity
+                                      }
+                                      disabled={busy}
+                                      onChange={(e) =>
+                                        setQuantities((previous) => ({
+                                          ...previous,
+                                          [line.id]: e.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="purchase-detail-total">
+                        <span>Total tagihan</span>
+                        <strong>{exactMoney(allocation.total)}</strong>
+                      </div>
+                      <FormError error={allocation.issue} />
+                    </>
                   )}
                   {!source?.can_bill && (
                     <p className="bill-blocked">
@@ -687,9 +780,9 @@ export function SupplierBillForm({
               <p>
                 Jumlah dan biaya mengikuti penerimaan; nilai tagihan tidak dapat
                 diubah. Kewajiban barang diterima belum ditagih berkurang dan
-                utang supplier bertambah sebesar{" "}
-                {exactMoney(source?.total ?? "0")}. Stok dan kas tetap.
-                Pembayaran dicatat pada tahap berikutnya.
+                utang supplier bertambah sebesar {exactMoney(allocation.total)}.
+                Stok dan kas tetap. Setelah posting, pembayaran dicatat melalui
+                detail tagihan.
               </p>
             </div>
           </div>
@@ -725,7 +818,12 @@ export function SupplierBillForm({
           <button
             className="button primary"
             disabled={
-              busy || !eligible || !!issue || summary.loading || !!summary.error
+              busy ||
+              !eligible ||
+              !!issue ||
+              !!allocation.issue ||
+              summary.loading ||
+              !!summary.error
             }
           >
             {busy ? "Mencatat…" : "Catat tagihan"}
@@ -937,6 +1035,32 @@ export function SupplierBillDetail({
               </div>
             </div>
             <BillItems items={bill.items} total={bill.total} />
+            <SupplierPayments
+              bill={bill}
+              canManage={canManage}
+              onSaved={() => {
+                resource.reload();
+                onSaved();
+              }}
+              onJournal={setJournalId}
+            />
+            <ReturnsPanel
+              kind="supplier"
+              documentId={bill.id}
+              version={bill.version}
+              total={bill.total}
+              paid={bill.paid}
+              creditTotal={bill.credit_total}
+              items={bill.items}
+              returns={bill.returns}
+              canReturn={bill.can_return}
+              canManage={canManage}
+              onSaved={() => {
+                resource.reload();
+                onSaved();
+              }}
+              onJournal={setJournalId}
+            />
             <div className="bill-balance">
               <span>
                 Dibayar <strong>{exactMoney(bill.paid)}</strong>
@@ -956,7 +1080,7 @@ export function SupplierBillDetail({
                 Nama supplier, barang, satuan, dan biaya menggunakan data
                 tersimpan. Tagihan memindahkan kewajiban barang diterima belum
                 ditagih menjadi utang supplier; stok dan kas tidak berubah.
-                Pembayaran tersedia pada tahap berikutnya.
+                Pembayaran dan koreksinya tersimpan pada riwayat di bawah.
               </p>
               <div className="purchase-receipt-actions">
                 <button

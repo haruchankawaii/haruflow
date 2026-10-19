@@ -64,4 +64,19 @@ describe("goods and service fulfillment", () => {
         nextOrderAction({ status, has_stock_items: false }, "admin"),
       ).toBeNull();
   });
+  test("partial progress permits another delivery and an invoice independently", () => {
+    const partial = { status: "confirmed", can_ship: true, can_invoice: true };
+    expect(nextOrderAction(partial, "warehouse")).toBe("ship");
+    expect(nextOrderAction(partial, "finance")).toBe("invoice");
+    expect(nextOrderAction(partial, "viewer")).toBeNull();
+    expect(nextOrderAction({ ...partial, can_ship: false }, "admin")).toBe(
+      "invoice",
+    );
+    expect(
+      nextOrderAction(
+        { ...partial, can_ship: false, can_invoice: false },
+        "admin",
+      ),
+    ).toBeNull();
+  });
 });

@@ -22,6 +22,7 @@ import { downloadCsv } from "./export";
 import { AccountForm, Ledger } from "./Ledger";
 import OpeningBalances from "./OpeningBalances";
 import { DocumentReversal } from "./DocumentReversal";
+import FinancialReports from "./FinancialReports";
 
 const kindNames: Record<string, string> = {
   asset: "Aset",
@@ -101,6 +102,7 @@ export default function Accounting({
           <div className="tabs" role="tablist" aria-label="Laporan akuntansi">
             {[
               ["trial", "Neraca saldo"],
+              ["reports", "Laporan keuangan"],
               ["journals", "Jurnal umum"],
               ["accounts", "Daftar akun"],
               ["opening", "Saldo awal"],
@@ -119,7 +121,7 @@ export default function Accounting({
               </button>
             ))}
           </div>
-          {tab !== "opening" && (
+          {tab !== "opening" && tab !== "reports" && (
             <SearchInput
               value={search}
               onChange={setSearch}
@@ -142,6 +144,8 @@ export default function Accounting({
               changed={changed}
               clearSearch={() => setSearch("")}
             />
+          ) : tab === "reports" ? (
+            <FinancialReports role={role} />
           ) : tab === "opening" ? null : (
             <AccountsView search={search} revision={revision} />
           )}

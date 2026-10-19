@@ -14,6 +14,21 @@ import {
 import { date, lineTotal, money, number } from "./format";
 import { useResource } from "./hooks";
 import type { Company, Customer, Invoice, Order, Session } from "./types";
+import { exactMoney, moneyCents } from "./dashboard-charts";
+import { JournalPreview } from "./JournalPreview";
+import { ReturnsPanel } from "./ReturnsPanel";
+import type { ReturnableDocument, ReturnableItem } from "./returns-model";
+
+type DetailedInvoice = Omit<Invoice, "items"> &
+  Omit<ReturnableDocument, "items"> & {
+    items: (ReturnableItem & {
+      unit_price: string;
+      product_id: string;
+      total: string;
+    })[];
+    can_reverse?: boolean;
+    reversal_blocked_reason?: string | null;
+  };
 
 interface Payment {
   id: string;
@@ -25,7 +40,7 @@ interface Payment {
 }
 
 export default function InvoiceDetail({
-  invoice,
+  invoice: initialInvoice,
   session,
   onClose,
   onChanged,
@@ -37,7 +52,9 @@ export default function InvoiceDetail({
   onChanged: () => void;
   onPay: () => void;
 }) {
-  const order = useResource<Order>(`/orders/${invoice.order_id}`);
+  const detail = useResource<DetailedInvoice>(`/invoices/${initialInvoice.id}`);
+  const invoice = detail.data ?? initialInvoice;
+  const order = useResource<Order>(`/orders/${initialInvoice.order_id}`);
   const customers = useResource<{ items: Customer[] }>("/customers");
   const company = useResource<Company>("/company");
   const payments = useResource<{ items: Payment[] }>(
@@ -47,6 +64,7 @@ export default function InvoiceDetail({
     path: string;
     title: string;
   } | null>(null);
+  const [journal, setJournal] = useState<string | null>(null);
   const customer = customers.data?.items.find(
     (customer) =>
       customer.id === invoice.customer_id ||
@@ -54,15 +72,27 @@ export default function InvoiceDetail({
   );
   const canManage = ["admin", "finance"].includes(session.user.role);
   const error =
-    order.error || customers.error || payments.error || company.error;
+    detail.error ||
+    order.error ||
+    customers.error ||
+    payments.error ||
+    company.error;
+  const activeReturns =
+    detail.data?.returns.some((record) => !record.reversal) ?? false;
+  function refreshed() {
+    detail.reload();
+    payments.reload();
+    onChanged();
+  }
   return (
     <Modal
       title={invoice.number}
-      description="Invoice penjualan dan riwayat pembayaran."
+      description="Invoice penjualan, pembayaran, dan riwayat retur."
       onClose={onClose}
       wide
     >
-      {order.loading ||
+      {detail.loading ||
+      order.loading ||
       customers.loading ||
       payments.loading ||
       company.loading ? (
@@ -72,6 +102,7 @@ export default function InvoiceDetail({
           message={error}
           onRetry={() => {
             order.reload();
+            detail.reload();
             customers.reload();
             payments.reload();
             company.reload();
@@ -121,7 +152,7 @@ export default function InvoiceDetail({
                   </tr>
                 </thead>
                 <tbody>
-                  {order.data?.items?.map((item, index) => (
+                  {(invoice.items ?? order.data?.items)?.map((item, index) => (
                     <tr key={index}>
                       <td>
                         <strong>
@@ -150,20 +181,33 @@ export default function InvoiceDetail({
             <div className="invoice-totals">
               <div>
                 <span>Total invoice</span>
-                <strong>{money(invoice.total)}</strong>
+                <strong>{exactMoney(invoice.total)}</strong>
               </div>
+              {detail.data && moneyCents(detail.data.credit_total) > 0n && (
+                <>
+                  <div>
+                    <span>Kredit retur</span>
+                    <strong>−{exactMoney(detail.data.credit_total)}</strong>
+                  </div>
+                  <div>
+                    <span>Nilai invoice bersih</span>
+                    <strong>{exactMoney(detail.data.net_total)}</strong>
+                  </div>
+                </>
+              )}
               <div>
-                <span>Sudah dibayar</span>
-                <strong>{money(invoice.paid)}</strong>
+                <span>Pembayaran bersih</span>
+                <strong>{exactMoney(invoice.paid)}</strong>
               </div>
               <div className="invoice-due">
                 <span>Sisa tagihan</span>
                 <strong>
-                  {money(
+                  {exactMoney(
                     invoice.status === "void"
-                      ? 0
+                      ? 0n
                       : (invoice.outstanding ??
-                          Number(invoice.total) - Number(invoice.paid)),
+                          moneyCents(detail.data?.net_total ?? invoice.total) -
+                            moneyCents(invoice.paid)),
                   )}
                 </strong>
               </div>
@@ -200,7 +244,7 @@ export default function InvoiceDetail({
                           />
                         </td>
                         <td>
-                          {canManage && !payment.reversed && (
+                          {canManage && !payment.reversed && !activeReturns && (
                             <button
                               className="text-button danger-text"
                               onClick={() =>
@@ -226,20 +270,46 @@ export default function InvoiceDetail({
               />
             )}
           </section>
+          {activeReturns && (
+            <p className="muted form-body">
+              Pembayaran bersih sudah memperhitungkan pengembalian dana retur.
+              Balikkan retur aktif lebih dahulu sebelum membatalkan pembayaran
+              atau invoice.
+            </p>
+          )}
+          {detail.data && (
+            <ReturnsPanel
+              kind="sales"
+              documentId={invoice.id}
+              version={detail.data.version}
+              total={invoice.total}
+              paid={invoice.paid}
+              creditTotal={detail.data.credit_total}
+              items={detail.data.items}
+              returns={detail.data.returns}
+              canReturn={detail.data.can_return}
+              canManage={canManage}
+              onSaved={refreshed}
+              onJournal={setJournal}
+            />
+          )}
           <div className="form-actions invoice-actions">
-            {canManage && invoice.status !== "void" && (
-              <button
-                className="text-button danger-text"
-                onClick={() =>
-                  setReversal({
-                    path: `/invoices/${invoice.id}/reverse`,
-                    title: "Batalkan invoice",
-                  })
-                }
-              >
-                <RotateCcw size={15} /> Batalkan invoice
-              </button>
-            )}
+            {canManage &&
+              invoice.status !== "void" &&
+              !activeReturns &&
+              detail.data?.can_reverse !== false && (
+                <button
+                  className="text-button danger-text"
+                  onClick={() =>
+                    setReversal({
+                      path: `/invoices/${invoice.id}/reverse`,
+                      title: "Batalkan invoice",
+                    })
+                  }
+                >
+                  <RotateCcw size={15} /> Batalkan invoice
+                </button>
+              )}
             <button className="button secondary" onClick={() => window.print()}>
               <Printer size={16} /> Cetak / PDF
             </button>
@@ -258,9 +328,12 @@ export default function InvoiceDetail({
           onClose={() => setReversal(null)}
           onSaved={() => {
             setReversal(null);
-            onChanged();
+            refreshed();
           }}
         />
+      )}
+      {journal && (
+        <JournalPreview id={journal} onClose={() => setJournal(null)} />
       )}
     </Modal>
   );

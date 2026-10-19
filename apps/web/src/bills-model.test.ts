@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   billChartRows,
+  billAllocationPreview,
   billDraftIssue,
   eligibleBillReceipts,
   validCalendarDate,
@@ -164,12 +165,47 @@ describe("supplier bills", () => {
         id: "po-4",
         version: 3,
         active_receipt_id: null,
-        receipts: [receipt("gr-not-current")],
+        receipts: [receipt("gr-not-current", { can_bill: false })],
       },
     ] as PurchaseOrder[];
     const eligible = eligibleBillReceipts(orders);
-    expect(eligible.map((source) => source.receipt.id)).toEqual(["gr-current"]);
+    expect(eligible.map((source) => source.receipt.id)).toEqual([
+      "gr-old",
+      "gr-current",
+    ]);
     expect(eligible[0].order.version).toBe(9);
     expect(eligibleBillReceipts([])).toEqual([]);
   });
+});
+
+test("partial bill previews allocate cumulative cents and preserve a billable final remainder", () => {
+  const receipt = {
+    items: [
+      {
+        id: "line",
+        quantity: "1.125",
+        value: "13.89",
+        billed_quantity: "0",
+        billed_value: "0",
+        remaining_bill_quantity: "1.125",
+      },
+    ],
+  } as PurchaseReceipt;
+  expect(billAllocationPreview(receipt, { line: "0.5" }).total).toBe(617n);
+  receipt.items[0].billed_quantity = "0.5";
+  receipt.items[0].billed_value = "6.17";
+  receipt.items[0].remaining_bill_quantity = "0.625";
+  expect(billAllocationPreview(receipt, {}).total).toBe(772n);
+  expect(billAllocationPreview(receipt, { line: "0.626" }).issue).toBeTruthy();
+  receipt.items[0] = {
+    ...receipt.items[0],
+    quantity: "1",
+    value: "0.02",
+    billed_quantity: "0",
+    billed_value: "0",
+    remaining_bill_quantity: "1",
+  };
+  expect(billAllocationPreview(receipt, { line: "0.999" }).total).toBe(1n);
+  receipt.items[0].value = "0.01";
+  expect(billAllocationPreview(receipt, { line: "0.999" }).issue).toBeTruthy();
 });

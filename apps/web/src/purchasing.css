@@ -465,6 +465,9 @@
 .purchase-chart-row.confirmed {
   --purchase-status-color: #c59957;
 }
+.purchase-chart-row.partial_received {
+  --purchase-status-color: #5486a0;
+}
 .purchase-chart-row.received {
   --purchase-status-color: #4d815c;
 }

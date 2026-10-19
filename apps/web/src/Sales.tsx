@@ -1,11 +1,10 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   Check,
   CreditCard,
   FilePlus2,
   FileText,
-  PackageCheck,
   Plus,
   ShoppingBag,
   Trash2,
@@ -25,16 +24,13 @@ import {
   SearchInput,
   Status,
 } from "./components";
-import { date, lineTotal, money, number, orderTotal } from "./format";
+import { date, lineTotal, money, orderTotal } from "./format";
 import { usePagination, useResource } from "./hooks";
 import type { Customer, Invoice, Order, Product, Role, Session } from "./types";
-import InvoiceDetail, { ReasonForm } from "./InvoiceDetail";
+import InvoiceDetail from "./InvoiceDetail";
 import { downloadCsv } from "./export";
-import {
-  isStockProduct,
-  nextOrderAction,
-  orderHasStockItems,
-} from "./commerce";
+import { isStockProduct } from "./commerce";
+import OrderDetail from "./PartialSales";
 
 export default function Sales({
   role,
@@ -45,18 +41,29 @@ export default function Sales({
   changed: () => void;
   session: Session;
 }) {
-  const [tab, setTab] = useState("orders");
+  const [tab, setTab] = useState(() =>
+    documentId("invoice") ? "invoices" : "orders",
+  );
   const [revision, setRevision] = useState(0);
   const orders = useResource<{ items: Order[] }>("/orders", revision);
   const invoices = useResource<{ items: Invoice[] }>("/invoices", revision);
   const [search, setSearch] = useState("");
   const [create, setCreate] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [payment, setPayment] = useState<Invoice | null>(null);
-  const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
-  const invoiceDetail = invoices.data?.items.find(
-    (invoice) => invoice.id === invoiceDetailId,
+  const [selected, setSelected] = useState<string | null>(() =>
+    documentId("order"),
   );
+  const [payment, setPayment] = useState<Invoice | null>(null);
+  const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(() =>
+    documentId("invoice"),
+  );
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("invoice") || url.searchParams.has("order")) {
+      url.searchParams.delete("invoice");
+      url.searchParams.delete("order");
+      window.history.replaceState(null, "", url);
+    }
+  }, []);
   const canSell = ["admin", "sales"].includes(role);
   const canPay = ["admin", "finance"].includes(role);
   const orderItems = (orders.data?.items ?? []).filter((item) =>
@@ -292,7 +299,14 @@ export default function Sales({
                     <td>
                       <Status status={invoice.status} />
                     </td>
-                    <td className="align-right">{money(invoice.total)}</td>
+                    <td className="align-right">
+                      {money(invoice.net_total ?? invoice.total)}
+                      {Number(invoice.credit_total ?? "0") > 0 && (
+                        <small className="block muted">
+                          Kredit retur {money(invoice.credit_total)}
+                        </small>
+                      )}
+                    </td>
                     <td className="align-right font-medium">
                       {money(invoice.paid)}
                     </td>
@@ -332,14 +346,15 @@ export default function Sales({
           onChanged={saved}
         />
       )}
-      {invoiceDetail && (
-        <InvoiceDetail
-          invoice={invoiceDetail}
+      {invoiceDetailId && (
+        <InvoiceLoader
+          id={invoiceDetailId}
+          revision={revision}
           session={session}
           onClose={() => setInvoiceDetailId(null)}
           onChanged={saved}
-          onPay={() => {
-            setPayment(invoiceDetail);
+          onPay={(invoice) => {
+            setPayment(invoice);
             setInvoiceDetailId(null);
           }}
         />
@@ -352,6 +367,55 @@ export default function Sales({
         />
       )}
     </>
+  );
+}
+
+function documentId(key: string) {
+  const id = new URLSearchParams(window.location.search).get(key);
+  return id &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    ? id
+    : null;
+}
+
+function InvoiceLoader({
+  id,
+  revision,
+  session,
+  onClose,
+  onChanged,
+  onPay,
+}: {
+  id: string;
+  revision: number;
+  session: Session;
+  onClose: () => void;
+  onChanged: () => void;
+  onPay: (invoice: Invoice) => void;
+}) {
+  const invoice = useResource<Invoice>(`/invoices/${id}`, revision);
+  if (invoice.loading || invoice.error || !invoice.data)
+    return (
+      <Modal
+        title="Invoice penjualan"
+        onClose={onClose}
+        description="Memuat invoice tersimpan."
+      >
+        {invoice.loading ? (
+          <Loading />
+        ) : (
+          <ErrorState message={invoice.error} onRetry={invoice.reload} />
+        )}
+      </Modal>
+    );
+  return (
+    <InvoiceDetail
+      invoice={invoice.data}
+      session={session}
+      onClose={onClose}
+      onChanged={onChanged}
+      onPay={() => onPay(invoice.data!)}
+    />
   );
 }
 
@@ -574,214 +638,6 @@ function OrderForm({
   );
 }
 
-function OrderDetail({
-  id,
-  role,
-  onClose,
-  onChanged,
-}: {
-  id: string;
-  role: Role;
-  onClose: () => void;
-  onChanged: () => void;
-}) {
-  const { data, loading, error, reload } = useResource<Order>(`/orders/${id}`);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState("");
-  const [reversal, setReversal] = useState(false);
-  const [keys] = useState(() => ({
-    confirm: crypto.randomUUID(),
-    ship: crypto.randomUUID(),
-    invoice: crypto.randomUUID(),
-  }));
-  const actionType = data ? nextOrderAction(data, role) : null;
-  const action = actionType
-    ? {
-        confirm: {
-          path: "confirm" as const,
-          label: "Konfirmasi pesanan",
-          Icon: Check,
-          note:
-            data && !orderHasStockItems(data)
-              ? "Konfirmasi menyetujui detail jasa. Setelah itu bagian keuangan dapat menerbitkan invoice tanpa pengiriman."
-              : "Konfirmasi menyetujui detail pesanan untuk diproses oleh gudang.",
-        },
-        ship: {
-          path: "ship" as const,
-          label: "Kirim barang",
-          Icon: Truck,
-          note: "Pengiriman mengurangi stok barang dan mencatat harga pokok. Baris jasa tidak mengubah persediaan.",
-        },
-        invoice: {
-          path: "invoice" as const,
-          label: "Terbitkan invoice",
-          Icon: FileText,
-          note: "Invoice mencatat seluruh barang dan jasa sebagai pendapatan dan piutang pelanggan.",
-        },
-      }[actionType]
-    : null;
-  async function mutate() {
-    if (!action) return;
-    setBusy(true);
-    setActionError("");
-    try {
-      await api(`/orders/${id}/${action.path}`, {
-        method: "POST",
-        body: { idempotency_key: keys[action.path] },
-      });
-      reload();
-      onChanged();
-    } catch (error) {
-      setActionError(errorMessage(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Modal
-      title={data?.number ?? "Detail pesanan"}
-      description="Semua detail dan langkah selanjutnya dalam satu tempat."
-      onClose={() => {
-        if (!busy) onClose();
-      }}
-      wide
-    >
-      {loading ? (
-        <Loading />
-      ) : error || !data ? (
-        <ErrorState message={error} onRetry={reload} />
-      ) : (
-        <>
-          <div className="form-body">
-            <div className="order-detail-meta">
-              <div>
-                <small>Pelanggan</small>
-                <strong>{data.customer_name}</strong>
-              </div>
-              <div>
-                <small>Tanggal pesanan</small>
-                <strong>{date(data.created_at)}</strong>
-              </div>
-              <div>
-                <small>Status</small>
-                <Status status={data.status} />
-              </div>
-            </div>
-            <div className="table-scroll detail-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Produk</th>
-                    <th className="align-right">Jumlah</th>
-                    <th className="align-right">Harga satuan</th>
-                    <th className="align-right">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items?.map((item, index) => (
-                    <tr key={`${item.product_id}-${index}`}>
-                      <td>
-                        <strong>
-                          {item.product_name ??
-                            (item as typeof item & { name?: string }).name ??
-                            item.sku ??
-                            item.product_id}
-                        </strong>
-                        <small className="block muted">{item.sku}</small>
-                        {item.product_kind === "service" && (
-                          <span className="subtle-chip">Jasa</span>
-                        )}
-                      </td>
-                      <td className="align-right">{number(item.quantity)}</td>
-                      <td className="align-right">{money(item.unit_price)}</td>
-                      <td className="align-right font-medium">
-                        {money(
-                          item.total ??
-                            lineTotal(item.quantity, item.unit_price),
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="order-total">
-              <span>Total pesanan</span>
-              <strong>{money(data.total)}</strong>
-            </div>
-            {action ? (
-              <div className="info-box">
-                <action.Icon size={18} />
-                <p>{action.note} Perubahan ini akan langsung tersimpan.</p>
-              </div>
-            ) : (
-              <div className="info-box">
-                <PackageCheck size={18} />
-                <p>
-                  {data.status === "invoiced"
-                    ? "Invoice telah diterbitkan. Catat pembayaran pelanggan pada tab Invoice."
-                    : data.status === "confirmed" && !orderHasStockItems(data)
-                      ? "Pesanan jasa tidak memerlukan pengiriman. Pengguna Keuangan dapat menerbitkan invoice."
-                      : "Pesanan siap dilanjutkan oleh pengguna dengan hak akses yang sesuai."}
-                </p>
-              </div>
-            )}
-            <FormError error={actionError} />
-          </div>
-          <div className="form-actions">
-            {((["draft", "confirmed"].includes(data.status) &&
-              ["admin", "sales"].includes(role)) ||
-              (data.status === "shipped" &&
-                ["admin", "warehouse"].includes(role))) && (
-              <button
-                className="text-button danger-text"
-                disabled={busy}
-                onClick={() => setReversal(true)}
-              >
-                {data.status === "shipped"
-                  ? "Batalkan pengiriman"
-                  : "Batalkan pesanan"}
-              </button>
-            )}
-            <button
-              className="button secondary"
-              onClick={onClose}
-              disabled={busy}
-            >
-              Tutup
-            </button>
-            {action && (
-              <button
-                className="button primary"
-                disabled={busy}
-                onClick={mutate}
-              >
-                <action.Icon size={17} />
-                {busy ? "Memproses…" : action.label}
-              </button>
-            )}
-          </div>
-        </>
-      )}
-      {reversal && data && (
-        <ReasonForm
-          path={`/orders/${id}/${data.status === "shipped" ? "reverse-shipment" : "cancel"}`}
-          title={
-            data.status === "shipped"
-              ? "Batalkan pengiriman"
-              : "Batalkan pesanan"
-          }
-          onClose={() => setReversal(false)}
-          onSaved={() => {
-            setReversal(false);
-            onChanged();
-          }}
-        />
-      )}
-    </Modal>
-  );
-}
-
 function PaymentForm({
   invoice,
   onClose,
@@ -794,7 +650,11 @@ function PaymentForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [key] = useState(() => crypto.randomUUID());
-  const outstanding = (Number(invoice.total) - Number(invoice.paid)).toFixed(2);
+  const outstanding =
+    invoice.outstanding ??
+    (Number(invoice.net_total ?? invoice.total) - Number(invoice.paid)).toFixed(
+      2,
+    );
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);

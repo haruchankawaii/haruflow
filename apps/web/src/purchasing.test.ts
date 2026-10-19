@@ -9,6 +9,7 @@ import {
   purchaseSummary,
   purchaseStatusRows,
   requestIdentity,
+  receiptPreview,
   type PurchaseOrder,
   type PurchasingSummary,
 } from "./purchasing-model";
@@ -91,9 +92,9 @@ describe("purchase previews", () => {
       { status: "received", total: "250000.12" },
       { status: "cancelled", total: "100.00" },
     ] as PurchaseOrder[]);
-    expect(summary.map(({ count }) => count)).toEqual([1, 2, 1, 1]);
+    expect(summary.map(({ count }) => count)).toEqual([1, 2, 0, 1, 1]);
     expect(summary[1].total).toBe(100000000000000n);
-    expect(summary[2].total).toBe(25000012n);
+    expect(summary[3].total).toBe(25000012n);
   });
   test("retries reuse request keys until the submitted payload changes", () => {
     let generated = 0;
@@ -110,10 +111,17 @@ describe("purchase previews", () => {
   });
   test("chart keeps complete server totals and received orders distinct from pending PO", () => {
     const summary: PurchasingSummary = {
-      counts: { draft: 1, confirmed: 250, received: 500, cancelled: 7 },
+      counts: {
+        draft: 1,
+        confirmed: 250,
+        partial_received: 0,
+        received: 500,
+        cancelled: 7,
+      },
       values: {
         draft: "0.01",
         confirmed: "999999999999999999.12",
+        partial_received: "0.00",
         received: "125000.34",
         cancelled: "4000.00",
       },
@@ -138,10 +146,17 @@ describe("purchase previews", () => {
   });
   test("empty purchase charts retain every status with finite zero bars", () => {
     const rows = purchaseStatusRows({
-      counts: { draft: 0, confirmed: 0, received: 0, cancelled: 0 },
+      counts: {
+        draft: 0,
+        confirmed: 0,
+        partial_received: 0,
+        received: 0,
+        cancelled: 0,
+      },
       values: {
         draft: "0.00",
         confirmed: "0.00",
+        partial_received: "0.00",
         received: "0.00",
         cancelled: "0.00",
       },
@@ -153,6 +168,7 @@ describe("purchase previews", () => {
     expect(rows.map((item) => item.status)).toEqual([
       "draft",
       "confirmed",
+      "partial_received",
       "received",
       "cancelled",
     ]);
@@ -180,5 +196,64 @@ describe("purchase previews", () => {
     expect(requestIdentity(first, { ...payload, version: 4 }, make).key).toBe(
       "receipt-key-3",
     );
+  });
+});
+
+test("partial receipt preview allocates cumulative rounding and caps remaining quantities", () => {
+  const order = {
+    items: [
+      {
+        id: "line-1",
+        quantity: "3",
+        unit_cost: "3.3333",
+        total: "10.00",
+        received_quantity: "1",
+        remaining_quantity: "2",
+        received_value: "3.33",
+      },
+    ],
+  } as PurchaseOrder;
+  expect(receiptPreview(order, { "line-1": "1" })).toMatchObject({
+    total: 334n,
+    valid: true,
+    items: [{ order_line_id: "line-1", quantity: "1" }],
+  });
+  expect(receiptPreview(order, { "line-1": "2" })).toMatchObject({
+    total: 667n,
+    valid: true,
+  });
+  for (const quantity of ["0", "2.001", "-1", "1.0001", ""])
+    expect(receiptPreview(order, { "line-1": quantity }).valid).toBe(false);
+  const finalOrder = {
+    items: [
+      {
+        ...order.items[0],
+        received_quantity: "2",
+        remaining_quantity: "1",
+        received_value: "6.67",
+      },
+    ],
+  } as PurchaseOrder;
+  expect(receiptPreview(finalOrder, { "line-1": "1" }).total).toBe(333n);
+});
+
+test("tiny partial receipt cannot consume the final cent before all goods arrive", () => {
+  const order = {
+    items: [
+      {
+        id: "tiny",
+        quantity: "1",
+        unit_cost: "0.01",
+        total: "0.01",
+        received_quantity: "0",
+        remaining_quantity: "1",
+        received_value: "0.00",
+      },
+    ],
+  } as PurchaseOrder;
+  expect(receiptPreview(order, { tiny: "0.999" }).valid).toBe(false);
+  expect(receiptPreview(order, { tiny: "1" })).toMatchObject({
+    total: 1n,
+    valid: true,
   });
 });
