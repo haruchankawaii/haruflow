@@ -309,7 +309,9 @@ async fn summary(State(state): State<AppState>, _user: AuthUser) -> AppResult<Js
                 'cancelled',COALESCE((SELECT value FROM status_totals WHERE status='cancelled'),0)::text),
             'pending_receipt_total',COALESCE((SELECT value FROM status_totals WHERE status='confirmed'),0)::text,
             'received_unbilled_total',COALESCE((SELECT sum(r.total) FROM purchase_orders o
-                JOIN purchase_receipts r ON r.id=o.active_receipt_id WHERE o.status='received'),0)::text,
+                JOIN purchase_receipts r ON r.id=o.active_receipt_id WHERE o.status='received'
+                AND NOT EXISTS(SELECT 1 FROM purchase_bills b WHERE b.receipt_id=r.id AND b.status='unpaid')),0)::text,
+            'supplier_payable_total',COALESCE((SELECT sum(total) FROM purchase_bills WHERE status='unpaid'),0)::text,
             'as_of',now())
         "#).fetch_one(&state.db).await?;
     Ok(Json(result))

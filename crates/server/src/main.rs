@@ -28,6 +28,9 @@ mod purchasing_tests;
 #[cfg(test)]
 mod service_tests;
 #[cfg(test)]
+mod supplier_bill_tests;
+mod supplier_bills;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod upgrade_tests;
@@ -169,6 +172,7 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(document_corrections::router())
         .merge(purchasing::router())
         .merge(purchase_receipts::router())
+        .merge(supplier_bills::router())
         .fallback(|| async { error::AppError::not_found() })
         .layer(middleware::from_fn(api_guard));
     Router::new()
