@@ -102,6 +102,8 @@ Finance/Admin dapat memberi klasifikasi arus kas dengan alasan dan versi. Klasif
 
 ## Backup
 
+Lampiran bukti disimpan dalam PostgreSQL bersama metadata dan riwayatnya; tidak ada folder upload terpisah. Backup database yang sama menyertakan file aktif/arsip, preview/riwayat impor, serta master hasil impor. Ukuran dan durasi backup bertambah mengikuti file yang disimpan. Setelah restore, cocokkan juga ukuran dan SHA-256 contoh lampiran dengan unduhannya, bukan hanya nama file. Lihat [impor](./IMPORTS.md) dan [lampiran](./ATTACHMENTS.md).
+
 Jalankan `node scripts/database.mjs backup` dari root repository. Script menjalankan `pg_dump -Fc`, menulis arsip pada folder `backups/`, dan membuat metadata waktu serta versi aplikasi. Nama file dapat diberikan sebagai argumen kedua. Arsip ditulis ke file `.partial` secara eksklusif dan nama final baru diterbitkan setelah dump selesai. File final atau `.partial` yang sudah ada tidak ditimpa atau dihapus. Gunakan filesystem yang mendukung hard link untuk lokasi backup; file sementara dan final berada di direktori yang sama.
 
 Cadangkan arsip, versi/tag atau digest image aplikasi, dan konfigurasi yang diperlukan ke lokasi lain yang terenkripsi. `.env` berisi secrets dan harus disimpan dengan perlindungan terpisah. Backup dalam disk yang sama tidak melindungi dari kegagalan disk.
@@ -153,6 +155,10 @@ Migrasi 0013–0018 melengkapi pembayaran, transaksi sebagian, laporan, dan retu
 Upgrade native dari skema 0012 ke 0018 telah diperiksa dengan membandingkan snapshot stok, dokumen, dan jurnal lama. Smoke native pada database uji terpisah juga menjalankan seed → backup → mutasi → restore → verifikasi, termasuk pengiriman/penerimaan dan tagihan sebagian, pembayaran, retur, refund, serta pembalikannya; fixture hasil restore memuat 50 jurnal dan 25 mutasi. Jumlah ini milik data uji, bukan target jumlah transaksi instalasi pengguna. Operator tetap perlu mencocokkan hasil latihan restore dengan backup dan versi instalasinya sendiri.
 
 Setelah upgrade, uji satu alur representatif pada database pengujian: kirim/terima sebagian, tagih sisanya, bayar sebagian/penuh, baca umur utang dan laporan, lalu uji koreksi yang memenuhi syarat. Pastikan dokumen lama, hubungan sumber, alasan, jurnal asal/pembalik, dan saldo tidak berubah oleh migrasi. Penurunan versi setelah fitur baru digunakan memerlukan pemulihan backup beserta aplikasi yang sesuai; tidak ada migrasi turun otomatis.
+
+Migrasi `0019_master_imports.sql` menambahkan preview/riwayat impor yang hanya dapat berubah dari siap menjadi tersimpan. Migrasi `0020_document_attachments.sql` menambahkan isi lampiran, referensi dokumen, kuota aktif, serta riwayat arsip/pemulihan. Keduanya tidak mengubah master, dokumen, stok, atau jurnal lama. Jalankan setelah backup dan dengan aplikasi berhenti. Lampiran memakai PostgreSQL sehingga Compose tetap dapat menjalankan aplikasi dengan filesystem read-only; tidak diperlukan volume upload tambahan. Untuk menurunkan versi setelah fitur ini dipakai, pulihkan backup serta aplikasi yang sesuai agar file dan riwayat tetap dapat diakses.
+
+Kedua database preview telah di-upgrade 0018 → 0020 setelah backup dengan jumlah baris serta hash seluruh isi tabel lama tetap sama. Smoke native terbaru juga membuktikan riwayat impor, master hasil impor, 11 lampiran aktif/arsip, 14 event file, dan kecocokan byte/SHA-256 setelah backup → perubahan data → restore. Pemeriksaan ini melengkapi saldo dan riwayat transaksi; bukan pengganti latihan restore instalasi pengguna.
 
 ## Health, log, dan troubleshooting
 

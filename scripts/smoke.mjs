@@ -1,5 +1,6 @@
 // Disposable-instance integration check. Never run against a business installation.
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -41,6 +42,152 @@ async function conflict(path, body) {
     body: JSON.stringify({ ...body, idempotency_key: crypto.randomUUID() }), signal: AbortSignal.timeout(15000),
   });
   assert.equal(response.status, 409, `${path} must reject an inconsistent posting: ${await response.text()}`);
+}
+
+// Proof files live in PostgreSQL, so the existing pg_dump/pg_restore exercise
+// must preserve their bytes as well as document metadata and import history.
+function proofPdf() {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R >>',
+    '<< /Length 0 >>\nstream\n\nendstream',
+  ];
+  let text = '%PDF-1.4\n';
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(text));
+    text += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xref = Buffer.byteLength(text);
+  text += `xref\n0 ${offsets.length}\n0000000000 65535 f \n`;
+  text += offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('');
+  text += `trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  // A valid PDF comment proves uploads are not constrained by the ordinary
+  // 256 KiB JSON body limit. It does not change the document or its xref.
+  return Buffer.from(`${text}%${'x'.repeat(300 * 1024)}\n%%EOF\n`);
+}
+
+async function uploadProof(kind, id, filename, bytes, mediaType = 'application/pdf') {
+  const path = `/documents/${kind}/${id}/attachments?${new URLSearchParams({ filename, idempotency_key: crypto.randomUUID() })}`;
+  const upload = async () => {
+    const response = await fetch(`${base}/api${path}`, {
+      method: 'POST', headers: { 'Content-Type': mediaType, 'X-Haruflow-Request': '1', Cookie: cookie },
+      body: bytes, signal: AbortSignal.timeout(15000),
+    });
+    const result = await response.json();
+    assert.ok(response.ok, `Proof upload failed: ${response.status} ${JSON.stringify(result)}`);
+    return result;
+  };
+  const attachment = await upload();
+  assert.deepEqual(await upload(), attachment, 'Attachment upload retry must not duplicate files');
+  assert.equal(attachment.sha256, createHash('sha256').update(bytes).digest('hex'));
+  assert.equal(attachment.byte_size, bytes.byteLength);
+  return attachment;
+}
+
+async function proofTargets() {
+  const invoice = await api(`/invoices/${(await api('/orders')).items.find(item => item.number === 'SO-000001').invoice_id}`);
+  const payments = (await api(`/invoices/${invoice.id}/payments`)).items;
+  const bill = (await api('/purchase-bills')).items.find(item => item.supplier_invoice_number === 'CI-AP-002');
+  return [
+    ['sales_order', invoice.order_id], ['invoice', invoice.id], ['payment', payments[0].id],
+    ['purchase_order', bill.order_id], ['purchase_receipt', bill.receipt_id], ['purchase_bill', bill.id],
+    ['supplier_payment', bill.payments[0].id], ['journal', bill.journal_id],
+    ['sales_return', invoice.returns[0].id], ['supplier_return', bill.returns[0].id],
+  ];
+}
+
+async function seedDataAndProofs() {
+  const sources = [
+    ['customers', 'CI-customers.csv', 'name,email,phone,address\r\nCI Imported Customer,imported-customer@example.test,081234,"Gedung A,\nLantai 2"\r\n'],
+    ['suppliers', 'CI-suppliers.csv', 'code;name;email;phone;address\nCI-IMPORT-SUP;"CI Imported Supplier";imported-supplier@example.test;081235;Jakarta\n'],
+    ['products', 'CI-products.csv', '\uFEFFsku,name,kind,unit,price\r\nCI-IMPORTED-SERVICE,"Jasa, hasil impor",service,jam,25000.25\r\n'],
+  ];
+  for (const [kind, filename, csv] of sources) {
+    const template = await fetch(`${base}/api/imports/${kind}/template`, { headers: { Cookie: cookie }, signal: AbortSignal.timeout(10000) });
+    assert.equal(template.status, 200);
+    assert.match(template.headers.get('content-type'), /text\/csv/);
+    assert.ok((await template.text()).includes(kind === 'customers' ? 'name' : kind === 'products' ? 'sku' : 'code'));
+    const preview = await api(`/imports/${kind}/preview`, 'POST', { filename, csv, delimiter: kind === 'suppliers' ? 'semicolon' : 'comma' });
+    assert.equal(preview.can_commit, true);
+    assert.equal(preview.row_count, 1);
+    assert.equal(preview.errors.length, 0);
+    const committed = await retried(`/imports/${preview.id}/commit`, {});
+    assert.equal(committed.status, 'committed');
+    assert.equal(committed.created_count, 1);
+    const repeat = await fetch(`${base}/api/imports/${preview.id}/commit`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Haruflow-Request': '1', Cookie: cookie },
+      body: JSON.stringify({ idempotency_key: crypto.randomUUID() }), signal: AbortSignal.timeout(10000),
+    });
+    assert.ok(repeat.status === 409 || repeat.ok, 'A committed batch must never create rows again');
+  }
+  const invalid = await api('/imports/products/preview', 'POST', {
+    filename: 'CI-invalid.csv', delimiter: 'comma',
+    csv: 'sku,name,price\nCI-MUST-NOT-EXIST,Valid line,10\nCI-INVALID,Invalid price,wrong\n',
+  });
+  assert.equal(invalid.can_commit, false);
+  assert.ok(invalid.errors.length > 0);
+  const rejected = await fetch(`${base}/api/imports/${invalid.id}/commit`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Haruflow-Request': '1', Cookie: cookie },
+    body: JSON.stringify({ idempotency_key: crypto.randomUUID() }), signal: AbortSignal.timeout(10000),
+  });
+  assert.ok(rejected.status >= 400 && rejected.status < 500, 'Invalid import must reject every row');
+  assert.ok(!(await api('/products')).items.some(item => item.sku === 'CI-MUST-NOT-EXIST'));
+  for (const [kind, id] of await proofTargets()) {
+    const attachment = await uploadProof(kind, id, `CI-${kind}-bukti.pdf`, proofPdf());
+    if (kind === 'invoice') {
+      const archived = await retried(`/attachments/${attachment.id}/archive`, { version: attachment.version, reason: 'CI archives proof after review' });
+      const restored = await retried(`/attachments/${attachment.id}/restore`, { version: archived.version, reason: 'CI restores proof for audit' });
+      assert.equal(restored.archived_at, null);
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+      const previous = await uploadProof(kind, id, 'CI-archived-bukti.png', png, 'image/png');
+      await retried(`/attachments/${previous.id}/archive`, { version: previous.version, reason: 'CI retains superseded proof in history' });
+    }
+  }
+}
+
+async function verifyDataAndProofs() {
+  const customer = (await api('/customers')).items.find(item => item.name === 'CI Imported Customer');
+  assert.ok(customer, 'Imported customer survives restore');
+  assert.equal(customer.address, 'Gedung A,\nLantai 2');
+  const supplier = (await api('/suppliers')).items.find(item => item.code === 'CI-IMPORT-SUP');
+  assert.equal(supplier.name, 'CI Imported Supplier');
+  const product = (await api('/products')).items.find(item => item.sku === 'CI-IMPORTED-SERVICE');
+  assert.equal(product.kind, 'service');
+  assert.equal(Number(product.price), 25000.25);
+  assert.equal(Number(product.quantity), 0);
+  for (const kind of ['customers', 'suppliers', 'products']) {
+    const batches = await api(`/imports?kind=${kind}`);
+    const batch = batches.items.find(item => item.filename === `CI-${kind}.csv`);
+    assert.ok(batch, `Import ${kind} history survives restore`);
+    const detail = await api(`/imports/${batch.id}`);
+    assert.equal(detail.status, 'committed');
+    assert.equal(detail.created_count, 1);
+  }
+  for (const [kind, id] of await proofTargets()) {
+    const list = await api(`/documents/${kind}/${id}/attachments`);
+    const attachment = list.items.find(item => item.filename === `CI-${kind}-bukti.pdf`);
+    assert.ok(attachment, `Proof ${kind} survives restore`);
+    assert.equal(attachment.archived_at, null);
+    assert.equal(list.active_count, 1);
+    const response = await fetch(`${base}/api/attachments/${attachment.id}/download`, { headers: { Cookie: cookie }, signal: AbortSignal.timeout(10000) });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-disposition'), /^attachment;/);
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), attachment.sha256);
+    assert.deepEqual(bytes, proofPdf(), `Proof ${kind} bytes survive restore`);
+    if (kind === 'invoice') {
+      assert.ok(attachment.history.some(item => item.reason === 'CI restores proof for audit'));
+      const archived = list.items.find(item => item.filename === 'CI-archived-bukti.png');
+      assert.ok(archived.archived_at);
+      const anonymous = await fetch(`${base}/api/attachments/${attachment.id}/download`, { signal: AbortSignal.timeout(10000) });
+      assert.equal(anonymous.status, 401, 'Proof bytes are never public');
+    }
+    assert.ok(!list.items.some(item => item.filename === 'CI-after-backup.pdf'), 'Post-backup proof must disappear after restore');
+  }
+  assert.ok(!(await api('/customers')).items.some(item => item.name === 'CI Import After Backup'));
 }
 
 function shiftDate(today, days) {
@@ -413,13 +560,14 @@ if (mode === 'seed') {
     notes: 'CI reviewed supplier invoice', idempotency_key: crypto.randomUUID(),
   });
   await seedCommunityFlows({ customer, product, supplier, invoice, today });
+  await seedDataAndProofs();
 } else {
   await login();
 }
 
 if (mode === 'mutate') {
   await api('/customers', 'POST', { name: 'Must disappear after backup restore' });
-  const supplier = (await api('/suppliers')).items[0];
+  const supplier = (await api('/suppliers')).items.find(item => item.code === 'CI-SUP');
   await api(`/suppliers/${supplier.id}`, 'PUT', {
     code: supplier.code, name: 'Must disappear after backup restore', email: supplier.email,
     phone: supplier.phone, address: supplier.address, active: supplier.active,
@@ -435,6 +583,14 @@ if (mode === 'mutate') {
   await api(`/purchase-bills/${unpaidBill.id}/payments`, 'POST', {
     version: unpaidBill.version, amount: '1000', reference: 'Must disappear after backup restore', idempotency_key: crypto.randomUUID(),
   });
+  const afterBackup = await api('/imports/customers/preview', 'POST', {
+    filename: 'CI-after-backup.csv', delimiter: 'comma', csv: 'name\nCI Import After Backup\n',
+  });
+  await retried(`/imports/${afterBackup.id}/commit`, {});
+  const invoiceTarget = (await proofTargets()).find(([kind]) => kind === 'invoice');
+  const proof = (await api(`/documents/invoice/${invoiceTarget[1]}/attachments`)).items.find(item => item.filename === 'CI-invoice-bukti.pdf');
+  await retried(`/attachments/${proof.id}/archive`, { version: proof.version, reason: 'CI proof change after backup must disappear' });
+  await uploadProof('invoice', invoiceTarget[1], 'CI-after-backup.pdf', proofPdf());
   console.log('Post-backup mutation created on disposable instance.');
 } else {
   if (mode === 'recover') {
@@ -455,7 +611,7 @@ if (mode === 'mutate') {
     await login();
   }
   const dashboard = await api('/dashboard');
-  for (const [key, expected] of Object.entries({ revenue: 170000, outstanding: 0, inventory_value: 760000, cash: 270000, customers_count: 1, products_count: 3, orders_count: 3 })) {
+  for (const [key, expected] of Object.entries({ revenue: 170000, outstanding: 0, inventory_value: 760000, cash: 270000, customers_count: 2, products_count: 4, orders_count: 3 })) {
     assert.equal(Number(dashboard[key]), expected, `Dashboard ${key}`);
   }
   const trial = await api('/accounting/trial-balance');
@@ -501,9 +657,8 @@ if (mode === 'mutate') {
   assert.equal(Number(insights.receivables.paid), 170000);
   assert.equal(Number(insights.receivables.outstanding), 0);
   const suppliers = await api('/suppliers');
-  assert.equal(suppliers.items.length, 1);
-  assert.equal(suppliers.items[0].code, 'CI-SUP');
-  assert.equal(suppliers.items[0].name, 'CI Supplier', 'Supplier mutation must disappear after restore');
+  assert.equal(suppliers.items.length, 2);
+  assert.equal(suppliers.items.find(item => item.code === 'CI-SUP').name, 'CI Supplier', 'Supplier mutation must disappear after restore');
   const purchases = await api('/purchase-orders');
   assert.equal(purchases.items.length, 3, 'PO creation after backup must disappear after restore');
   const cancelledPurchase = purchases.items.find(purchase => purchase.status === 'cancelled');
@@ -581,5 +736,6 @@ if (mode === 'mutate') {
   const purchaseDetail = await api(`/purchase-orders/${activePurchase.id}`);
   assert.deepEqual(purchaseDetail, activePurchase, 'PO detail and list retain the same snapshots after restore');
   await verifyCommunityFlows({ bills, purchases: purchases.items, orders: orders.items, movements: movements.items, opening, insights });
-  console.log(`Disposable-instance ${mode} check passed: supplier payments, five aging buckets, customer/supplier returns, partial receiving/delivery/invoices, financial reports, and restored stock/cash/payable balances.`);
+  await verifyDataAndProofs();
+  console.log(`Disposable-instance ${mode} check passed: CSV preview/atomic import/history, authenticated proof attachments and bytes, supplier payments, aging, returns, partial fulfillment, reports, and restored balances.`);
 }

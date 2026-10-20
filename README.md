@@ -19,6 +19,8 @@ Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa paja
 - Chart pendapatan/HPP dan mutasi kas dengan pilihan 3/6/12 bulan, serta posisi invoice terbayar/piutang saat ini.
 - Laporan laba rugi, neraca, dan arus kas dengan rentang tanggal, chart, CSV, rincian akun/jurnal, serta klasifikasi arus kas beralasan. Lihat [panduan laporan](./docs/FINANCIAL_REPORTS.md).
 - Retur pelanggan dan supplier sebagian/penuh, kredit tagihan, pencatatan refund aktual, jurnal biaya persediaan, serta pembalikan beralasan. Lihat [panduan retur](./docs/RETURNS.md).
+- Impor pelanggan, supplier, dan produk dari CSV UTF-8, dengan template, preview wajib, validasi per baris, perlindungan duplikasi, serta penyimpanan atomik. Lihat [panduan impor](./docs/IMPORTS.md).
+- Lampiran bukti PDF/PNG/JPEG pada dokumen dan pembayaran, unduhan setelah login, arsip/pemulihan beralasan, serta riwayat. Isi file ikut backup database. Lihat [panduan lampiran](./docs/ATTACHMENTS.md).
 
 Menu Pembelian menyediakan supplier, PO draf/edit/konfirmasi/pembatalan, penerimaan dan penagihan sebagian/penuh, pembayaran supplier, koreksi beralasan, serta chart status PO, umur utang, dan pembayaran. Penerimaan memperbarui stok dan jurnal persediaan/barang diterima belum ditagih; tagihan memindahkan kewajiban tersebut ke utang supplier. Pembayaran mengurangi kas serta utang. Jumlah tersisa tetap terlacak; lihat [panduan pembelian](./docs/PURCHASING.md).
 

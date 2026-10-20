@@ -1,7 +1,7 @@
 # Rencana Haruflow Community
 
-Status: fondasi Community dan lima perluasan operasional utama telah diimplementasikan; aplikasi masih merupakan versi pengembangan, belum rilis stabil.
-Tanggal pembaruan: 19 Oktober 2026.
+Status: fondasi Community, lima perluasan operasional utama, impor master CSV, dan lampiran bukti transaksi telah diimplementasikan; aplikasi masih merupakan versi pengembangan, belum rilis stabil.
+Tanggal pembaruan: 20 Oktober 2026.
 Dasar: arah produk dalam `haruflow.md` dan implementasi aktual repository. Rincian hasil pengujian serta batas fitur dicatat di [status implementasi](./IMPLEMENTATION_STATUS.md).
 
 ## 1. Arah produk
@@ -43,10 +43,10 @@ Selesainya lima perluasan di atas belum berarti seluruh rencana ERP atau persiap
 - Satu perusahaan, satu gudang logis, dan IDR. Belum ada banyak gudang/cabang, transfer gudang, multicurrency, atau konsolidasi perusahaan.
 - Pembelian berfokus pada barang stok dari PO. Tagihan mengikuti jumlah dan nilai penerimaan; pembelian jasa, selisih harga invoice, ongkir, diskon, dan pajak otomatis belum tersedia.
 - Belum ada uang muka, overpayment, refund tertunda, atau saldo kredit pelanggan/supplier yang digunakan pada dokumen lain. Refund pada retur saat ini harus mencerminkan uang yang benar-benar sudah berpindah.
-- Belum ada impor CSV dengan pemeriksaan/dry run, lampiran bukti transaksi, serta saldo awal piutang per pelanggan dan utang per supplier. Saldo awal akun umum tidak menggantikan rincian kewajiban per pihak.
+- Impor CSV saat ini hanya membuat master pelanggan/supplier/produk; belum ada impor dokumen transaksi. Saldo awal piutang per pelanggan dan utang per supplier belum tersedia. Saldo awal akun umum tidak menggantikan rincian kewajiban per pihak.
 - Satuan dasar belum mempunyai konversi. Lot/batch, serial number, tanggal kedaluwarsa, dan reservasi stok belum tersedia.
 - Arus kas terbatas pada Kas 1100. Akun aset lain belum otomatis menjadi kas/setara kas. Klasifikasi manual berlaku untuk satu jurnal secara utuh; pembagian satu jurnal ke beberapa aktivitas belum tersedia. Laporan belum menyatakan kepatuhan terhadap format pelaporan atau perpajakan tertentu.
-- Belum ada HR/payroll, produksi, POS offline, aplikasi mobile native, integrasi bank/pajak, SSO, marketplace plugin, email, jobs/outbox, atau penyimpanan lampiran.
+- Belum ada HR/payroll, produksi, POS offline, aplikasi mobile native, integrasi bank/pajak, SSO, marketplace plugin, email, atau jobs/outbox. Lampiran berada di PostgreSQL; storage eksternal dan retensi otomatis belum tersedia.
 - Listing master belum mempunyai pagination server. Beberapa daftar operasional dibatasi pada dokumen terbaru; rincian buku besar memberi penanda bila tampilan terpotong, sementara saldo dan ringkasan tetap dihitung dari seluruh data yang sesuai.
 
 Fitur lanjutan dapat tetap dikembangkan dalam Community. Batas di atas menjelaskan lingkup aktual serta urutan pekerjaan, bukan keputusan permanen pemisahan lisensi Enterprise.
@@ -97,9 +97,9 @@ Urutan berikut menjadi acuan setelah pembayaran, umur utang, retur, pemenuhan be
 
 ### Prioritas 2 — Migrasi data dan bukti transaksi
 
-- Impor master serta dokumen yang dibutuhkan dengan validasi/dry run, laporan kesalahan per baris, dan perlindungan duplikasi.
+- Impor master pelanggan/supplier/produk sudah menyediakan template, preview, validasi per baris, duplikasi, commit atomik, dan riwayat. Lihat [panduan impor](./IMPORTS.md). Impor dokumen transaksi masih perlu dikembangkan sesuai kebutuhan pilot.
 - Saldo awal piutang per pelanggan dan utang per supplier yang terhubung ke ledger serta pembayaran berikutnya.
-- Lampiran bukti transaksi dengan aturan akses, backup, dan pemulihan yang jelas.
+- Lampiran bukti transaksi PDF/PNG/JPEG sudah tersedia dengan hak tulis per jenis dokumen, unduhan terautentikasi, arsip/pemulihan, serta isi file dalam backup PostgreSQL. Lihat [panduan lampiran](./ATTACHMENTS.md). Retensi/penghapusan permanen dan storage eksternal belum tersedia.
 - Pagination server serta pencarian riwayat yang lebih besar tanpa mengubah kebenaran total laporan.
 
 ### Prioritas 3 — Kelengkapan transaksi dagang
