@@ -85,6 +85,8 @@ OpenAPI dan client TypeScript yang dihasilkan dari kontrak belum tersedia. Antre
 
 ## 6. Prioritas Community yang masih perlu dikerjakan
 
+Lingkup terperinci untuk paket saldo awal piutang/utang, uang muka, kredit/refund tertunda, laporan, riwayat besar, dan persiapan kandidat rilis ada pada [paket pengembangan berikutnya](./COMMUNITY_NEXT_PACKAGE.md). Dokumen tersebut merupakan rencana, bukan daftar fitur yang sudah tersedia.
+
 Urutan berikut menjadi acuan setelah pembayaran, umur utang, retur, pemenuhan bertahap, dan tiga laporan keuangan tersedia. Prioritas akhirnya mengikuti kebutuhan pilot pengguna; daftar ini tidak menambah implementasi pada upgrade yang sedang diselesaikan.
 
 ### Prioritas 1 — Kesiapan rilis dan pemakaian nyata

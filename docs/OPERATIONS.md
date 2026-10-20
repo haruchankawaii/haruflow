@@ -26,7 +26,7 @@ Default Compose hanya mendengarkan pada loopback host. Pasang reverse proxy di h
 
 Semua request API yang mengubah data harus memakai header `X-Haruflow-Request: 1`. Frontend menyediakannya secara otomatis. Server tidak membuka akses CORS lintas origin.
 
-Cloudflare Tunnel bersifat opsional. Sesuaikan batas ukuran request dan timeout proxy dengan batas aplikasi; API membatasi body 256 KiB. Tidak ada endpoint upload file pada versi awal.
+Cloudflare Tunnel bersifat opsional. Sesuaikan batas ukuran request dan timeout proxy dengan endpoint yang dipakai. Body API biasa dibatasi 256 KiB; preview impor menerima envelope JSON sampai 2 MiB untuk menampung escaping, dengan isi CSV tetap maksimal 256 KiB. Endpoint unggah lampiran menerima isi file sampai 5 MiB. Proxy harus meneruskan request valid tersebut; lihat [impor](./IMPORTS.md) dan [lampiran](./ATTACHMENTS.md) untuk batas rinci.
 
 ## Setup dan role
 
