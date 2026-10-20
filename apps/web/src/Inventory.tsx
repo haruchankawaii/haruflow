@@ -28,6 +28,7 @@ import { usePagination, useResource } from "./hooks";
 import { isStockProduct } from "./commerce";
 import { DocumentReversal, ReceiptHistory } from "./DocumentReversal";
 import type { Movement, Product, Role } from "./types";
+import { ImportShortcut } from "./DataImports";
 
 export default function Inventory({
   role,
@@ -86,6 +87,7 @@ export default function Inventory({
         actions={
           canEdit && (
             <>
+              <ImportShortcut kind="products" />
               <button
                 className="button secondary"
                 disabled={!stockProducts.length}

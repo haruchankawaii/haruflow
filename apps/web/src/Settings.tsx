@@ -6,6 +6,7 @@ import {
   Shield,
   UserRound,
   Users,
+  FileUp,
 } from "lucide-react";
 import { api, errorMessage } from "./api";
 import {
@@ -23,15 +24,24 @@ import { roleNames } from "./format";
 import { useResource } from "./hooks";
 import type { Company, Role, Session, User } from "./types";
 import Audit from "./Audit";
+import DataImports from "./DataImports";
+import { importKinds } from "./imports-model";
 
 export default function Settings({
   session,
   onSession,
+  changed,
 }: {
   session: Session;
   onSession: (session: Session) => void;
+  changed: () => void;
 }) {
-  const [tab, setTab] = useState("workspace");
+  const [tab, setTab] = useState(() =>
+    new URLSearchParams(location.search).has("import") &&
+    importKinds(session.user.role).length
+      ? "imports"
+      : "workspace",
+  );
   const [password, setPassword] = useState(false);
   return (
     <>
@@ -82,12 +92,24 @@ export default function Settings({
           >
             <UserRound size={16} /> Akun saya
           </button>
+          {importKinds(session.user.role).length > 0 && (
+            <button
+              role="tab"
+              aria-selected={tab === "imports"}
+              className={tab === "imports" ? "active" : ""}
+              onClick={() => setTab("imports")}
+            >
+              <FileUp size={16} /> Impor data
+            </button>
+          )}
         </div>
         {tab === "workspace" ? (
           <CompanySettings
             session={session}
             onSaved={(company) => onSession({ ...session, company })}
           />
+        ) : tab === "imports" ? (
+          <DataImports role={session.user.role} changed={changed} />
         ) : tab === "users" ? (
           <UsersView currentUser={session.user} />
         ) : tab === "audit" ? (

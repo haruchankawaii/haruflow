@@ -24,7 +24,7 @@ import {
 import { api, ApiError, errorMessage } from "./api";
 import { Brand, ErrorState, Loading, Modal } from "./components";
 import { roleNames, setCompanyTimezone } from "./format";
-import { ResourceRevisionContext } from "./hooks";
+import { ResourceRevisionContext, SessionRoleContext } from "./hooks";
 import Auth from "./Auth";
 import Dashboard from "./Dashboard";
 import Customers from "./Customers";
@@ -314,31 +314,37 @@ export default function App() {
           </div>
         </header>
         <ResourceRevisionContext.Provider value={revision}>
-          <main className="page-content" key={page} id="main-content">
-            {page === "dashboard" ? (
-              <Dashboard
-                session={session}
-                navigate={navigate}
-                revision={revision}
-              />
-            ) : page === "sales" ? (
-              <Sales
-                session={session}
-                role={session.user.role}
-                changed={changed}
-              />
-            ) : page === "purchasing" ? (
-              <Purchasing role={session.user.role} changed={changed} />
-            ) : page === "inventory" ? (
-              <Inventory role={session.user.role} changed={changed} />
-            ) : page === "customers" ? (
-              <Customers role={session.user.role} changed={changed} />
-            ) : page === "accounting" ? (
-              <Accounting role={session.user.role} changed={changed} />
-            ) : (
-              <Settings session={session} onSession={updateSession} />
-            )}
-          </main>
+          <SessionRoleContext.Provider value={session.user.role}>
+            <main className="page-content" key={page} id="main-content">
+              {page === "dashboard" ? (
+                <Dashboard
+                  session={session}
+                  navigate={navigate}
+                  revision={revision}
+                />
+              ) : page === "sales" ? (
+                <Sales
+                  session={session}
+                  role={session.user.role}
+                  changed={changed}
+                />
+              ) : page === "purchasing" ? (
+                <Purchasing role={session.user.role} changed={changed} />
+              ) : page === "inventory" ? (
+                <Inventory role={session.user.role} changed={changed} />
+              ) : page === "customers" ? (
+                <Customers role={session.user.role} changed={changed} />
+              ) : page === "accounting" ? (
+                <Accounting role={session.user.role} changed={changed} />
+              ) : (
+                <Settings
+                  session={session}
+                  onSession={updateSession}
+                  changed={changed}
+                />
+              )}
+            </main>
+          </SessionRoleContext.Provider>
         </ResourceRevisionContext.Provider>
         <footer className="app-footer">
           <span>© {new Date().getFullYear()} Haruflow</span>

@@ -6,8 +6,10 @@ import {
   useState,
 } from "react";
 import { api, errorMessage } from "./api";
+import type { Role } from "./types";
 
 export const ResourceRevisionContext = createContext(0);
+export const SessionRoleContext = createContext<Role>("viewer");
 
 export function useResource<T>(path: string, revision = 0) {
   const workspaceRevision = useContext(ResourceRevisionContext);

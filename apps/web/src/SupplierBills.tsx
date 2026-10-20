@@ -43,6 +43,7 @@ import {
 import "./supplier-bills.css";
 import { SupplierPayments } from "./SupplierPayments";
 import { ReturnsPanel } from "./ReturnsPanel";
+import { AttachmentsPanel } from "./AttachmentsPanel";
 import { SupplierPayablesInsights } from "./SupplierPayablesInsights";
 import { billAllocationPreview } from "./bills-model";
 
@@ -1035,6 +1036,11 @@ export function SupplierBillDetail({
               </div>
             </div>
             <BillItems items={bill.items} total={bill.total} />
+            <AttachmentsPanel
+              documentType="purchase_bill"
+              documentId={bill.id}
+              title="Lampiran invoice supplier"
+            />
             <SupplierPayments
               bill={bill}
               canManage={canManage}

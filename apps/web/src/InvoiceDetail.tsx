@@ -18,6 +18,7 @@ import { exactMoney, moneyCents } from "./dashboard-charts";
 import { JournalPreview } from "./JournalPreview";
 import { ReturnsPanel } from "./ReturnsPanel";
 import type { ReturnableDocument, ReturnableItem } from "./returns-model";
+import { AttachmentsPanel } from "./AttachmentsPanel";
 
 type DetailedInvoice = Omit<Invoice, "items"> &
   Omit<ReturnableDocument, "items"> & {
@@ -216,6 +217,11 @@ export default function InvoiceDetail({
               Terima kasih atas kepercayaan Anda.
             </p>
           </div>
+          <AttachmentsPanel
+            documentType="invoice"
+            documentId={invoice.id}
+            title="Lampiran invoice penjualan"
+          />
           <section className="invoice-payments">
             <h3>
               <CreditCard size={17} /> Riwayat pembayaran
@@ -236,7 +242,14 @@ export default function InvoiceDetail({
                     {payments.data.items.map((payment) => (
                       <tr key={payment.id}>
                         <td>{date(payment.created_at)}</td>
-                        <td className="muted">{payment.reference || "—"}</td>
+                        <td className="muted">
+                          {payment.reference || "—"}
+                          <AttachmentsPanel
+                            documentType="payment"
+                            documentId={payment.id}
+                            title="Bukti pembayaran"
+                          />
+                        </td>
                         <td className="align-right">{money(payment.amount)}</td>
                         <td>
                           <Status

@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import { api, errorMessage } from "./api";
+import { AttachmentsPanel } from "./AttachmentsPanel";
 import { FormError, FormField } from "./components";
 import { exactMoney, moneyCents } from "./dashboard-charts";
 import { dateTime } from "./format";
@@ -242,6 +243,11 @@ export function ReturnsPanel({
             record.reversal_blocked_reason && (
               <p className="bill-blocked">{record.reversal_blocked_reason}</p>
             )}
+          <AttachmentsPanel
+            documentType={supplier ? "supplier_return" : "sales_return"}
+            documentId={record.id}
+            title={`Lampiran ${record.number}`}
+          />
         </article>
       ))}
       {canManage && (creating || selected) && (

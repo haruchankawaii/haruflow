@@ -17,6 +17,7 @@ import { usePagination, useResource } from "./hooks";
 import { downloadCsv } from "./export";
 import { DeleteMaster } from "./MasterActions";
 import type { Customer, Role } from "./types";
+import { ImportShortcut } from "./DataImports";
 
 export default function Customers({
   role,
@@ -61,6 +62,7 @@ export default function Customers({
             <span>Semua pelanggan</span>
             <span className="count-pill">{data?.items.length ?? 0}</span>
           </div>
+          {canEdit && <ImportShortcut kind="customers" />}
           <button
             className="text-button export-button"
             onClick={() =>

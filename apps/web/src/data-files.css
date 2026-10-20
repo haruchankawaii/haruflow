@@ -1,0 +1,174 @@
+.data-imports h3,
+.import-history h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.import-upload-form {
+  display: grid;
+  gap: 16px;
+  margin: 24px 0;
+  max-width: 850px;
+}
+.import-upload-form > .button {
+  justify-self: start;
+}
+.data-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.import-preview,
+.import-history {
+  margin-top: 28px;
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+.data-file-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.data-file-section-head h3,
+.data-file-section-head p {
+  margin: 0 0 6px;
+}
+.import-errors {
+  background: #fff5f3;
+  border: 1px solid #f1d0c9;
+  border-radius: 10px;
+  padding: 16px;
+  margin: 18px 0;
+}
+.import-errors li {
+  margin: 5px 0;
+}
+.import-cell {
+  max-width: 300px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.import-commit {
+  background: #f4f8f2;
+  border: 1px solid #d9e5d3;
+  border-radius: 10px;
+  padding: 18px;
+  margin-top: 18px;
+}
+.import-commit p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.data-file-success {
+  color: #35603f;
+  background: #f0f7ed;
+  border-radius: 8px;
+  padding: 12px;
+}
+.attachments-panel {
+  margin: 18px 24px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  text-align: left;
+  min-width: 0;
+}
+.attachments-panel > summary {
+  cursor: pointer;
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.attachments-panel > summary svg {
+  vertical-align: middle;
+  margin-right: 5px;
+}
+.attachments-content {
+  padding: 0 16px 16px;
+  min-width: 0;
+}
+.attachments-content > .muted {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.attachment-list {
+  display: grid;
+  gap: 10px;
+}
+.attachment-item {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 0;
+}
+.attachment-item.archived {
+  background: #f7f7f4;
+}
+.attachment-item small {
+  display: block;
+  margin: 6px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.attachment-item p {
+  white-space: normal;
+  line-height: 1.6;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.attachment-filename {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.attachment-history {
+  font-size: 12px;
+  margin-top: 12px;
+}
+.attachment-history summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.attachment-hash {
+  overflow-wrap: anywhere;
+  font-family: monospace;
+}
+.attachment-history li {
+  margin: 7px 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.attachment-upload {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+.attachment-upload input[type="file"],
+.import-upload-form input[type="file"] {
+  max-width: 100%;
+}
+td .attachments-panel {
+  margin: 10px 0 0;
+  min-width: 200px;
+}
+.return-record .attachments-panel,
+.purchase-receipt-card .attachments-panel {
+  margin: 18px 0 0;
+}
+@media (max-width: 640px) {
+  .attachments-panel {
+    margin: 14px 12px;
+  }
+  .import-preview .data-file-section-head {
+    align-items: flex-start;
+  }
+}
+@media print {
+  .attachments-panel {
+    display: none !important;
+  }
+}

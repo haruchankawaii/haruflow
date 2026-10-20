@@ -14,6 +14,7 @@ import { date, money, number, toMinorUnits } from "./format";
 import { useResource } from "./hooks";
 import { ReasonForm } from "./InvoiceDetail";
 import type { Order, OrderLine, Role } from "./types";
+import { AttachmentsPanel } from "./AttachmentsPanel";
 
 export default function OrderDetail({
   id,
@@ -144,6 +145,11 @@ export default function OrderDetail({
               <span>Total pesanan</span>
               <strong>{money(data.total)}</strong>
             </div>
+            <AttachmentsPanel
+              documentType="sales_order"
+              documentId={data.id}
+              title="Lampiran pesanan penjualan"
+            />
             <p className="muted">
               Sisa kirim adalah jumlah barang yang masih harus dikirim. Barang
               siap ditagih setelah dikirim; jasa dapat ditagih setelah

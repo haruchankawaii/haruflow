@@ -59,6 +59,8 @@ import {
 } from "./purchasing-model";
 import type { Product, Role } from "./types";
 import "./purchasing.css";
+import { ImportShortcut } from "./DataImports";
+import { AttachmentsPanel } from "./AttachmentsPanel";
 
 export default function Purchasing({
   role,
@@ -257,6 +259,9 @@ export default function Purchasing({
                 ? "Daftar pesanan pembelian"
                 : "Daftar supplier"}
             </strong>
+            {tab === "suppliers" && canManage && (
+              <ImportShortcut kind="suppliers" />
+            )}
             <button
               className="text-button export-button"
               disabled={
@@ -1548,6 +1553,11 @@ function PurchaseOrderDetail({
                 ))}
               </section>
             )}
+            <AttachmentsPanel
+              documentType="purchase_order"
+              documentId={order.id}
+              title="Lampiran pesanan pembelian"
+            />
             {action && (
               <form
                 className="purchase-review"
@@ -1968,6 +1978,11 @@ function PurchaseReceiptHistory({
             {receipt.reversal_blocked_reason}
           </p>
         )}
+      <AttachmentsPanel
+        documentType="purchase_receipt"
+        documentId={receipt.id}
+        title={`Lampiran ${receipt.number}`}
+      />
     </article>
   );
 }

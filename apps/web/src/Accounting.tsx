@@ -23,6 +23,7 @@ import { AccountForm, Ledger } from "./Ledger";
 import OpeningBalances from "./OpeningBalances";
 import { DocumentReversal } from "./DocumentReversal";
 import FinancialReports from "./FinancialReports";
+import { AttachmentsPanel } from "./AttachmentsPanel";
 
 const kindNames: Record<string, string> = {
   asset: "Aset",
@@ -365,6 +366,11 @@ function JournalsView({
                     </tbody>
                   </table>
                 </div>
+                <AttachmentsPanel
+                  documentType="journal"
+                  documentId={journal.id}
+                  title="Lampiran jurnal"
+                />
                 <div className="correction-history">
                   {journal.reversal && (
                     <>

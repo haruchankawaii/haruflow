@@ -3,6 +3,7 @@ import { dateTime } from "./format";
 import { exactMoney, moneyCents } from "./dashboard-charts";
 import { useResource } from "./hooks";
 import type { Journal } from "./types";
+import { AttachmentsPanel } from "./AttachmentsPanel";
 
 export function JournalPreview({
   id,
@@ -80,6 +81,11 @@ export function JournalPreview({
                 Koreksi jurnal otomatis dilakukan melalui dokumen asalnya.
               </p>
             </div>
+            <AttachmentsPanel
+              documentType="journal"
+              documentId={journal.id}
+              title="Lampiran jurnal"
+            />
           </>
         )
       )}

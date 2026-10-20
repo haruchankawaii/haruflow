@@ -5,6 +5,7 @@ import { exactMoney, moneyCents } from "./dashboard-charts";
 import { dateTime } from "./format";
 import { requestIdentity, type RequestIdentity } from "./purchasing-model";
 import type { SupplierBill, SupplierPayment } from "./bills-model";
+import { AttachmentsPanel } from "./AttachmentsPanel";
 
 export function SupplierPayments({
   bill,
@@ -138,6 +139,11 @@ export function SupplierPayments({
                         </button>
                       )
                     )}
+                    <AttachmentsPanel
+                      documentType="supplier_payment"
+                      documentId={payment.id}
+                      title="Bukti pembayaran"
+                    />
                   </td>
                 </tr>
               ))}
