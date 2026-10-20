@@ -10,7 +10,7 @@ Haruflow Community adalah ERP gratis yang dijalankan sendiri oleh usaha kecil. S
 
 Pengguna dapat menyiapkan perusahaan dan pengguna, memposting saldo awal, mengelola penjualan serta pembelian, mencatat pembayaran dan retur, lalu memeriksa stok, piutang/utang, dan laporan keuangan dari jurnal yang sama.
 
-Community tidak memerlukan akun Haruflow, layanan lisensi, atau koneksi ke Haruflow Cloud. Tidak ada batas pengguna berbasis lisensi; kapasitas mengikuti perangkat dan konfigurasi instalasi. Lisensi mengikuti `LICENSE` dalam repository.
+Community tidak memerlukan akun Haruflow, layanan lisensi, atau koneksi ke Haruflow Cloud. Instalasi resmi membatasi 10 akun aktif, termasuk administrator; akun nonaktif tetap menyimpan riwayat dan melepaskan slot. Lisensi tetap mengikuti `LICENSE` dalam repository. Lihat [batas pengguna dan perlindungan kode](./USER_LIMIT.md), termasuk ketentuan upgrade akun lama serta keterbatasan perlindungan instalasi self-hosted.
 
 Pemilik instalasi mengelola server, akses jaringan/TLS, backup, secrets, dan upgrade. Saat ini tersedia source, Dockerfile/Compose, serta panduan operasional. Image rilis pada registry, installer pengguna akhir, pilot bisnis, dan SLA belum tersedia.
 

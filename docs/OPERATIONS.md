@@ -160,6 +160,8 @@ Migrasi `0019_master_imports.sql` menambahkan preview/riwayat impor yang hanya d
 
 Kedua database preview telah di-upgrade 0018 → 0020 setelah backup dengan jumlah baris serta hash seluruh isi tabel lama tetap sama. Smoke native terbaru juga membuktikan riwayat impor, master hasil impor, 11 lampiran aktif/arsip, 14 event file, dan kecocokan byte/SHA-256 setelah backup → perubahan data → restore. Pemeriksaan ini melengkapi saldo dan riwayat transaksi; bukan pengganti latihan restore instalasi pengguna.
 
+Migrasi `0021_community_user_limit.sql` membatasi penambahan/pengaktifan akun ketika sudah ada 10 akun aktif, termasuk administrator. Jalankan setelah backup dengan aplikasi berhenti. Akun lama yang sudah melebihi 10 tetap aktif; tinjau dan nonaktifkan akun yang tidak diperlukan sebelum menambah pengguna lagi. Perubahan peran dan pemulihan password tetap tersedia saat penuh. Backup/restore mempertahankan status aktif/nonaktif beserta audit. Lihat [pengelolaan slot dan batas perlindungan kode](./USER_LIMIT.md).
+
 ## Health, log, dan troubleshooting
 
 - `/health/live`: proses HTTP hidup.

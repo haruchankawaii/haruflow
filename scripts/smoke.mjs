@@ -190,6 +190,43 @@ async function verifyDataAndProofs() {
   assert.ok(!(await api('/customers')).items.some(item => item.name === 'CI Import After Backup'));
 }
 
+async function userLimitConflict(path, method, body) {
+  const response = await fetch(`${base}/api${path}`, {
+    method, headers: { 'Content-Type': 'application/json', 'X-Haruflow-Request': '1', Cookie: cookie },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(15000),
+  });
+  assert.equal(response.status, 409, `User limit must reject ${method} ${path}: ${await response.text()}`);
+}
+
+async function seedUserLimit() {
+  const initial = await api('/users');
+  assert.deepEqual(initial.usage, { active: 1, limit: 10, available: 9 });
+  for (let index = 1; index <= 9; index++) {
+    await api('/users', 'POST', {
+      name: `CI Seat ${index}`, email: `ci-seat-${index}@example.test`, password, role: 'viewer',
+    });
+  }
+  assert.deepEqual((await api('/users')).usage, { active: 10, limit: 10, available: 0 });
+  await userLimitConflict('/users', 'POST', {
+    name: 'CI Must Not Fit', email: 'ci-over-limit@example.test', password, role: 'viewer',
+  });
+  const first = (await api('/users')).items.find(user => user.email === 'ci-seat-1@example.test');
+  await api(`/users/${first.id}`, 'PATCH', { active: false });
+  assert.deepEqual((await api('/users')).usage, { active: 9, limit: 10, available: 1 });
+  await api('/users', 'POST', { name: 'CI Seat Replacement', email: 'ci-seat-replacement@example.test', password, role: 'viewer' });
+  await userLimitConflict(`/users/${first.id}`, 'PATCH', { active: true });
+}
+
+async function verifyUserLimit() {
+  const users = await api('/users');
+  assert.deepEqual(users.usage, { active: 10, limit: 10, available: 0 });
+  assert.equal(users.items.length, 11, 'Inactive users remain in history without consuming active slots');
+  assert.equal(users.items.find(user => user.email === 'ci-seat-1@example.test').active, false);
+  assert.equal(users.items.find(user => user.email === 'ci-seat-2@example.test').active, true);
+  assert.equal(users.items.find(user => user.email === 'ci-seat-replacement@example.test').active, true);
+  assert.ok(!users.items.some(user => user.email === 'ci-over-limit@example.test' || user.email === 'ci-seat-after-backup@example.test'));
+}
+
 function shiftDate(today, days) {
   const date = new Date(`${today}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -561,6 +598,7 @@ if (mode === 'seed') {
   });
   await seedCommunityFlows({ customer, product, supplier, invoice, today });
   await seedDataAndProofs();
+  await seedUserLimit();
 } else {
   await login();
 }
@@ -591,6 +629,9 @@ if (mode === 'mutate') {
   const proof = (await api(`/documents/invoice/${invoiceTarget[1]}/attachments`)).items.find(item => item.filename === 'CI-invoice-bukti.pdf');
   await retried(`/attachments/${proof.id}/archive`, { version: proof.version, reason: 'CI proof change after backup must disappear' });
   await uploadProof('invoice', invoiceTarget[1], 'CI-after-backup.pdf', proofPdf());
+  const seat = (await api('/users')).items.find(user => user.email === 'ci-seat-2@example.test');
+  await api(`/users/${seat.id}`, 'PATCH', { active: false });
+  await api('/users', 'POST', { name: 'CI Seat After Backup', email: 'ci-seat-after-backup@example.test', password, role: 'viewer' });
   console.log('Post-backup mutation created on disposable instance.');
 } else {
   if (mode === 'recover') {
@@ -737,5 +778,6 @@ if (mode === 'mutate') {
   assert.deepEqual(purchaseDetail, activePurchase, 'PO detail and list retain the same snapshots after restore');
   await verifyCommunityFlows({ bills, purchases: purchases.items, orders: orders.items, movements: movements.items, opening, insights });
   await verifyDataAndProofs();
-  console.log(`Disposable-instance ${mode} check passed: CSV preview/atomic import/history, authenticated proof attachments and bytes, supplier payments, aging, returns, partial fulfillment, reports, and restored balances.`);
+  await verifyUserLimit();
+  console.log(`Disposable-instance ${mode} check passed: ten active users, slot reuse/reactivation guard, CSV imports, attachment bytes/history, partial ERP workflows, reports, and restored balances.`);
 }
