@@ -30,6 +30,7 @@ use crate::{
 const SESSION_SECONDS: u64 = 7 * 24 * 60 * 60;
 const ATTEMPT_WINDOW: Duration = Duration::from_secs(15 * 60);
 const MAX_LOGIN_FAILURES: u32 = 8;
+const COMMUNITY_ACTIVE_USER_LIMIT: usize = 10;
 
 #[derive(Clone, Debug, Serialize, FromRow)]
 pub struct AuthUser {
@@ -284,6 +285,11 @@ async fn change_password(
     }
     let new_hash = hash_password(input.password).await?;
     let mut tx = state.db.begin().await?;
+    // Keep user mutations in the same lock order as administrator changes and
+    // the statement-level Community capacity guard.
+    sqlx::query("SELECT pg_advisory_xact_lock(492310718002)")
+        .execute(&mut *tx)
+        .await?;
     // A concurrent reset/deactivation must invalidate this request before it changes anything.
     let user = sqlx::query_as::<_, AuthUser>(
         "SELECT id, name, email, role FROM users \
@@ -375,7 +381,12 @@ async fn list_users(
     )
     .fetch_all(&state.db)
     .await?;
-    Ok(Json(json!({ "items": users })))
+    let active = users.iter().filter(|user| user.active).count();
+    Ok(Json(json!({ "items": users, "usage": {
+        "active": active,
+        "limit": COMMUNITY_ACTIVE_USER_LIMIT,
+        "available": COMMUNITY_ACTIVE_USER_LIMIT.saturating_sub(active)
+    } })))
 }
 
 #[derive(Deserialize)]
@@ -398,7 +409,11 @@ async fn create_user(
     let password_hash = hash_password(input.password).await?;
     let id = Uuid::new_v4();
     let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(492310718002)")
+        .execute(&mut *tx)
+        .await?;
     ensure_admin(&mut tx, actor.id).await?;
+    require_user_capacity(&mut tx).await?;
     let inserted = sqlx::query_as::<_, UserView>(
         "INSERT INTO users(id, name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5) \
          ON CONFLICT(email) DO NOTHING RETURNING id, name, email, role, active, created_at",
@@ -458,6 +473,15 @@ async fn update_user(
         .execute(&mut *tx)
         .await?;
     ensure_admin(&mut tx, actor.id).await?;
+    let currently_active: bool =
+        sqlx::query_scalar("SELECT active FROM users WHERE id=$1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| AppError::bad_request("Pengguna tidak ditemukan."))?;
+    if !currently_active && input.active == Some(true) {
+        require_user_capacity(&mut tx).await?;
+    }
     let updated = sqlx::query_as::<_, UserView>(
         "UPDATE users SET active = COALESCE($2, active), role = COALESCE($3, role), updated_at = now() \
          WHERE id = $1 RETURNING id, name, email, role, active, created_at",
@@ -540,6 +564,19 @@ pub(crate) async fn ensure_admin(connection: &mut PgConnection, id: Uuid) -> App
         Ok(())
     } else {
         Err(AppError::forbidden())
+    }
+}
+
+async fn require_user_capacity(connection: &mut PgConnection) -> AppResult<()> {
+    let active: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE active")
+        .fetch_one(connection)
+        .await?;
+    if active >= COMMUNITY_ACTIVE_USER_LIMIT as i64 {
+        Err(AppError::conflict(
+            "Haruflow Community mendukung maksimal 10 pengguna aktif, termasuk administrator. Nonaktifkan pengguna yang tidak diperlukan sebelum menambah atau mengaktifkan pengguna lain.",
+        ))
+    } else {
+        Ok(())
     }
 }
 

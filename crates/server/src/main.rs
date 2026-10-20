@@ -56,6 +56,8 @@ mod tests;
 #[cfg(test)]
 mod upgrade_tests;
 #[cfg(test)]
+mod user_limit_tests;
+#[cfg(test)]
 mod web_tests;
 
 use anyhow::{Context, Result, bail};
