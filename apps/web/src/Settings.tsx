@@ -8,7 +8,7 @@ import {
   Users,
   FileUp,
 } from "lucide-react";
-import { api, errorMessage } from "./api";
+import { api, ApiError, errorMessage } from "./api";
 import {
   EmptyState,
   ErrorState,
@@ -26,6 +26,12 @@ import type { Company, Role, Session, User } from "./types";
 import Audit from "./Audit";
 import DataImports from "./DataImports";
 import { importKinds } from "./imports-model";
+import {
+  userActivationAllowed,
+  workspaceUserUsage,
+  type UserUsage,
+  type UsersResponse,
+} from "./user-usage";
 
 export default function Settings({
   session,
@@ -431,24 +437,48 @@ function CompanyForm({
 }
 
 function UsersView({ currentUser }: { currentUser: User }) {
-  const { data, loading, error, reload } = useResource<{ items: User[] }>(
-    "/users",
-  );
+  const { data, loading, error, reload } = useResource<UsersResponse>("/users");
   const [search, setSearch] = useState("");
   const [create, setCreate] = useState(false);
   const [edit, setEdit] = useState<User | null>(null);
+  const usage = workspaceUserUsage(data);
+  const usageReady = !!data && !loading && !error;
   const items = (data?.items ?? []).filter((item) =>
     `${item.name} ${item.email}`.toLowerCase().includes(search.toLowerCase()),
   );
   return (
     <>
+      <div className="settings-body">
+        <h3>
+          Pengguna aktif {data ? `${usage.active}/${usage.limit}` : "…/10"}
+        </h3>
+        <p className="muted">
+          Community menyediakan maksimal 10 akun aktif, termasuk Administrator
+          dan Pengamat. Akun nonaktif tetap menyimpan riwayat dan mengosongkan
+          slot pengguna.
+        </p>
+        {data && usage.available === 0 && (
+          <p className="info-box">
+            {usage.active > usage.limit
+              ? `Saat ini ada ${usage.active} akun aktif. `
+              : "Seluruh slot pengguna sudah terisi. "}
+            Nonaktifkan pengguna hingga jumlah aktif di bawah {usage.limit}{" "}
+            untuk menambah atau mengaktifkan akun. Perubahan hak akses dan
+            penonaktifan tetap tersedia.
+          </p>
+        )}
+      </div>
       <div className="table-toolbar">
         <SearchInput
           value={search}
           onChange={setSearch}
           placeholder="Cari nama atau email…"
         />
-        <button className="button primary" onClick={() => setCreate(true)}>
+        <button
+          className="button primary"
+          disabled={!usageReady || usage.available <= 0}
+          onClick={() => setCreate(true)}
+        >
           <Plus size={16} /> Tambah pengguna
         </button>
       </div>
@@ -515,6 +545,9 @@ function UsersView({ currentUser }: { currentUser: User }) {
       )}
       {create && (
         <UserForm
+          usage={usage}
+          usageReady={!!usageReady}
+          onConflict={reload}
           onClose={() => setCreate(false)}
           onSaved={() => {
             setCreate(false);
@@ -524,7 +557,10 @@ function UsersView({ currentUser }: { currentUser: User }) {
       )}
       {edit && (
         <UserForm
-          user={edit}
+          user={data?.items.find((user) => user.id === edit.id) ?? edit}
+          usage={usage}
+          usageReady={!!usageReady}
+          onConflict={reload}
           onClose={() => setEdit(null)}
           onSaved={() => {
             setEdit(null);
@@ -550,17 +586,34 @@ function RoleSelect({ initial = "viewer" }: { initial?: Role }) {
 
 function UserForm({
   user,
+  usage,
+  usageReady,
+  onConflict,
   onClose,
   onSaved,
 }: {
   user?: User;
+  usage: UserUsage;
+  usageReady: boolean;
+  onConflict: () => void;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [active, setActive] = useState(user ? !!user.active : true);
+  const addsActiveUser = active && !user?.active;
+  const canSave =
+    userActivationAllowed(usage, !!user?.active, active) &&
+    (!addsActiveUser || usageReady);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canSave) {
+      setError(
+        `Slot akun aktif sudah penuh. Nonaktifkan pengguna hingga jumlah aktif di bawah ${usage.limit}, lalu coba lagi.`,
+      );
+      return;
+    }
     setBusy(true);
     setError("");
     const fields = Object.fromEntries(new FormData(event.currentTarget));
@@ -568,12 +621,13 @@ function UserForm({
       if (user)
         await api(`/users/${user.id}`, {
           method: "PATCH",
-          body: { role: fields.role, active: fields.active === "true" },
+          body: { role: fields.role, active },
         });
       else await api("/users", { method: "POST", body: fields });
       onSaved();
     } catch (error) {
       setError(errorMessage(error));
+      if (error instanceof ApiError && error.status === 409) onConflict();
     } finally {
       setBusy(false);
     }
@@ -633,11 +687,34 @@ function UserForm({
           </FormField>
           {user && (
             <FormField label="Status akun">
-              <select name="active" defaultValue={String(user.active)}>
-                <option value="true">Aktif</option>
+              <select
+                name="active"
+                value={String(active)}
+                disabled={busy}
+                onChange={(event) => setActive(event.target.value === "true")}
+              >
+                <option
+                  value="true"
+                  disabled={
+                    !user.active && (!usageReady || usage.available <= 0)
+                  }
+                >
+                  Aktif
+                </option>
                 <option value="false">Nonaktif — cabut akses pengguna</option>
               </select>
             </FormField>
+          )}
+          <p className="muted">
+            Pengguna aktif {usage.active}/{usage.limit} · {usage.available} slot
+            tersedia. Batas mencakup semua peran.
+          </p>
+          {!canSave && (
+            <p className="muted">
+              {usageReady
+                ? `Untuk mengaktifkan akun, nonaktifkan pengguna lain hingga jumlah aktif di bawah ${usage.limit}. Akun nonaktif dapat tetap diperbarui hak aksesnya.`
+                : "Sedang memeriksa slot pengguna terbaru. Perubahan yang menambah akun aktif menunggu hasil pemeriksaan."}
+            </p>
           )}
           <div className="info-box">
             <Shield size={18} />
@@ -649,11 +726,23 @@ function UserForm({
           </div>
           <FormError error={error} />
         </div>
-        <FormActions
-          onClose={onClose}
-          busy={busy}
-          label={user ? "Simpan akses" : "Tambah pengguna"}
-        />
+        <div className="form-actions">
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={onClose}
+          >
+            Batal
+          </button>
+          <button
+            type="submit"
+            className="button primary"
+            disabled={busy || !canSave}
+          >
+            {busy ? "Menyimpan…" : user ? "Simpan akses" : "Tambah pengguna"}
+          </button>
+        </div>
       </form>
     </Modal>
   );
