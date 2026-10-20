@@ -1,3 +1,6 @@
+mod attachments;
+#[cfg(test)]
+mod attachments_tests;
 mod auth;
 #[cfg(test)]
 mod auth_integration_tests;
@@ -15,6 +18,9 @@ mod error;
 #[cfg(test)]
 mod financial_report_tests;
 mod financial_reports;
+mod imports;
+#[cfg(test)]
+mod imports_tests;
 mod insights;
 #[cfg(test)]
 mod insights_tests;
@@ -193,6 +199,8 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(sales_returns::router())
         .merge(partial_sales::router())
         .merge(financial_reports::router())
+        .merge(imports::router())
+        .merge(attachments::router())
         .fallback(|| async { error::AppError::not_found() })
         .layer(middleware::from_fn(api_guard));
     Router::new()
