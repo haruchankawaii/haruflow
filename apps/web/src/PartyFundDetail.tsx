@@ -9,6 +9,7 @@ import {
   Loading,
   Modal,
 } from "./components";
+import { CashAccountSelect } from "./CashAccountSelect";
 import { AttachmentsPanel } from "./AttachmentsPanel";
 import { exactMoney, moneyCents } from "./dashboard-charts";
 import { dateTime } from "./format";
@@ -516,6 +517,7 @@ export function PartyFundingForm({
       party.id,
   );
   const [amount, setAmount] = useState("");
+  const [cashAccount, setCashAccount] = useState("1100");
   const [reference, setReference] = useState("");
   const [description, setDescription] = useState("");
   const [orderId, setOrderId] = useState("");
@@ -543,6 +545,7 @@ export function PartyFundingForm({
       side,
       party_id: party.id,
       amount,
+      cash_account_code: cashAccount,
       reference: reference.trim() || null,
       description: description.trim() || null,
       order_id: orderId || null,
@@ -589,6 +592,7 @@ export function PartyFundingForm({
             alokasikan bagian pelunasannya. Sisanya tetap menjadi saldo pihak,
             tanpa menyamarkannya sebagai pembayaran tagihan.
           </p>
+          <CashAccountSelect value={cashAccount} onChange={setCashAccount} disabled={busy || review} label={side === "customer" ? "Rekening penerimaan uang muka" : "Rekening pembayaran uang muka"} />
           <FormField label="Dana yang benar-benar berpindah (Rp) *">
             <input
               required
@@ -804,7 +808,7 @@ function AllocationForm({
                           <small className="block muted">
                             {target.target_type.startsWith("opening")
                               ? "Tagihan pembukaan"
-                              : "Tagihan operasional"}
+                              : target.target_type.startsWith("historical_") ? "Tagihan historis" : "Tagihan operasional"}
                           </small>
                         </td>
                         <td>{target.due_date ?? "Belum diketahui"}</td>
@@ -906,6 +910,8 @@ function FundActionForm({
   );
   const [reason, setReason] = useState("");
   const [reference, setReference] = useState("");
+  const [cashAccount, setCashAccount] = useState("1100");
+  const newCash = action.type === "refund" || action.type === "request_pay";
   const [confirmed, setConfirmed] = useState(false);
   const [review, setReview] = useState(false);
   const [error, setError] = useState("");
@@ -987,6 +993,7 @@ function FundActionForm({
       reason,
       amount,
       reference,
+      cashAccount,
     );
     identity.current = requestIdentity(identity.current, { path, ...payload });
     busyRef.current = true;
@@ -1027,6 +1034,8 @@ function FundActionForm({
                     ? `${outgoing ? "Kas berkurang" : "Kas bertambah"} sesuai perpindahan uang sebenarnya. Gunakan hanya setelah dana benar-benar ${outgoing ? "dibayarkan" : "diterima"}.`
                     : "Pembalikan mempertahankan jurnal dan riwayat sumber."}
           </p>
+          {newCash && <CashAccountSelect value={cashAccount} onChange={setCashAccount} disabled={busy || review} label={fund.side === "customer" ? "Rekening pembayaran refund" : "Rekening penerimaan refund"} />}
+          {cash && !newCash && <p className="muted">Pembalikan memakai rekening pada jurnal asli.</p>}
           {hasAmount ? (
             <FormField
               label="Nominal (Rp) *"
@@ -1085,7 +1094,7 @@ function FundActionForm({
               <p>
                 {title}: {exactMoney(actualAmount)}.{" "}
                 {cash
-                  ? `${outgoing ? "Kas keluar" : "Kas masuk"} aktual.`
+                  ? `${outgoing ? "Kas keluar" : "Kas masuk"} aktual ${newCash ? `pada akun ${cashAccount}` : "pada rekening jurnal asal"}.`
                   : "Kas tidak berubah."}{" "}
                 Alasan: {reason}
               </p>

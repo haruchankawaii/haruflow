@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import {StockContextFields} from './StockContextFields';
+import type {StockContextInput} from './inventory-model';
 import {
   ArrowRight,
   Check,
@@ -919,7 +921,7 @@ function PurchaseOrderForm({
         (item) => !stock.some((product) => product.id === item.product_id),
       )
     ) {
-      setError("Hanya barang stok yang dapat dipilih untuk pesanan pembelian.");
+      setError("Pilih barang atau jasa yang tersedia pada katalog.");
       return;
     }
     busyRef.current = true;
@@ -1106,7 +1108,7 @@ function PurchaseOrderForm({
                                   i !== index && line.product_id === product.id,
                               )}
                             >
-                              {product.sku} · {product.name}
+                              {product.sku} · {product.name}{product.kind === "service" ? " · Jasa" : " · Stok"}
                             </option>
                           ))}
                         </select>
@@ -1308,6 +1310,7 @@ function PurchaseOrderDetail({
   const [receiveQuantities, setReceiveQuantities] = useState<
     Record<string, string>
   >({});
+  const [receiveLocations,setReceiveLocations]=useState<Record<string,StockContextInput>>({});
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const identity = useRef<RequestIdentity | null>(null);
@@ -1360,7 +1363,7 @@ function PurchaseOrderDetail({
         ? { reason: reason.trim() }
         : {}),
       ...(action === "receive"
-        ? { reference: reference.trim() || null, items: receiveReview!.items }
+        ? { reference: reference.trim() || null, items: receiveReview!.items.map(item=>({...item,...(receiveLocations[item.order_line_id]??{})})) }
         : {}),
     };
     identity.current = requestIdentity(identity.current, {
@@ -1382,6 +1385,7 @@ function PurchaseOrderDetail({
       setAction(null);
       setReason("");
       setReference("");
+      setReceiveLocations({});
       setReceiptId(null);
       identity.current = null;
       resource.reload();
@@ -1396,6 +1400,7 @@ function PurchaseOrderDetail({
   }
   function reloadLatest() {
     setAction(null);
+    setReceiveLocations({});
     setConflict(false);
     setReceiptId(null);
     resource.reload();
@@ -1588,7 +1593,7 @@ function PurchaseOrderDetail({
                   {action === "confirm"
                     ? `Pastikan supplier, barang, dan total ${exactMoney(order.total)} sudah benar. Setelah konfirmasi, isi PO tidak dapat diedit.`
                     : action === "receive"
-                      ? "Isi jumlah barang yang benar-benar tiba. Isi 0 untuk barang yang belum datang. Biaya memakai kesepakatan PO; sisa pesanan dapat diterima kemudian."
+                      ? "Isi jumlah barang yang tiba atau jasa yang telah diterima. Isi 0 untuk barang yang belum datang. Biaya memakai kesepakatan PO; sisa pesanan dapat diterima kemudian."
                       : action === "reverse"
                         ? `Seluruh barang pada ${receipt?.number ?? "penerimaan ini"} akan dikeluarkan kembali dan jurnal sebesar ${exactMoney(receipt?.total ?? "0")} dibalik. Sisa PO dihitung ulang dan dapat diterima kembali. Koreksi hanya tersedia sebelum ada mutasi stok berikutnya.`
                         : "Pesanan akan tetap tersimpan dengan status Dibatalkan beserta alasan di bawah."}
@@ -1609,6 +1614,7 @@ function PurchaseOrderDetail({
                             <tr key={item.id}>
                               <td>
                                 {item.product_name} · {item.unit}
+                                {item.product_kind==='stock'&&<details><summary>Gudang dan lot / seri</summary><StockContextFields productId={item.product_id} value={receiveLocations[item.id]??{}} onChange={value=>setReceiveLocations(current=>({...current,[item.id]:value}))} incoming disabled={busy}/></details>}
                               </td>
                               <td>{exactDecimal(item.remaining_quantity)}</td>
                               <td>
@@ -1637,9 +1643,10 @@ function PurchaseOrderDetail({
                       <div>
                         <span>Persediaan bertambah</span>
                         <strong>
-                          {exactMoney(receiveReview?.total ?? 0n)}
+                          {exactMoney(receiveReview?.stockTotal ?? 0n)}
                         </strong>
                       </div>
+                      <div><span>Beban jasa diterima</span><strong>{exactMoney(receiveReview?.serviceTotal ?? 0n)}</strong></div>
                       <div>
                         <span>
                           Kewajiban barang diterima belum ditagih bertambah
@@ -1650,7 +1657,7 @@ function PurchaseOrderDetail({
                       </div>
                     </div>
                     <p className="purchase-receive-note">
-                      Biaya rata-rata stok dihitung otomatis. Kas belum berubah.
+                      Barang menambah stok dan biaya rata-rata; jasa dicatat sebagai beban tanpa mutasi stok. Kas belum berubah.
                       Setelah diterima, finance dapat mencatat tagihan supplier.
                       Tagihan dapat dibuat sebagian sesuai barang yang ditagih.
                     </p>

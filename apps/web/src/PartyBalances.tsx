@@ -659,7 +659,7 @@ function PartyStatementView({
                               <small className="block muted">
                                 {doc.target_type.startsWith("opening")
                                   ? "Tagihan pembukaan"
-                                  : doc.target_type === "invoice"
+                                  : doc.target_type.startsWith("historical_") ? "Tagihan historis" : doc.target_type === "invoice"
                                     ? "Invoice penjualan"
                                     : "Tagihan supplier"}
                               </small>

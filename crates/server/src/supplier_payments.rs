@@ -28,6 +28,8 @@ pub fn router() -> Router<AppState> {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PaymentInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cash_account_code: Option<String>,
     version: i32,
     amount: String,
     reference: Option<String>,
@@ -67,7 +69,7 @@ async fn analysis(
         months AS (SELECT generate_series(current_month-($1::int-1)*interval '1 month',current_month,interval '1 month') starts FROM cfg),
         cash AS (SELECT date_trunc('month',j.created_at AT TIME ZONE c.timezone) starts,
             COALESCE(sum(l.credit),0) paid,COALESCE(sum(l.debit),0) reversed
-            FROM journal_entries j JOIN journal_lines l ON l.journal_id=j.id AND l.account_code='1100'
+            FROM journal_entries j JOIN journal_lines l ON l.journal_id=j.id AND l.account_code IN(SELECT account_code FROM treasury_accounts)
             LEFT JOIN posting_reversals r ON j.source_type='reversal' AND r.id=j.source_id CROSS JOIN cfg c
             WHERE (j.source_type IN ('supplier_payment','supplier_return') OR r.source_type IN ('supplier_payment','supplier_return'))
               AND j.created_at>=(c.current_month-($1::int-1)*interval '1 month') AT TIME ZONE c.timezone AND j.created_at<=now() GROUP BY 1)
@@ -80,7 +82,7 @@ async fn analysis(
             'series',(SELECT jsonb_agg(jsonb_build_object('month',to_char(m.starts,'YYYY-MM'),'paid',COALESCE(c.paid,0)::text,
                 'reversed',COALESCE(c.reversed,0)::text,'net',(COALESCE(c.paid,0)-COALESCE(c.reversed,0))::text) ORDER BY m.starts)
                 FROM months m LEFT JOIN cash c ON c.starts=m.starts),
-            'cash_balance',(SELECT COALESCE(sum(debit-credit),0)::text FROM journal_lines WHERE account_code='1100')) FROM cfg
+            'cash_balance',(SELECT COALESCE(sum(debit-credit),0)::text FROM journal_lines WHERE account_code IN(SELECT account_code FROM treasury_accounts))) FROM cfg
     "#).bind(i32::from(months)).fetch_one(&state.db).await?;
     Ok(Json(result))
 }
@@ -115,6 +117,8 @@ async fn pay(
         return Ok(Json(result));
     }
     check_open(&mut tx).await?;
+    let cash_account =
+        crate::treasury::cash_account(&mut tx, body.cash_account_code.as_deref()).await?;
     let order_id: Uuid = sqlx::query_scalar("SELECT order_id FROM purchase_bills WHERE id=$1")
         .bind(id)
         .fetch_optional(&mut *tx)
@@ -138,16 +142,7 @@ async fn pay(
             "Pembayaran melampaui sisa utang atau tagihan sudah dibatalkan.",
         ));
     }
-    let cash: Decimal = sqlx::query_scalar(
-        "SELECT COALESCE(sum(debit-credit),0) FROM journal_lines WHERE account_code='1100'",
-    )
-    .fetch_one(&mut *tx)
-    .await?;
-    if amount > cash {
-        return Err(AppError::conflict(
-            "Saldo kas tidak cukup untuk pembayaran ini.",
-        ));
-    }
+    crate::treasury::require_balance(&mut tx, &cash_account, amount).await?;
     let payable: String =
         sqlx::query_scalar("SELECT code FROM accounts WHERE system_role='purchase_payable'")
             .fetch_one(&mut *tx)
@@ -160,8 +155,8 @@ async fn pay(
     let number = format!("SP-{sequence:06}");
     sqlx::query("INSERT INTO journal_entries(id,description,source_type,source_id,created_by) VALUES($1,$2,'supplier_payment',$3,$4)")
         .bind(journal_id).bind(format!("Pembayaran {number} / {}",bill.get::<String,_>("number"))).bind(payment_id).bind(user.id).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO journal_lines(id,journal_id,account_code,debit,credit) VALUES($1,$2,$3,$4,0),($5,$2,'1100',0,$4)")
-        .bind(Uuid::new_v4()).bind(journal_id).bind(payable).bind(amount).bind(Uuid::new_v4()).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO journal_lines(id,journal_id,account_code,debit,credit) VALUES($1,$2,$3,$4,0),($5,$2,$6,0,$4)")
+        .bind(Uuid::new_v4()).bind(journal_id).bind(payable).bind(amount).bind(Uuid::new_v4()).bind(&cash_account).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO supplier_payments(id,number,bill_id,amount,reference,journal_id,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)")
         .bind(payment_id).bind(number).bind(id).bind(amount).bind(reference).bind(journal_id).bind(user.id).execute(&mut *tx).await?;
     sqlx::query("UPDATE purchase_bills SET paid=paid+$2,status=CASE WHEN paid+$2=total-credit_total THEN 'paid' ELSE 'partial' END,version=version+1 WHERE id=$1")

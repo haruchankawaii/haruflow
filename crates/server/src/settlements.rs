@@ -127,18 +127,6 @@ async fn obligation_account(tx: &mut Transaction<'_, Postgres>, kind: &str) -> A
         )
     }
 }
-async fn cash_sufficient(tx: &mut Transaction<'_, Postgres>, value: Decimal) -> AppResult<()> {
-    let cash: Decimal = sqlx::query_scalar(
-        "SELECT COALESCE(sum(debit-credit),0) FROM journal_lines WHERE account_code='1100'",
-    )
-    .fetch_one(&mut **tx)
-    .await?;
-    if cash < value {
-        Err(AppError::conflict("Saldo kas tidak mencukupi"))
-    } else {
-        Ok(())
-    }
-}
 async fn read_fund(db: &mut PgConnection, id: Uuid) -> AppResult<Value> {
     sqlx::query_scalar::<_, Option<Value>>("SELECT party_fund_document($1)")
         .bind(id)
@@ -306,6 +294,8 @@ async fn fund_detail(
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct FundInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cash_account_code: Option<String>,
     side: String,
     party_id: Uuid,
     amount: String,
@@ -332,6 +322,8 @@ async fn create_fund(
     }
     check_open(&mut tx).await?;
     party_name(&mut tx, &body.side, body.party_id).await?;
+    let cash_account =
+        crate::treasury::cash_account(&mut tx, body.cash_account_code.as_deref()).await?;
     if let Some(order) = body.order_id {
         let query = if body.side == "customer" {
             "SELECT EXISTS(SELECT 1 FROM sales_orders WHERE id=$1 AND customer_id=$2)"
@@ -350,14 +342,14 @@ async fn create_fund(
         }
     }
     if body.side == "supplier" {
-        cash_sufficient(&mut tx, value).await?;
+        crate::treasury::require_balance(&mut tx, &cash_account, value).await?;
     }
     let id = Uuid::new_v4();
     let control = party_control_account(&mut tx, &body.side).await?;
     let accounts = if body.side == "customer" {
-        ("1100", control.as_str())
+        (cash_account.as_str(), control.as_str())
     } else {
-        (control.as_str(), "1100")
+        (control.as_str(), cash_account.as_str())
     };
     journal(
         &mut tx,
@@ -431,9 +423,11 @@ async fn reverse_fund(
         return Err(AppError::conflict(blocker));
     }
     let value: Decimal = fund.get("amount");
+    let cash_account =
+        crate::treasury::journal_cash_account(&mut tx, fund.get("journal_id")).await?;
     let kind: String = fund.get("side");
     if kind == "customer" {
-        cash_sufficient(&mut tx, value).await?;
+        crate::treasury::require_balance(&mut tx, &cash_account, value).await?;
     }
     let key = reversal(&mut tx, &user, "party_fund", id, &note).await?;
     let control = party_control_account(&mut tx, &kind).await?;
@@ -444,9 +438,9 @@ async fn reverse_fund(
         key,
         &format!("Pembalikan uang muka: {note}"),
         if kind == "customer" {
-            (control.as_str(), "1100")
+            (control.as_str(), cash_account.as_str())
         } else {
-            ("1100", control.as_str())
+            (cash_account.as_str(), control.as_str())
         },
         value,
     )
@@ -482,6 +476,11 @@ async fn lock_target(
     let row=match kind{
  "invoice"=>sqlx::query("SELECT number,total-credit_total total,paid,customer_id party_id,version FROM invoices WHERE id=$1 AND status<>'void' FOR UPDATE").bind(id).fetch_optional(&mut **tx).await?,
  "bill"=>sqlx::query("SELECT number,total-credit_total total,paid,supplier_id party_id,version::bigint version FROM purchase_bills WHERE id=$1 AND status<>'void' FOR UPDATE").bind(id).fetch_optional(&mut **tx).await?,
+ "historical_receivable"|"historical_payable"=>{
+ sqlx::query("INSERT INTO party_target_versions(target_type,target_id) VALUES($1,$2) ON CONFLICT DO NOTHING").bind(kind).bind(id).execute(&mut **tx).await?;
+ sqlx::query("SELECT version FROM party_target_versions WHERE target_type=$1 AND target_id=$2 FOR UPDATE").bind(kind).bind(id).execute(&mut **tx).await?;
+ sqlx::query("SELECT d.reference number,d.total,historical_document_paid(d.id) paid,d.party_id,v.version FROM historical_documents d JOIN party_target_versions v ON v.target_type=$2 AND v.target_id=d.id WHERE d.id=$1 AND d.side=$3 AND NOT EXISTS(SELECT 1 FROM historical_reversals r WHERE r.document_id=d.id) FOR UPDATE OF d")
+ .bind(id).bind(kind).bind(if kind=="historical_receivable"{"customer"}else{"supplier"}).fetch_optional(&mut **tx).await?},
  "opening_receivable"|"opening_payable"=>{
  sqlx::query("INSERT INTO party_target_versions(target_type,target_id) VALUES($1,$2) ON CONFLICT DO NOTHING").bind(kind).bind(id).execute(&mut **tx).await?;
  sqlx::query("SELECT version FROM party_target_versions WHERE target_type=$1 AND target_id=$2 FOR UPDATE").bind(kind).bind(id).execute(&mut **tx).await?;
@@ -560,9 +559,15 @@ async fn allocate(
             ));
         }
         if (kind == "customer"
-            && !matches!(item.target_type.as_str(), "invoice" | "opening_receivable"))
+            && !matches!(
+                item.target_type.as_str(),
+                "invoice" | "opening_receivable" | "historical_receivable"
+            ))
             || (kind == "supplier"
-                && !matches!(item.target_type.as_str(), "bill" | "opening_payable"))
+                && !matches!(
+                    item.target_type.as_str(),
+                    "bill" | "opening_payable" | "historical_payable"
+                ))
         {
             return Err(AppError::bad_request(
                 "Tagihan tujuan tidak sesuai dengan jenis pihak sumber dana",
@@ -798,6 +803,8 @@ async fn cancel_request(
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RefundInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cash_account_code: Option<String>,
     version: i64,
     amount: String,
     reference: Option<String>,
@@ -854,6 +861,8 @@ async fn post_refund(
     }
     check_open(&mut tx).await?;
     let fund = locked_fund(&mut tx, id, body.version).await?;
+    let cash_account =
+        crate::treasury::cash_account(&mut tx, body.cash_account_code.as_deref()).await?;
     let budget = if let Some(key) = request_id {
         sqlx::query_scalar::<_,Decimal>("SELECT q.amount-COALESCE((SELECT sum(p.amount) FROM party_refunds p WHERE p.request_id=q.id AND NOT EXISTS(SELECT 1 FROM posting_reversals r WHERE r.source_type='party_refund' AND r.source_id=p.id)),0) FROM party_refund_requests q WHERE q.id=$1 AND q.fund_id=$2 AND NOT EXISTS(SELECT 1 FROM party_refund_cancellations c WHERE c.request_id=q.id)").bind(key).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(||AppError::conflict("Permintaan refund dibatalkan atau tidak tersedia"))?
     } else {
@@ -866,7 +875,7 @@ async fn post_refund(
     }
     let kind: String = fund.get("side");
     if kind == "customer" {
-        cash_sufficient(&mut tx, value).await?;
+        crate::treasury::require_balance(&mut tx, &cash_account, value).await?;
     }
     let refund_id = Uuid::new_v4();
     let control = party_control_account(&mut tx, &kind).await?;
@@ -877,9 +886,9 @@ async fn post_refund(
         refund_id,
         &format!("Refund pelanggan/supplier: {note}"),
         if kind == "customer" {
-            (control.as_str(), "1100")
+            (control.as_str(), cash_account.as_str())
         } else {
-            ("1100", control.as_str())
+            (cash_account.as_str(), control.as_str())
         },
         value,
     )
@@ -924,7 +933,7 @@ async fn reverse_refund(
         return Ok(Json(result));
     }
     check_open(&mut tx).await?;
-    let refund = sqlx::query("SELECT fund_id,amount FROM party_refunds WHERE id=$1")
+    let refund = sqlx::query("SELECT fund_id,amount,journal_id FROM party_refunds WHERE id=$1")
         .bind(id)
         .fetch_optional(&mut *tx)
         .await?
@@ -937,8 +946,10 @@ async fn reverse_refund(
     }
     let kind: String = fund.get("side");
     let value: Decimal = refund.get("amount");
+    let cash_account =
+        crate::treasury::journal_cash_account(&mut tx, refund.get("journal_id")).await?;
     if kind == "supplier" {
-        cash_sufficient(&mut tx, value).await?;
+        crate::treasury::require_balance(&mut tx, &cash_account, value).await?;
     }
     let key = reversal(&mut tx, &user, "party_refund", id, &note).await?;
     let control = party_control_account(&mut tx, &kind).await?;
@@ -949,9 +960,9 @@ async fn reverse_refund(
         key,
         &format!("Pembalikan refund pelanggan/supplier: {note}"),
         if kind == "customer" {
-            ("1100", control.as_str())
+            (cash_account.as_str(), control.as_str())
         } else {
-            (control.as_str(), "1100")
+            (control.as_str(), cash_account.as_str())
         },
         value,
     )
@@ -1022,6 +1033,7 @@ fn events_sql(kind: &str) -> String {
  UNION ALL SELECT r.id,d.{party},'return_reversal',t.number,'reversal',r.id,'{target}',d.id,j.id,r.created_at,t.credit_total-t.refund-t.settlement_credit,0,{cash_sign}*t.refund,-t.credit_total,t.refund+t.settlement_credit FROM posting_reversals r JOIN {returns} t ON t.id=r.source_id AND r.source_type='{return_kind}' JOIN {docs} d ON d.id=t.{return_fk} LEFT JOIN journal_entries j ON j.source_type='reversal' AND j.source_id=r.id
  UNION ALL SELECT o.id,o.party_id,'opening_{opening_kind}',o.reference,'opening_item',o.id,'opening_{opening_kind}',o.id,p.journal_id,o.created_at,o.amount,0,0,0,0 FROM opening_party_items o JOIN opening_postings p ON p.id=o.posting_id WHERE o.kind='{opening_kind}'
  UNION ALL SELECT md5(o.id::text||r.id::text)::uuid,o.party_id,'opening_reversal',o.reference,'reversal',r.id,'opening_{opening_kind}',o.id,j.id,r.created_at,-o.amount,0,0,0,0 FROM opening_party_items o JOIN posting_reversals r ON r.source_type='opening' AND r.source_id=o.posting_id LEFT JOIN journal_entries j ON j.source_type='reversal' AND j.source_id=r.id WHERE o.kind='{opening_kind}'
+ UNION ALL SELECT h.source_id,h.party_id,h.kind,h.number,h.kind,h.source_id,CASE WHEN h.side='customer' THEN 'historical_receivable' ELSE 'historical_payable' END,h.document_id,h.journal_id,h.created_at,h.amount,0,CASE WHEN h.kind IN ('historical_payment','historical_payment_reversal') THEN (-({cash_sign}))*h.amount ELSE 0 END,0,CASE WHEN h.kind IN ('historical_payment','historical_payment_reversal') THEN -h.amount ELSE 0 END FROM historical_party_events h WHERE h.side='{kind}'
  UNION ALL SELECT f.id,f.party_id,CASE WHEN f.kind='cash_advance' THEN 'advance' ELSE f.kind END,f.number,f.source_type,f.source_id,NULL::text,NULL::uuid,f.journal_id,f.created_at,0,f.amount,CASE WHEN f.kind='cash_advance' THEN {cash_sign}*f.amount ELSE 0 END,0,0 FROM party_funds f WHERE f.side='{kind}'
  UNION ALL SELECT r.id,f.party_id,'fund_reversal',f.number,'reversal',r.id,NULL,NULL,j.id,r.created_at,0,-f.amount,CASE WHEN f.kind='cash_advance' THEN (-({cash_sign}))*f.amount ELSE 0 END,0,0 FROM posting_reversals r JOIN party_funds f ON f.id=r.source_id AND r.source_type='party_fund' LEFT JOIN journal_entries j ON j.source_type='reversal' AND j.source_id=r.id WHERE f.side='{kind}'
  UNION ALL SELECT a.id,f.party_id,'allocation',a.target_number,'party_allocation',a.id,a.target_type,a.target_id,a.journal_id,a.created_at,-a.amount,-a.amount,0,0,a.amount FROM party_allocations a JOIN party_funds f ON f.id=a.fund_id WHERE f.side='{kind}'
@@ -1052,12 +1064,16 @@ fn documents_sql(kind: &str) -> String {
  FROM invoices i JOIN customers c ON c.id=i.customer_id LEFT JOIN LATERAL(SELECT * FROM invoice_terms_changes WHERE invoice_id=i.id AND created_at<$2 ORDER BY created_at DESC,id DESC LIMIT 1)t ON true
  WHERE i.created_at<$2 AND ($1::uuid IS NULL OR i.customer_id=$1)
  UNION ALL SELECT 'opening_receivable',o.id,o.reference,o.party_id,c.name,o.amount,o.document_date,o.due_date,COALESCE(v.version,1)
- FROM opening_party_items o JOIN customers c ON c.id=o.party_id LEFT JOIN party_target_versions v ON v.target_type='opening_receivable' AND v.target_id=o.id WHERE o.kind='receivable' AND o.created_at<$2 AND ($1::uuid IS NULL OR o.party_id=$1)"#.into()
+ FROM opening_party_items o JOIN customers c ON c.id=o.party_id LEFT JOIN party_target_versions v ON v.target_type='opening_receivable' AND v.target_id=o.id WHERE o.kind='receivable' AND o.created_at<$2 AND ($1::uuid IS NULL OR o.party_id=$1)
+ UNION ALL SELECT 'historical_receivable',d.id,d.reference,d.party_id,c.name,d.total,d.document_date,d.due_date,COALESCE(v.version,1)
+ FROM historical_documents d JOIN customers c ON c.id=d.party_id LEFT JOIN party_target_versions v ON v.target_type='historical_receivable' AND v.target_id=d.id WHERE d.side='customer' AND d.created_at<$2 AND ($1::uuid IS NULL OR d.party_id=$1)"#.into()
     } else {
         r#"SELECT 'bill'::text target_type,b.id,b.number,b.supplier_id party_id,b.supplier_name party_name,b.total,b.invoice_date document_date,b.due_date,b.version::bigint version
  FROM purchase_bills b WHERE b.created_at<$2 AND ($1::uuid IS NULL OR b.supplier_id=$1)
  UNION ALL SELECT 'opening_payable',o.id,o.reference,o.party_id,s.name,o.amount,o.document_date,o.due_date,COALESCE(v.version,1)
- FROM opening_party_items o JOIN suppliers s ON s.id=o.party_id LEFT JOIN party_target_versions v ON v.target_type='opening_payable' AND v.target_id=o.id WHERE o.kind='payable' AND o.created_at<$2 AND ($1::uuid IS NULL OR o.party_id=$1)"#.into()
+ FROM opening_party_items o JOIN suppliers s ON s.id=o.party_id LEFT JOIN party_target_versions v ON v.target_type='opening_payable' AND v.target_id=o.id WHERE o.kind='payable' AND o.created_at<$2 AND ($1::uuid IS NULL OR o.party_id=$1)
+ UNION ALL SELECT 'historical_payable',d.id,d.reference,d.party_id,s.name,d.total,d.document_date,d.due_date,COALESCE(v.version,1)
+ FROM historical_documents d JOIN suppliers s ON s.id=d.party_id LEFT JOIN party_target_versions v ON v.target_type='historical_payable' AND v.target_id=d.id WHERE d.side='supplier' AND d.created_at<$2 AND ($1::uuid IS NULL OR d.party_id=$1)"#.into()
     }
 }
 
@@ -1222,7 +1238,17 @@ async fn statement(
             continue;
         }
         let fund_id: Option<Uuid> = row.get("fund_id");
-        events.push(json!({"id":row.get::<Uuid,_>("id"),"event_type":row.get::<String,_>("event_type"),"number":row.get::<String,_>("number"),"source_type":row.get::<String,_>("source_type"),"source_id":row.get::<Uuid,_>("source_id"),"fund_id":fund_id,"source_url":fund_id.map(|id|format!("?fund={id}#balances")),"target_type":row.get::<Option<String>,_>("target_type"),"target_id":row.get::<Option<Uuid>,_>("target_id"),"journal_id":row.get::<Option<Uuid>,_>("journal_id"),"created_at":created,"debt_delta":money_string(debt_delta),"credit_delta":money_string(credit_delta),"cash_delta":money_string(field(&row,"cash_delta")),"debt_balance":money_string(debt),"credit_balance":money_string(credits),"net_balance":money_string(debt-credits)}));
+        let target_type: Option<String> = row.get("target_type");
+        let target_id: Option<Uuid> = row.get("target_id");
+        let source_url = if target_type
+            .as_deref()
+            .is_some_and(|kind| kind.starts_with("historical_"))
+        {
+            target_id.map(|id| format!("?historical={id}#transaction-imports"))
+        } else {
+            fund_id.map(|id| format!("?fund={id}#balances"))
+        };
+        events.push(json!({"id":row.get::<Uuid,_>("id"),"event_type":row.get::<String,_>("event_type"),"number":row.get::<String,_>("number"),"source_type":row.get::<String,_>("source_type"),"source_id":row.get::<Uuid,_>("source_id"),"fund_id":fund_id,"source_url":source_url,"target_type":row.get::<Option<String>,_>("target_type"),"target_id":row.get::<Option<Uuid>,_>("target_id"),"journal_id":row.get::<Option<Uuid>,_>("journal_id"),"created_at":created,"debt_delta":money_string(debt_delta),"credit_delta":money_string(credit_delta),"cash_delta":money_string(field(&row,"cash_delta")),"debt_balance":money_string(debt),"credit_balance":money_string(credits),"net_balance":money_string(debt-credits)}));
     }
     let documents = target_rows(&mut tx, &kind, Some(id), day, end).await?;
     let keys = [

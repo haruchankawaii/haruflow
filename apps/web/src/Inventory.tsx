@@ -29,6 +29,9 @@ import { isStockProduct } from "./commerce";
 import { DocumentReversal, ReceiptHistory } from "./DocumentReversal";
 import type { Movement, Product, Role } from "./types";
 import { ImportShortcut } from "./DataImports";
+import InventoryWorkspace from "./InventoryWorkspace";
+import { StockContextFields } from "./StockContextFields";
+import type { StockContextInput } from "./inventory-model";
 
 export default function Inventory({
   role,
@@ -38,6 +41,7 @@ export default function Inventory({
   changed: () => void;
 }) {
   const [tab, setTab] = useState("products");
+  const [locations, setLocations] = useState(false);
   const [revision, setRevision] = useState(0);
   const products = useResource<{ items: Product[] }>("/products", revision);
   const movements = useResource<{ items: Movement[] }>(
@@ -78,6 +82,9 @@ export default function Inventory({
     setRevision((value) => value + 1);
     changed();
   }
+  if (locations) {
+    return <InventoryWorkspace role={role} changed={changed} onClose={() => { setLocations(false); setRevision(value => value + 1); }} />;
+  }
   return (
     <>
       <PageHeader
@@ -85,8 +92,9 @@ export default function Inventory({
         title="Inventori"
         description="Kelola katalog barang dan jasa, serta persediaan barang Anda."
         actions={
-          canEdit && (
-            <>
+          <>
+            <button className="button secondary" onClick={() => setLocations(true)}>Gudang, lot & reservasi</button>
+            {canEdit && <>
               <ImportShortcut kind="products" />
               <button
                 className="button secondary"
@@ -108,8 +116,8 @@ export default function Inventory({
               >
                 <Plus size={17} /> Tambah produk
               </button>
-            </>
-          )
+            </>}
+          </>
         }
       />
       <div className="compact-metrics">
@@ -715,7 +723,9 @@ function ReceiptForm({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [key] = useState(() => crypto.randomUUID());
+  const [key, setKey] = useState(() => crypto.randomUUID());
+  const [productId, setProductId] = useState("");
+  const [stockContext, setStockContext] = useState<StockContextInput>({});
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -725,6 +735,7 @@ function ReceiptForm({
         method: "POST",
         body: {
           ...Object.fromEntries(new FormData(event.currentTarget)),
+          stock_context: stockContext,
           idempotency_key: key,
         },
       });
@@ -743,10 +754,10 @@ function ReceiptForm({
         if (!busy) onClose();
       }}
     >
-      <form onSubmit={submit}>
+      <form onSubmit={submit} onChange={() => setKey(crypto.randomUUID())}>
         <div className="form-body">
           <FormField label="Produk *">
-            <select name="product_id" required autoFocus defaultValue="">
+            <select name="product_id" required autoFocus value={productId} onChange={e => {setProductId(e.target.value);setStockContext({});}}>
               <option value="" disabled>
                 Pilih produk
               </option>
@@ -779,6 +790,7 @@ function ReceiptForm({
               />
             </FormField>
           </div>
+          {productId && <details><summary>Gudang dan lot / seri</summary><StockContextFields productId={productId} value={stockContext} incoming disabled={busy} onChange={value => {setStockContext(value);setKey(crypto.randomUUID());}} /></details>}
           <FormField
             label="Referensi"
             hint="Nomor dokumen atau catatan asal stok."

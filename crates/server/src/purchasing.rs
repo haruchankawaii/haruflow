@@ -211,7 +211,7 @@ const ORDER_JSON: &str = r#"jsonb_build_object(
     'cancellation_reason',o.cancellation_reason,'received_at',o.received_at,'active_receipt_id',o.active_receipt_id,
     'receipts',purchase_receipt_history(o.id),'items',COALESCE((SELECT jsonb_agg(jsonb_build_object(
     'id',l.id,'product_id',l.product_id,'product_sku',l.product_sku,'product_name',l.product_name,'unit',l.unit,
-    'quantity',l.quantity::text,'unit_cost',l.unit_cost::text,'total',l.total::text,
+    'quantity',l.quantity::text,'unit_cost',l.unit_cost::text,'total',l.total::text,'product_kind',l.product_kind,
     'received_quantity',purchase_order_received_quantity(o.id,l.product_id)::text,
     'remaining_quantity',(l.quantity-purchase_order_received_quantity(o.id,l.product_id))::text,
     'received_value',purchase_order_received_value(o.id,l.product_id)::text) ORDER BY l.position)
@@ -285,6 +285,7 @@ struct LineSnapshot {
     sku: String,
     name: String,
     unit: String,
+    kind: String,
     quantity: Decimal,
     cost: Decimal,
     total: Decimal,
@@ -353,13 +354,9 @@ async fn snapshot_lines(
             .fetch_optional(&mut **tx)
             .await?
             .ok_or_else(|| AppError::bad_request("Product not found"))?;
-        if product.get::<String, _>("kind") != "stock" {
-            return Err(AppError::bad_request(
-                "Purchase orders currently support stock products only",
-            ));
-        }
         lines.push(LineSnapshot {
             product_id: item.product_id,
+            kind: product.get("kind"),
             sku: product.get("sku"),
             name: product.get("name"),
             unit: product.get("unit"),
@@ -377,8 +374,8 @@ async fn insert_lines(
     lines: Vec<LineSnapshot>,
 ) -> AppResult<()> {
     for (index, line) in lines.into_iter().enumerate() {
-        sqlx::query("INSERT INTO purchase_order_lines(id,order_id,position,product_id,product_sku,product_name,unit,quantity,unit_cost,total) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
-            .bind(Uuid::new_v4()).bind(id).bind((index+1) as i32).bind(line.product_id).bind(line.sku).bind(line.name).bind(line.unit).bind(line.quantity).bind(line.cost).bind(line.total)
+        sqlx::query("INSERT INTO purchase_order_lines(id,order_id,position,product_id,product_sku,product_name,unit,quantity,unit_cost,total,product_kind) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
+            .bind(Uuid::new_v4()).bind(id).bind((index+1) as i32).bind(line.product_id).bind(line.sku).bind(line.name).bind(line.unit).bind(line.quantity).bind(line.cost).bind(line.total).bind(line.kind)
             .execute(&mut **tx).await?;
     }
     Ok(())
@@ -544,13 +541,10 @@ async fn confirm_order(
     active_supplier(&mut tx, row.get("supplier_id")).await?;
     let products = sqlx::query("SELECT p.id,p.kind FROM products p WHERE p.id IN (SELECT product_id FROM purchase_order_lines WHERE order_id=$1) ORDER BY p.id FOR UPDATE")
         .bind(id).fetch_all(&mut *tx).await?;
-    if products.is_empty()
-        || products
-            .iter()
-            .any(|row| row.get::<String, _>("kind") != "stock")
-    {
-        return Err(AppError::conflict("Purchase order requires stock products"));
+    if products.is_empty() {
+        return Err(AppError::conflict("PO memerlukan barang atau jasa."));
     }
+    if sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM purchase_order_lines l JOIN products p ON p.id=l.product_id WHERE l.order_id=$1 AND l.product_kind<>p.kind)").bind(id).fetch_one(&mut *tx).await? { return Err(AppError::conflict("Jenis barang/jasa telah berubah; tinjau ulang draft PO.")); }
     // Confirmation preserves the reviewed draft's supplier and item snapshots.
     sqlx::query("UPDATE purchase_orders SET status='confirmed',confirmed_at=now(),updated_at=now(),version=version+1 WHERE id=$1")
         .bind(id).execute(&mut *tx).await?;

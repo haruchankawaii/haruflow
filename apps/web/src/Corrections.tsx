@@ -14,6 +14,8 @@ import { isControlAccount } from "./account-controls";
 import { companyToday, money } from "./format";
 import { isStockProduct } from "./commerce";
 import type { Account, Product } from "./types";
+import { StockContextFields } from "./StockContextFields";
+import type { StockContextInput } from "./inventory-model";
 
 export function AdjustmentForm({
   products,
@@ -27,7 +29,9 @@ export function AdjustmentForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [key] = useState(() => crypto.randomUUID());
+  const [key, setKey] = useState(() => crypto.randomUUID());
+  const [productId, setProductId] = useState("");
+  const [stockContext, setStockContext] = useState<StockContextInput>({});
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -46,6 +50,7 @@ export function AdjustmentForm({
         body: {
           ...fields,
           quantity,
+          stock_context: stockContext,
           ...(Number(quantity) > 0 ? {} : { unit_cost: undefined }),
           idempotency_key: key,
         },
@@ -65,10 +70,10 @@ export function AdjustmentForm({
         if (!busy) onClose();
       }}
     >
-      <form onSubmit={submit}>
+      <form onSubmit={submit} onChange={() => setKey(crypto.randomUUID())}>
         <div className="form-body">
           <FormField label="Produk *">
-            <select name="product_id" required defaultValue="" autoFocus>
+            <select name="product_id" required value={productId} autoFocus onChange={e => {setProductId(e.target.value);setStockContext({});}}>
               <option disabled value="">
                 Pilih produk
               </option>
@@ -103,6 +108,7 @@ export function AdjustmentForm({
               />
             </FormField>
           )}
+          {productId && <details><summary>Gudang dan lot / seri</summary><StockContextFields productId={productId} value={stockContext} incoming={Number(quantity)>0} disabled={busy} onChange={value => {setStockContext(value);setKey(crypto.randomUUID());}} /></details>}
           <FormField label="Alasan penyesuaian *">
             <textarea
               name="reason"

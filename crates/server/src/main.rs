@@ -18,12 +18,18 @@ mod error;
 #[cfg(test)]
 mod financial_report_tests;
 mod financial_reports;
+mod fiscal;
+#[cfg(test)]
+mod fiscal_tests;
 mod imports;
 #[cfg(test)]
 mod imports_tests;
 mod insights;
 #[cfg(test)]
 mod insights_tests;
+mod inventory_extensions;
+#[cfg(test)]
+mod inventory_extensions_tests;
 mod master_data;
 mod opening;
 #[cfg(test)]
@@ -64,6 +70,12 @@ mod supplier_return_tests;
 mod supplier_returns;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod transaction_import_tests;
+mod transaction_imports;
+mod treasury;
+#[cfg(test)]
+mod treasury_tests;
 #[cfg(test)]
 mod upgrade_tests;
 #[cfg(test)]
@@ -220,6 +232,10 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(attachments::router())
         .merge(records::router())
         .merge(settlements::router())
+        .merge(fiscal::router())
+        .merge(inventory_extensions::router())
+        .merge(treasury::router())
+        .merge(transaction_imports::router())
         .fallback(|| async { error::AppError::not_found() })
         .layer(middleware::from_fn(api_guard));
     Router::new()

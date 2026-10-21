@@ -41,6 +41,12 @@ struct ReceiveInput {
 struct ReceiveItem {
     order_line_id: Uuid,
     quantity: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    warehouse_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lot_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    allocations: Vec<crate::inventory_extensions::StockSelection>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -167,8 +173,10 @@ async fn receive(
     let mut allocated_values = BTreeMap::new();
     // Validate the whole receipt before writing any of its lines.
     for line in &lines {
-        if line.get::<String, _>("kind") != "stock" {
-            return Err(AppError::conflict("Purchase order requires stock products"));
+        if line.get::<String, _>("kind") != line.get::<String, _>("product_kind") {
+            return Err(AppError::conflict(
+                "Jenis barang/jasa katalog berubah sejak PO dibuat.",
+            ));
         }
         if line.get::<String, _>("unit") != line.get::<String, _>("stock_unit") {
             return Err(AppError::conflict(format!(
@@ -235,9 +243,20 @@ async fn receive(
     sqlx::query("INSERT INTO journal_entries(id,description,source_type,source_id,created_by) VALUES($1,$2,'purchase_receipt',$3,$4)")
         .bind(journal_id).bind(format!("Goods receipt {number} / {}", order.get::<String,_>("number")))
         .bind(receipt_id).bind(user.id).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO journal_lines(id,journal_id,account_code,debit,credit) VALUES($1,$2,'1300',$3,0),($4,$2,$5,0,$3)")
-        .bind(Uuid::new_v4()).bind(journal_id).bind(total).bind(Uuid::new_v4()).bind(accrual)
-        .execute(&mut *tx).await?;
+    let service_expense: String = sqlx::query_scalar(
+        "SELECT code FROM accounts WHERE system_role='purchase_service_expense'",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    let stock_total: Decimal = lines
+        .iter()
+        .filter(|l| l.get::<String, _>("product_kind") == "stock")
+        .map(|l| allocated_values[&l.get::<Uuid, _>("id")])
+        .sum();
+    crate::supplier_bills::journal_line(&mut tx, journal_id, "1300", stock_total).await?;
+    crate::supplier_bills::journal_line(&mut tx, journal_id, &service_expense, total - stock_total)
+        .await?;
+    crate::supplier_bills::journal_line(&mut tx, journal_id, &accrual, -total).await?;
     sqlx::query("INSERT INTO purchase_receipts(id,number,order_id,reference,total,journal_id,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)")
         .bind(receipt_id).bind(&number).bind(id).bind(&reference).bind(total).bind(journal_id).bind(user.id)
         .execute(&mut *tx).await?;
@@ -250,24 +269,43 @@ async fn receive(
         let before_average: Decimal = line.get("stock_average");
         let new_quantity = before_quantity + quantity;
         let new_value = before_value + value;
-        sqlx::query(
-            "UPDATE products SET quantity=$2,inventory_value=$3,average_cost=$4 WHERE id=$1",
-        )
-        .bind(product_id)
-        .bind(new_quantity)
-        .bind(new_value)
-        .bind(domain::average(new_value, new_quantity))
-        .execute(&mut *tx)
-        .await?;
-        let movement = Uuid::new_v4();
-        sqlx::query("INSERT INTO inventory_movements(id,product_id,kind,quantity,unit_cost,value,reference,created_by,purchase_receipt_id) VALUES($1,$2,'purchase_receipt',$3,$4,$5,$6,$7,$8)")
+        let is_stock = line.get::<String, _>("product_kind") == "stock";
+        if is_stock {
+            sqlx::query(
+                "UPDATE products SET quantity=$2,inventory_value=$3,average_cost=$4 WHERE id=$1",
+            )
+            .bind(product_id)
+            .bind(new_quantity)
+            .bind(new_value)
+            .bind(domain::average(new_value, new_quantity))
+            .execute(&mut *tx)
+            .await?;
+        }
+        let movement = if is_stock { Some(Uuid::new_v4()) } else { None };
+        if is_stock {
+            let detail = body.items.as_ref().and_then(|items| {
+                items
+                    .iter()
+                    .find(|i| i.order_line_id == line.get::<Uuid, _>("id"))
+            });
+            crate::inventory_extensions::set_context(
+                &mut tx,
+                crate::inventory_extensions::StockContext {
+                    warehouse_id: detail.and_then(|i| i.warehouse_id),
+                    lot_id: detail.and_then(|i| i.lot_id),
+                    allocations: detail.map(|i| i.allocations.clone()).unwrap_or_default(),
+                },
+            )
+            .await?;
+            sqlx::query("INSERT INTO inventory_movements(id,product_id,kind,quantity,unit_cost,value,reference,created_by,purchase_receipt_id) VALUES($1,$2,'purchase_receipt',$3,$4,$5,$6,$7,$8)")
             .bind(movement).bind(product_id).bind(quantity).bind(line.get::<Decimal,_>("unit_cost"))
             .bind(value).bind(&reference).bind(user.id).bind(receipt_id).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO purchase_receipt_lines(id,receipt_id,position,movement_id,product_id,product_sku,product_name,unit,quantity,unit_cost,value,before_quantity,before_average_cost,before_inventory_value) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)")
+        }
+        sqlx::query("INSERT INTO purchase_receipt_lines(id,receipt_id,position,movement_id,product_id,product_sku,product_name,unit,quantity,unit_cost,value,before_quantity,before_average_cost,before_inventory_value,product_kind) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)")
             .bind(Uuid::new_v4()).bind(receipt_id).bind(line.get::<i32,_>("position")).bind(movement)
             .bind(product_id).bind(line.get::<String,_>("product_sku")).bind(line.get::<String,_>("product_name"))
             .bind(line.get::<String,_>("unit")).bind(quantity).bind(line.get::<Decimal,_>("unit_cost"))
-            .bind(value).bind(before_quantity).bind(before_average).bind(before_value).execute(&mut *tx).await?;
+            .bind(value).bind(before_quantity).bind(before_average).bind(before_value).bind(line.get::<String, _>("product_kind")).execute(&mut *tx).await?;
     }
     sqlx::query("UPDATE purchase_orders SET status=CASE WHEN EXISTS(SELECT 1 FROM purchase_order_lines l WHERE l.order_id=$1 AND l.quantity>purchase_order_received_quantity($1,l.product_id)) THEN 'partial_received' ELSE 'received' END,active_receipt_id=$2,received_at=now(),updated_at=now(),version=version+1 WHERE id=$1")
         .bind(id).bind(receipt_id).execute(&mut *tx).await?;
@@ -348,6 +386,9 @@ async fn reverse(
             .execute(&mut *tx).await?;
     }
     for line in lines {
+        if line.get::<String, _>("product_kind") != "stock" {
+            continue;
+        }
         let product_id: Uuid = line.get("product_id");
         sqlx::query(
             "UPDATE products SET quantity=$2,inventory_value=$3,average_cost=$4 WHERE id=$1",

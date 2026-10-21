@@ -98,10 +98,10 @@ impl Kind {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
-struct Issue {
+pub(crate) struct Issue {
     row: usize,
     column: String,
-    message: String,
+    pub(crate) message: String,
 }
 
 fn issue(row: usize, column: &str, message: impl Into<String>) -> Issue {
@@ -122,14 +122,14 @@ struct PlanRow {
 }
 
 #[derive(Debug)]
-struct CsvRecord {
-    line: usize,
-    fields: Vec<String>,
+pub(crate) struct CsvRecord {
+    pub(crate) line: usize,
+    pub(crate) fields: Vec<String>,
 }
 
 // This bounded RFC-4180-style parser accepts either explicit delimiter, including
 // escaped quotes and multiline quoted fields. It rejects ambiguous loose quotes.
-fn parse_csv(input: &str, delimiter: char) -> Result<Vec<CsvRecord>, Issue> {
+pub(crate) fn parse_csv(input: &str, delimiter: char) -> Result<Vec<CsvRecord>, Issue> {
     let input = input.strip_prefix('\u{feff}').unwrap_or(input);
     let mut chars = input.chars().peekable();
     let mut records = Vec::new();

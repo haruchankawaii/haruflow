@@ -36,6 +36,8 @@ struct ReturnInput {
     refund_confirmed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     refund_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cash_account_code: Option<String>,
     idempotency_key: Uuid,
 }
 #[derive(Deserialize, Serialize)]
@@ -43,6 +45,12 @@ struct ReturnInput {
 struct ReturnItem {
     bill_line_id: Uuid,
     quantity: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    warehouse_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lot_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    allocations: Vec<crate::inventory_extensions::StockSelection>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -135,10 +143,12 @@ async fn create(
     check_open(&mut tx).await?;
     let bill = lock_bill(&mut tx, id, body.version).await?;
     sqlx::query("SELECT id FROM products WHERE id IN(SELECT product_id FROM purchase_bill_lines WHERE bill_id=$1) ORDER BY id FOR UPDATE").bind(id).fetch_all(&mut *tx).await?;
-    let lines=sqlx::query("SELECT l.*,supplier_bill_returned_quantity(l.id) returned_quantity,supplier_bill_returned_credit(l.id) returned_credit,p.quantity stock_quantity,p.average_cost stock_average,p.inventory_value stock_value,p.unit stock_unit,p.kind FROM purchase_bill_lines l JOIN products p ON p.id=l.product_id WHERE l.bill_id=$1 ORDER BY l.position").bind(id).fetch_all(&mut *tx).await?;
+    let lines=sqlx::query("SELECT l.*,supplier_bill_returned_quantity(l.id) returned_quantity,supplier_bill_returned_credit(l.id) returned_credit,supplier_bill_returned_tax(l.id) returned_tax,p.quantity stock_quantity,p.average_cost stock_average,p.inventory_value stock_value,p.unit stock_unit,p.kind FROM purchase_bill_lines l JOIN products p ON p.id=l.product_id WHERE l.bill_id=$1 ORDER BY l.position").bind(id).fetch_all(&mut *tx).await?;
     let mut allocations = Vec::new();
     let mut total = Decimal::ZERO;
     let mut carrying = Decimal::ZERO;
+    let mut service_credit = Decimal::ZERO;
+    let mut total_tax = Decimal::ZERO;
     for line in lines {
         let Some(quantity) = selected.remove(&line.get::<Uuid, _>("id")) else {
             continue;
@@ -151,7 +161,7 @@ async fn create(
                 "Jumlah retur melebihi sisa barang pada tagihan.",
             ));
         }
-        if line.get::<String, _>("kind") != "stock"
+        if line.get::<String, _>("kind") != line.get::<String, _>("product_kind")
             || line.get::<String, _>("stock_unit") != line.get::<String, _>("unit")
         {
             return Err(AppError::conflict(
@@ -159,7 +169,8 @@ async fn create(
             ));
         }
         let on_hand: Decimal = line.get("stock_quantity");
-        if quantity > on_hand {
+        let is_stock = line.get::<String, _>("product_kind") == "stock";
+        if is_stock && quantity > on_hand {
             return Err(AppError::conflict(
                 "Stok saat ini tidak cukup untuk retur supplier.",
             ));
@@ -180,15 +191,33 @@ async fn create(
                 "Nilai setiap barang retur harus lebih dari nol setelah pembulatan; perbesar jumlah.",
             ));
         }
-        let value = domain::shipment_cost(
-            quantity,
-            on_hand,
-            line.get("stock_average"),
-            line.get("stock_value"),
-        );
+        let value = if is_stock {
+            domain::shipment_cost(
+                quantity,
+                on_hand,
+                line.get("stock_average"),
+                line.get("stock_value"),
+            )
+        } else {
+            Decimal::ZERO
+        };
+        let original_tax: Decimal = line.get("tax_value");
+        let returned_tax: Decimal = line.get("returned_tax");
+        let tax = if quantity == remaining {
+            original_tax - returned_tax
+        } else {
+            (domain::money(original_tax * (returned_quantity + quantity) / original_quantity)
+                - returned_tax)
+                .max(Decimal::ZERO)
+                .min(original_tax - returned_tax)
+        };
         total += credit;
         carrying += value;
-        allocations.push((line, quantity, credit, value));
+        total_tax += tax;
+        if !is_stock {
+            service_credit += credit - tax;
+        }
+        allocations.push((line, quantity, credit, value, tax));
     }
     if !selected.is_empty() || allocations.is_empty() {
         return Err(AppError::bad_request(
@@ -225,13 +254,24 @@ async fn create(
     let payable = account(&mut tx, "purchase_payable").await?;
     let variance = account(&mut tx, "purchase_return_variance").await?;
     journal_line(&mut tx, journal, &payable, total - excess).await?;
-    journal_line(&mut tx, journal, "1100", refund).await?;
+    let cash = crate::treasury::cash_account(&mut tx, body.cash_account_code.as_deref()).await?;
+    journal_line(&mut tx, journal, &cash, refund).await?;
     if settlement_credit > Decimal::ZERO {
         let control = crate::settlements::party_control_account(&mut tx, "supplier").await?;
         journal_line(&mut tx, journal, &control, settlement_credit).await?;
     }
     journal_line(&mut tx, journal, "1300", -carrying).await?;
-    journal_line(&mut tx, journal, &variance, carrying - total).await?;
+    let service = account(&mut tx, "purchase_service_expense").await?;
+    let input_tax = account(&mut tx, "purchase_input_tax").await?;
+    journal_line(&mut tx, journal, &service, -service_credit).await?;
+    journal_line(&mut tx, journal, &input_tax, -total_tax).await?;
+    journal_line(
+        &mut tx,
+        journal,
+        &variance,
+        carrying - (total - total_tax - service_credit),
+    )
+    .await?;
     sqlx::query("INSERT INTO supplier_returns(id,number,bill_id,credit_total,inventory_value,refund,reason,journal_id,created_by,settlement_mode,settlement_credit) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
  .bind(return_id).bind(&number).bind(id).bind(total).bind(carrying).bind(refund).bind(&reason).bind(journal).bind(user.id).bind(mode).bind(settlement_credit).execute(&mut *tx).await?;
     if settlement_credit > Decimal::ZERO {
@@ -260,30 +300,48 @@ async fn create(
                 .await?;
         }
     }
-    for (position, (line, quantity, credit, value)) in allocations.iter().enumerate() {
+    for (position, (line, quantity, credit, value, tax)) in allocations.iter().enumerate() {
         let product_id: Uuid = line.get("product_id");
         let before: Decimal = line.get("stock_quantity");
         let before_value: Decimal = line.get("stock_value");
         let before_average: Decimal = line.get("stock_average");
         let remaining = before - quantity;
-        sqlx::query(
-            "UPDATE products SET quantity=$2,inventory_value=$3,average_cost=$4 WHERE id=$1",
-        )
-        .bind(product_id)
-        .bind(remaining)
-        .bind(before_value - value)
-        .bind(if remaining == Decimal::ZERO {
-            Decimal::ZERO
-        } else {
-            before_average
-        })
-        .execute(&mut *tx)
-        .await?;
-        let movement = Uuid::new_v4();
-        sqlx::query("INSERT INTO inventory_movements(id,product_id,kind,quantity,unit_cost,value,reference,created_by,supplier_return_id) VALUES($1,$2,'supplier_return',$3,$4,$5,$6,$7,$8)").bind(movement).bind(product_id).bind(-quantity).bind(before_average).bind(value).bind(&number).bind(user.id).bind(return_id).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO supplier_return_lines(id,return_id,bill_line_id,movement_id,position,product_id,product_sku,product_name,unit,quantity,credit,value,unit_cost,before_quantity,before_value,before_average) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)")
+        let is_stock = line.get::<String, _>("product_kind") == "stock";
+        if is_stock {
+            sqlx::query(
+                "UPDATE products SET quantity=$2,inventory_value=$3,average_cost=$4 WHERE id=$1",
+            )
+            .bind(product_id)
+            .bind(remaining)
+            .bind(before_value - value)
+            .bind(if remaining == Decimal::ZERO {
+                Decimal::ZERO
+            } else {
+                before_average
+            })
+            .execute(&mut *tx)
+            .await?;
+        }
+        let movement = if is_stock { Some(Uuid::new_v4()) } else { None };
+        if is_stock {
+            let detail = body
+                .items
+                .iter()
+                .find(|i| i.bill_line_id == line.get::<Uuid, _>("id"));
+            crate::inventory_extensions::set_context(
+                &mut tx,
+                crate::inventory_extensions::StockContext {
+                    warehouse_id: detail.and_then(|i| i.warehouse_id),
+                    lot_id: detail.and_then(|i| i.lot_id),
+                    allocations: detail.map(|i| i.allocations.clone()).unwrap_or_default(),
+                },
+            )
+            .await?;
+            sqlx::query("INSERT INTO inventory_movements(id,product_id,kind,quantity,unit_cost,value,reference,created_by,supplier_return_id) VALUES($1,$2,'supplier_return',$3,$4,$5,$6,$7,$8)").bind(movement).bind(product_id).bind(-quantity).bind(before_average).bind(value).bind(&number).bind(user.id).bind(return_id).execute(&mut *tx).await?;
+        }
+        sqlx::query("INSERT INTO supplier_return_lines(id,return_id,bill_line_id,movement_id,position,product_id,product_sku,product_name,unit,quantity,credit,value,unit_cost,before_quantity,before_value,before_average,product_kind,tax_value) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)")
   .bind(Uuid::new_v4()).bind(return_id).bind(line.get::<Uuid,_>("id")).bind(movement).bind((position+1) as i32).bind(product_id).bind(line.get::<String,_>("product_sku")).bind(line.get::<String,_>("product_name")).bind(line.get::<String,_>("unit"))
-  .bind(quantity).bind(credit).bind(value).bind(before_average).bind(before).bind(before_value).bind(before_average).execute(&mut *tx).await?;
+  .bind(quantity).bind(credit).bind(value).bind(before_average).bind(before).bind(before_value).bind(before_average).bind(line.get::<String,_>("product_kind")).bind(tax).execute(&mut *tx).await?;
     }
     sqlx::query("UPDATE purchase_bills SET credit_total=credit_total+$2,paid=paid-$3,status=CASE WHEN paid-$3=total-credit_total-$2 THEN 'paid' WHEN paid-$3=0 THEN 'unpaid' ELSE 'partial' END,version=version+1 WHERE id=$1").bind(id).bind(total).bind(excess).execute(&mut *tx).await?;
     sqlx::query("UPDATE purchase_orders SET version=version+1,updated_at=now() WHERE id=$1")
@@ -320,6 +378,10 @@ async fn reverse(
         .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(AppError::not_found)?;
+    if source.get::<Decimal, _>("refund") > Decimal::ZERO {
+        let cash = crate::treasury::journal_cash_account(&mut tx, source.get("journal_id")).await?;
+        crate::treasury::require_balance(&mut tx, &cash, source.get("refund")).await?;
+    }
     let bill_id: Uuid = source.get("bill_id");
     let bill = lock_bill(&mut tx, bill_id, body.version).await?;
     if let Some(reason) =
@@ -356,6 +418,9 @@ async fn reverse(
     sqlx::query("INSERT INTO journal_entries(id,description,source_type,source_id,created_by) VALUES($1,$2,'reversal',$3,$4)").bind(journal).bind(format!("Pembalikan retur {}",source.get::<String,_>("number"))).bind(reversal).bind(user.id).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO journal_lines(id,journal_id,account_code,debit,credit) SELECT gen_random_uuid(),$2,account_code,credit,debit FROM journal_lines WHERE journal_id=$1").bind(source.get::<Uuid,_>("journal_id")).bind(journal).execute(&mut *tx).await?;
     for line in lines {
+        if line.get::<String, _>("product_kind") != "stock" {
+            continue;
+        }
         let product_id: Uuid = line.get("product_id");
         sqlx::query(
             "UPDATE products SET quantity=$2,inventory_value=$3,average_cost=$4 WHERE id=$1",

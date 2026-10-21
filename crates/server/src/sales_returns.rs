@@ -53,10 +53,18 @@ async fn return_detail(
 struct ReturnItem {
     invoice_line_id: Uuid,
     quantity: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    warehouse_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lot_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    allocations: Vec<crate::inventory_extensions::StockSelection>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ReturnInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cash_account_code: Option<String>,
     version: i64,
     reason: String,
     items: Vec<ReturnItem>,
@@ -300,17 +308,10 @@ async fn create_return(
             "Confirm the immediate customer cash refund before posting this return",
         ));
     }
+    let cash_account =
+        crate::treasury::cash_account(&mut tx, body.cash_account_code.as_deref()).await?;
     if refund > Decimal::ZERO {
-        let cash: Decimal = sqlx::query_scalar(
-            "SELECT COALESCE(sum(debit-credit),0) FROM journal_lines WHERE account_code='1100'",
-        )
-        .fetch_one(&mut *tx)
-        .await?;
-        if refund > cash {
-            return Err(AppError::conflict(
-                "Cash balance is insufficient for this customer refund",
-            ));
-        }
+        crate::treasury::require_balance(&mut tx, &cash_account, refund).await?;
     }
     let return_id = Uuid::new_v4();
     let journal_id = Uuid::new_v4();
@@ -322,7 +323,7 @@ async fn create_return(
         &[
             ("4000", credit_total, Decimal::ZERO),
             ("1200", Decimal::ZERO, credit_total - excess),
-            ("1100", Decimal::ZERO, refund),
+            (&cash_account, Decimal::ZERO, refund),
             ("1300", cost_total, Decimal::ZERO),
             ("5000", Decimal::ZERO, cost_total),
         ],
@@ -370,6 +371,21 @@ async fn create_return(
         let mut before_value = None;
         let mut before_average = None;
         if line.kind == "stock" {
+            if let Some(input) = body
+                .items
+                .iter()
+                .find(|item| item.invoice_line_id == line.invoice_line_id)
+            {
+                crate::inventory_extensions::set_context(
+                    &mut tx,
+                    crate::inventory_extensions::StockContext {
+                        warehouse_id: input.warehouse_id,
+                        lot_id: input.lot_id,
+                        allocations: input.allocations.clone(),
+                    },
+                )
+                .await?;
+            }
             let product=sqlx::query("SELECT kind,quantity,inventory_value,average_cost FROM products WHERE id=$1 FOR UPDATE").bind(line.product_id).fetch_one(&mut *tx).await?;
             if product.get::<String, _>("kind") != "stock" {
                 return Err(AppError::conflict(

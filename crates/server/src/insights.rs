@@ -52,13 +52,13 @@ async fn insights(
             FROM bounds
         ), activity AS (
             SELECT date_trunc('month',j.created_at AT TIME ZONE b.tz) AS starts,
-                sum(CASE WHEN l.account_code='4000' THEN l.credit-l.debit ELSE 0 END) AS revenue,
-                sum(CASE WHEN l.account_code='5000' THEN l.debit-l.credit ELSE 0 END) AS cogs,
-                sum(CASE WHEN l.account_code='1100' THEN l.debit ELSE 0 END) AS cash_in,
-                sum(CASE WHEN l.account_code='1100' THEN l.credit ELSE 0 END) AS cash_out
+                sum(CASE WHEN l.account_code='4000' AND j.reporting_kind<>'year_close' THEN l.credit-l.debit ELSE 0 END) AS revenue,
+                sum(CASE WHEN l.account_code='5000' AND j.reporting_kind<>'year_close' THEN l.debit-l.credit ELSE 0 END) AS cogs,
+                sum(CASE WHEN l.account_code IN(SELECT account_code FROM treasury_accounts) AND EXISTS(SELECT 1 FROM journal_lines n WHERE n.journal_id=j.id AND n.account_code NOT IN(SELECT account_code FROM treasury_accounts)) THEN l.debit ELSE 0 END) AS cash_in,
+                sum(CASE WHEN l.account_code IN(SELECT account_code FROM treasury_accounts) AND EXISTS(SELECT 1 FROM journal_lines n WHERE n.journal_id=j.id AND n.account_code NOT IN(SELECT account_code FROM treasury_accounts)) THEN l.credit ELSE 0 END) AS cash_out
             FROM journal_entries j JOIN journal_lines l ON l.journal_id=j.id CROSS JOIN bounds b
             WHERE j.created_at >= (b.current_month-($1::int-1)*interval '1 month') AT TIME ZONE b.tz
-                AND j.created_at<=b.as_of AND l.account_code IN ('1100','4000','5000')
+                AND j.created_at<=b.as_of AND (l.account_code IN ('4000','5000') OR l.account_code IN(SELECT account_code FROM treasury_accounts))
             GROUP BY 1
         ), series AS (
             SELECT m.starts,COALESCE(a.revenue,0.00) AS revenue,COALESCE(a.cogs,0.00) AS cogs,

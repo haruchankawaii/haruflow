@@ -1,3 +1,4 @@
+import { billFinancialPreview, emptyBillAdjustments } from "./bills-model";
 import { describe, expect, test } from "bun:test";
 import {
   billChartRows,
@@ -208,4 +209,16 @@ test("partial bill previews allocate cumulative cents and preserve a billable fi
   expect(billAllocationPreview(receipt, { line: "0.999" }).total).toBe(1n);
   receipt.items[0].value = "0.01";
   expect(billAllocationPreview(receipt, { line: "0.999" }).issue).toBeTruthy();
+});
+
+
+test("invoice adjustments preserve exact tax rounding and explicit inclusive basis",()=>{
+ const exclusive=billFinancialPreview(28000n,{...emptyBillAdjustments,shipping:"20",discount:"10",tax_code:"T10",tax_name:"Pajak contoh",tax_rate:"10"});
+ expect(exclusive).toMatchObject({total:31900n,tax:2900n,issue:""});
+ const inclusive=billFinancialPreview(1000n,{...emptyBillAdjustments,tax_code:"T10",tax_name:"Pajak contoh",tax_rate:"10",tax_basis:"inclusive"});
+ expect(inclusive).toMatchObject({total:1000n,tax:91n,issue:""});
+ expect(billFinancialPreview(100n,{...emptyBillAdjustments,discount:"1"}).issue).not.toBe("");
+ expect(billFinancialPreview(100n,{...emptyBillAdjustments,tax_rate:"101"}).issue).not.toBe("");
+ expect(billFinancialPreview(100n,{...emptyBillAdjustments,tax_rate:"10"}).issue).not.toBe("");
+ expect(billFinancialPreview(100n,{...emptyBillAdjustments,shipping:"0.001"}).issue).not.toBe("");
 });

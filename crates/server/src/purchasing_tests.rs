@@ -368,7 +368,6 @@ async fn purchasing_rejects_invalid_contacts_dates_lines_and_decimal_values(pool
     }
     let supplier = supplier(&app, &cookie).await;
     let stock = product(&app, &cookie, "STOCK", "stock").await;
-    let service = product(&app, &cookie, "SERVICE", "service").await;
     let mut invalid_bodies = Vec::new();
     for (field, value) in [
         ("expected_date", json!("2026-02-30")),
@@ -378,10 +377,6 @@ async fn purchasing_rejects_invalid_contacts_dates_lines_and_decimal_values(pool
         ("expected_date", json!("+10000-01-01")),
         ("notes", json!("n".repeat(2001))),
         ("items", json!([])),
-        (
-            "items",
-            json!([{"product_id":service["id"],"quantity":"1","unit_cost":"10"}]),
-        ),
         (
             "items",
             json!([{"product_id":Uuid::new_v4(),"quantity":"1","unit_cost":"10"}]),

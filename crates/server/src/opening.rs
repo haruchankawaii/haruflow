@@ -45,6 +45,8 @@ struct ItemInput {
     product_id: Uuid,
     quantity: String,
     unit_cost: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stock_context: Option<crate::inventory_extensions::StockContext>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -111,6 +113,8 @@ struct Item {
     quantity: String,
     unit_cost: String,
     value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stock_context: Option<crate::inventory_extensions::StockContext>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -594,6 +598,7 @@ async fn validate(
             quantity: quantity.to_string(),
             unit_cost: cost.to_string(),
             value: value.to_string(),
+            stock_context: item.stock_context.clone(),
         });
     }
     let mut accounts = BTreeSet::new();
@@ -716,6 +721,7 @@ fn draft_inputs(
                 product_id: i.product_id,
                 quantity: i.quantity,
                 unit_cost: i.unit_cost,
+                stock_context: i.stock_context,
             })
             .collect(),
         lines
@@ -951,6 +957,11 @@ async fn post_opening(
         }
     }
     for item in &draft.items {
+        crate::inventory_extensions::set_context(
+            &mut tx,
+            item.stock_context.clone().unwrap_or_default(),
+        )
+        .await?;
         let quantity = number(&item.quantity)?;
         let value = number(&item.value)?;
         sqlx::query(

@@ -9,6 +9,140 @@ use uuid::Uuid;
 fn uid(value: &Value) -> Uuid {
     value["id"].as_str().unwrap().parse().unwrap()
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn historical_and_operational_debts_share_allocations_without_rewriting_past_statements(
+    pool: PgPool,
+) {
+    let (app, admin, cookie) = fixture(&pool).await;
+    let party = customer(&app, &cookie).await;
+    seed_invoice(&pool, admin, party, 100000, 0).await;
+    let document_csv = format!(
+        "reference,party_id,document_date,due_date,total,counter_account,description\nMIXED-HISTORY,{party},2020-01-01,2020-02-01,600000,4000,Invoice sebelum mulai Haruflow\n"
+    );
+    let preview = call(
+        &app,
+        &cookie,
+        "POST",
+        "/api/transaction-imports/customer_invoices/preview",
+        Some(json!({"csv":document_csv})),
+    )
+    .await;
+    assert_eq!(preview["preview"]["error_count"], 0);
+    let imported = call(
+        &app,
+        &cookie,
+        "POST",
+        &format!("/api/transaction-imports/{}/commit", uid(&preview)),
+        Some(json!({"confirmed":true,"idempotency_key":Uuid::new_v4()})),
+    )
+    .await;
+    let doc = uid(&imported["items"][0]);
+    let payment_csv = format!(
+        "reference,document_reference,party_id,payment_date,amount,cash_account_code\nMIXED-PAYMENT,MIXED-HISTORY,{party},2020-01-10,200000,1100\n"
+    );
+    let preview = call(
+        &app,
+        &cookie,
+        "POST",
+        "/api/transaction-imports/customer_payments/preview",
+        Some(json!({"csv":payment_csv})),
+    )
+    .await;
+    assert_eq!(preview["preview"]["error_count"], 0);
+    let paid = call(
+        &app,
+        &cookie,
+        "POST",
+        &format!("/api/transaction-imports/{}/commit", uid(&preview)),
+        Some(json!({"confirmed":true,"idempotency_key":Uuid::new_v4()})),
+    )
+    .await;
+    let payment = uid(&paid["items"][0]);
+    let original = fund(&app, &cookie, party, "300000").await;
+    let allocated = call(&app, &cookie, "POST", &format!("/api/party-funds/{}/allocate", uid(&original)), Some(json!({"version":original["version"],"items":[{"target_type":"historical_receivable","target_id":doc,"version":2,"amount":"150000"}],"idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(cash(&pool).await, Decimal::from(500000));
+    let statement_path = format!("/api/parties/customer/{party}/statement");
+    let current = call(&app, &cookie, "GET", &statement_path, None).await;
+    assert_eq!(current["summary"]["outstanding"], "350000.00");
+    assert_eq!(current["summary"]["credit_balance"], "150000.00");
+    assert_eq!(current["reconciliation"]["balanced"], true);
+    let early = call(
+        &app,
+        &cookie,
+        "GET",
+        &format!("{statement_path}?as_of=2020-01-05"),
+        None,
+    )
+    .await;
+    assert_eq!(early["summary"]["outstanding"], "600000.00");
+    assert_eq!(early["documents"][0]["paid"], "0.00");
+    assert_eq!(early["reconciliation"]["balanced"], true);
+    let historical_url = format!("?historical={doc}#transaction-imports");
+    assert_eq!(early["events"][0]["source_url"], historical_url);
+    let original_past = call(
+        &app,
+        &cookie,
+        "GET",
+        &format!("{statement_path}?as_of=2020-01-10"),
+        None,
+    )
+    .await;
+    assert_eq!(original_past["summary"]["outstanding"], "400000.00");
+    assert_eq!(original_past["documents"][0]["paid"], "200000.00");
+    let doc_state = call(
+        &app,
+        &cookie,
+        "GET",
+        &format!("/api/historical-documents/{doc}"),
+        None,
+    )
+    .await;
+    call(&app, &cookie, "POST", &format!("/api/historical-payments/{payment}/reverse"), Some(json!({"version":doc_state["version"],"reason":"Koreksi bukti bank historis","idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(cash(&pool).await, Decimal::from(300000));
+    let current = call(&app, &cookie, "GET", &statement_path, None).await;
+    assert_eq!(current["summary"]["outstanding"], "550000.00");
+    assert_eq!(current["reconciliation"]["balanced"], true);
+    let allocation = uid(&allocated["allocations"][0]);
+    call(
+        &app,
+        &cookie,
+        "POST",
+        &format!("/api/party-allocations/{allocation}/reverse"),
+        Some(action(&allocated)),
+    )
+    .await;
+    let doc_state = call(
+        &app,
+        &cookie,
+        "GET",
+        &format!("/api/historical-documents/{doc}"),
+        None,
+    )
+    .await;
+    call(&app, &cookie, "POST", &format!("/api/historical-documents/{doc}/reverse"), Some(json!({"version":doc_state["version"],"reason":"Dokumen historis ganda","idempotency_key":Uuid::new_v4()}))).await;
+    let current = call(&app, &cookie, "GET", &statement_path, None).await;
+    assert_eq!(current["summary"]["outstanding"], "100000.00");
+    assert_eq!(current["summary"]["credit_balance"], "300000.00");
+    assert_eq!(current["reconciliation"]["balanced"], true);
+    let after_past = call(
+        &app,
+        &cookie,
+        "GET",
+        &format!("{statement_path}?as_of=2020-01-10"),
+        None,
+    )
+    .await;
+    for field in ["summary", "opening", "events", "aging", "reconciliation"] {
+        assert_eq!(
+            after_past[field], original_past[field],
+            "Later reversals must never change prior cutoff {field}"
+        );
+    }
+    assert_eq!(after_past["documents"][0]["paid"], "200000.00");
+    assert_eq!(after_past["documents"][0]["outstanding"], "400000.00");
+    assert_eq!(cash(&pool).await, Decimal::from(300000));
+}
 fn money(value: &Value, key: &str) -> Decimal {
     value[key].as_str().unwrap().parse().unwrap()
 }
@@ -314,17 +448,28 @@ async fn settlement_upgrade_preserves_legacy_cash_and_journal_rows_without_fundi
     let (app, admin, cookie) = fixture(&pool).await;
     let party = customer(&app, &cookie).await;
     let invoice = seed_invoice(&pool, admin, party, 1000, 2).await;
-    call(
-        &app,
-        &cookie,
-        "POST",
-        &format!("/api/invoices/{invoice}/payments"),
-        Some(json!({"amount":"500","idempotency_key":Uuid::new_v4()})),
-    )
-    .await;
+    // Seed using the schema-21 contract: the current API requires schema-30 readiness.
+    let payment = Uuid::new_v4();
+    let journal = Uuid::new_v4();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("INSERT INTO payments(id,invoice_id,amount,created_by) VALUES($1,$2,500,$3)")
+        .bind(payment)
+        .bind(invoice)
+        .bind(admin)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE invoices SET paid=500,status='partial',version=version+1 WHERE id=$1")
+        .bind(invoice)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO journal_entries(id,description,source_type,source_id,created_by) VALUES($1,'Legacy payment','payment',$2,$3)").bind(journal).bind(payment).bind(admin).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO journal_lines(id,journal_id,account_code,debit,credit) VALUES($1,$2,'1100',500,0),($3,$2,'1200',0,500)").bind(Uuid::new_v4()).bind(journal).bind(Uuid::new_v4()).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
     let before:Value=sqlx::query_scalar("SELECT jsonb_build_object('payments',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM payments p),'journals',(SELECT jsonb_agg(to_jsonb(j) ORDER BY id) FROM journal_entries j),'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM journal_lines l))").fetch_one(&pool).await.unwrap();
     sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
-    let after:Value=sqlx::query_scalar("SELECT jsonb_build_object('payments',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM payments p),'journals',(SELECT jsonb_agg(to_jsonb(j) ORDER BY id) FROM journal_entries j),'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM journal_lines l))").fetch_one(&pool).await.unwrap();
+    let after:Value=sqlx::query_scalar("SELECT jsonb_build_object('payments',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM payments p),'journals',(SELECT jsonb_agg(to_jsonb(j)-'posted_at'-'reporting_kind' ORDER BY id) FROM journal_entries j),'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM journal_lines l))").fetch_one(&pool).await.unwrap();
     assert_eq!(after, before);
     assert_eq!(cash(&pool).await, Decimal::from(500));
     let funds = call(

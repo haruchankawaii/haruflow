@@ -1,7 +1,7 @@
 import { moneyCents } from "./dashboard-charts";
 export type PartySide = "customer" | "supplier";
 export type PartyTargetType =
-  "invoice" | "bill" | "opening_receivable" | "opening_payable";
+  "invoice" | "bill" | "opening_receivable" | "opening_payable" | "historical_receivable" | "historical_payable";
 export interface PartyTarget {
   target_type: PartyTargetType;
   id: string;
@@ -99,6 +99,7 @@ export interface PartyEvent {
   credit_balance: string;
   net_balance: string;
   url?: string;
+  source_url?: string | null;
 }
 export interface PartyStatement {
   side: PartySide;
@@ -172,6 +173,10 @@ export const eventNames: Record<string, string> = {
   opening_receivable: "Piutang pembukaan",
   opening_payable: "Utang pembukaan",
   purchase_bill: "Tagihan supplier",
+  historical_document: "Tagihan historis",
+  historical_payment: "Pembayaran historis",
+  historical_document_reversal: "Pembalikan tagihan historis",
+  historical_payment_reversal: "Pembalikan pembayaran historis",
 };
 export type PartyFundActionType =
   | "request"
@@ -187,10 +192,11 @@ export function partyFundActionInput(
   reason: string,
   amount: string,
   reference: string,
+  cashAccountCode?: string,
 ) {
   const base = { version, reason: reason.trim() };
   return type === "refund" || type === "request_pay"
-    ? { ...base, amount, confirmed: true, reference: reference.trim() || null }
+    ? { ...base, amount, confirmed: true, reference: reference.trim() || null, ...(cashAccountCode ? { cash_account_code: cashAccountCode } : {}) }
     : type === "request"
       ? { ...base, amount }
       : base;
@@ -246,7 +252,8 @@ export function allocationPreview(
   return { total, items, error };
 }
 export function targetHref(target: Pick<PartyTarget, "target_type" | "id">) {
-  return target.target_type === "invoice"
+  return target.target_type.startsWith("historical_") ? `?historical=${target.id}#transaction-imports`
+    : target.target_type === "invoice"
     ? `?invoice=${target.id}#sales`
     : target.target_type === "bill"
       ? `?bill=${target.id}#purchasing`
@@ -254,6 +261,8 @@ export function targetHref(target: Pick<PartyTarget, "target_type" | "id">) {
 }
 export function eventHref(event: PartyEvent) {
   if (event.url) return event.url;
+  if (event.source_url) return event.source_url;
+  if (event.target_type?.startsWith("historical_") && event.target_id) return `?historical=${event.target_id}#transaction-imports`;
   if (["advance", "return_credit", "opening_credit"].includes(event.event_type))
     return `?fund=${event.id}#balances`;
   if (event.source_type === "opening_item")

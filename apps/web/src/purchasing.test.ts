@@ -82,7 +82,7 @@ describe("purchase previews", () => {
         { id: "stock", kind: "stock" },
         { id: "service", kind: "service" },
       ] as Product[]).map((product) => product.id),
-    ).toEqual(["stock"]);
+    ).toEqual(["stock", "service"]);
   });
   test("commitment uses confirmed order totals and keeps cancelled amounts separate", () => {
     const summary = purchaseSummary([

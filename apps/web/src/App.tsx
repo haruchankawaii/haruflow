@@ -37,6 +37,8 @@ import Settings from "./Settings";
 import Purchasing from "./Purchasing";
 import PartyBalances from "./PartyBalances";
 import History from "./History";
+import Treasury from "./Treasury";
+import { TransactionImports } from "./TransactionImports";
 import type { Session } from "./types";
 
 const navigation = [
@@ -47,6 +49,8 @@ const navigation = [
   { key: "customers", label: "Pelanggan", icon: Users },
   { key: "accounting", label: "Akuntansi", icon: WalletCards },
   { key: "balances", label: "Saldo pihak", icon: HandCoins },
+  { key: "treasury", label: "Kas & bank", icon: WalletCards },
+  { key: "transaction-imports", label: "Impor transaksi", icon: ClipboardList },
   { key: "history", label: "Riwayat lengkap", icon: HistoryIcon },
 ];
 const validPages = [...navigation.map((item) => item.key), "settings"];
@@ -346,6 +350,10 @@ export default function App() {
                 <PartyBalances role={session.user.role} changed={changed} />
               ) : page === "history" ? (
                 <History />
+              ) : page === "treasury" ? (
+                <Treasury role={session.user.role} changed={changed}/>
+              ) : page === "transaction-imports" ? (
+                <TransactionImports revision={revision} canManage={["admin","finance"].includes(session.user.role)} onSaved={changed}/>
               ) : (
                 <Settings
                   session={session}

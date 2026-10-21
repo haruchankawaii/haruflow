@@ -1,4 +1,7 @@
+import { CashAccountSelect } from "./CashAccountSelect";
 import { useRef, useState, type FormEvent } from "react";
+import {StockContextFields} from './StockContextFields';
+import type {StockContextInput} from './inventory-model';
 import { api, errorMessage } from "./api";
 import { AttachmentsPanel } from "./AttachmentsPanel";
 import { FormError, FormField } from "./components";
@@ -52,9 +55,11 @@ export function ReturnsPanel({
   const [formVersion, setFormVersion] = useState(version);
   const [selected, setSelected] = useState<ReturnRecord | null>(null);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [stockContexts,setStockContexts]=useState<Record<string,StockContextInput>>({});
   const [reason, setReason] = useState("");
   const [review, setReview] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [cashAccount, setCashAccount] = useState("1100");
   const [refundMode, setRefundMode] = useState<ReturnRefundMode>("immediate");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -66,10 +71,12 @@ export function ReturnsPanel({
     setCreating(false);
     setSelected(null);
     setQuantities({});
+    setStockContexts({});
     setReason("");
     setReview(false);
     setConfirmed(false);
     setRefundMode("immediate");
+    setCashAccount("1100");
     setError("");
   }
   async function submit(event: FormEvent) {
@@ -110,9 +117,11 @@ export function ReturnsPanel({
           reason: reason.trim(),
           refund_confirmed: confirmed,
           refund_mode: refundMode,
+          ...(returnSettlementCash(preview.refund, refundMode) > 0n ? { cash_account_code: cashAccount } : {}),
           items: preview.items.map((item) => ({
             [supplier ? "bill_line_id" : "invoice_line_id"]: item.id,
             quantity: item.quantity,
+            ...(stockContexts[item.id]??{}),
           })),
         };
     identity.current = requestIdentity(identity.current, { path, ...payload });
@@ -317,6 +326,7 @@ export function ReturnsPanel({
                           <small className="bill-cell-sub">
                             {item.product_sku ?? item.sku}
                           </small>
+                          {item.product_kind!=='service'&&item.product_id&&<details><summary>Gudang dan lot / seri</summary><StockContextFields productId={item.product_id} value={stockContexts[item.id]??{}} onChange={value=>setStockContexts(current=>({...current,[item.id]:value}))} incoming={!supplier} disabled={busy}/></details>}
                         </td>
                         <td>
                           {returnQuantityLabel(item.remaining_return_quantity)}{" "}
@@ -408,6 +418,7 @@ export function ReturnsPanel({
                   </p>
                 </FormField>
               )}
+              {returnSettlementCash(preview.refund, refundMode) > 0n && <CashAccountSelect value={cashAccount} onChange={setCashAccount} disabled={busy || review} label={supplier ? "Rekening penerimaan refund retur" : "Rekening pembayaran refund retur"} />}
               {returnSettlementCash(preview.refund, refundMode) > 0n && (
                 <label className="returns-confirm">
                   <input
@@ -434,7 +445,7 @@ export function ReturnsPanel({
               Jurnal retur dan kredit {exactMoney(selected.credit_total)}{" "}
               dibalik. Stok dipulihkan hanya jika belum memiliki mutasi
               lanjutan. Pengembalian uang yang tercatat ikut dibalik sebesar{" "}
-              {exactMoney(selected.refund)}.
+              {exactMoney(selected.refund)}. Rekening mengikuti jurnal retur asli.
             </p>
           )}
           {selected && moneyCents(selected.refund) > 0n && (

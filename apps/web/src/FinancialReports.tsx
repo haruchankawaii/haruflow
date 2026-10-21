@@ -456,8 +456,8 @@ function CashFlowView({
         difference={cash.difference}
       />
       <p className="financial-report-hint">
-        Metode langsung untuk akun Kas 1100. Rekening aset lain belum termasuk
-        kas atau setara kas. Saldo awal pembukuan, jurnal campuran, dan akun
+        Metode langsung untuk seluruh akun kas dan bank terdaftar. Transfer
+        antarrekening tidak menambah arus kas eksternal. Saldo awal pembukuan, jurnal campuran, dan akun
         aset/liabilitas kustom yang belum jelas masuk kelompok belum
         terklasifikasi. Klasifikasi manual memiliki alasan dan riwayat, termasuk
         pada periode tertutup.
@@ -526,7 +526,7 @@ function CashFlowView({
       {!entries.length ? (
         <EmptyState
           title="Belum ada pergerakan kas"
-          description="Jurnal dengan akun Kas 1100 pada periode dan aktivitas ini akan muncul di sini."
+          description="Jurnal kas dan bank terdaftar pada periode dan aktivitas ini akan muncul di sini."
         />
       ) : (
         <>
@@ -552,7 +552,7 @@ function CashFlowView({
                       <small className="financial-cell-note">
                         {e.counterparts
                           .map((a) => `${a.code} ${a.name}`)
-                          .join(", ") || "Antarbaris Kas 1100"}
+                          .join(", ") || "Antarbaris kas dan bank"}
                       </small>
                     </td>
                     <td>

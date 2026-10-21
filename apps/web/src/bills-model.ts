@@ -16,6 +16,12 @@ export interface SupplierPayment {
   reversal: PurchaseReceipt["reversal"];
 }
 export interface SupplierBill {
+  receipt_value?: string;
+  subtotal?: string;
+  shipping?: string;
+  discount?: string;
+  tax_value?: string;
+  tax_snapshot?: {code:string;name:string;rate:string;basis:string}|null;
   fund_allocations?: DocumentAllocation[];
   credit_total: string;
   net_total: string;
@@ -140,9 +146,11 @@ export function eligibleBillReceipts(orders: PurchaseOrder[]) {
 export function billAllocationPreview(
   receipt: PurchaseReceipt | undefined,
   quantities: Record<string, string>,
+  prices: Record<string, string> = {},
 ) {
-  const items: { receipt_line_id: string; quantity: string }[] = [];
+  const items: { receipt_line_id: string; quantity: string; unit_cost?:string }[] = [];
   let total = 0n;
+  let receiptTotal = 0n;
   let issue = "";
   const qty = (v: string) => {
     const [w, f = ""] = v.split(".");
@@ -184,11 +192,40 @@ export function billAllocationPreview(
       issue = "Nilai tagihan tidak cocok. Muat data terbaru.";
       continue;
     }
-    total += allocated;
-    items.push({ receipt_line_id: line.id, quantity: value });
+    receiptTotal += allocated;
+    const cost=prices[line.id]?.trim();
+    let invoiceValue=allocated;
+    if (cost) {
+      if (!/^\d+(\.\d{1,4})?$/.test(cost)) {issue="Harga invoice maksimal empat desimal.";continue;}
+      const [w,f=""]=cost.split("."); const units=BigInt(w)*10000n+BigInt(f.padEnd(4,"0"));
+      invoiceValue=(requested*units+50000n)/100000n;
+      if(units<=0n||units>10000000000000n||invoiceValue<=0n){issue="Harga invoice harus positif dan nilai baris minimal satu sen.";continue;}
+    }
+    total += invoiceValue;
+    items.push({ receipt_line_id: line.id, quantity: value,...(cost?{unit_cost:cost}:{}) });
   }
   if (!items.length || total <= 0n)
     issue =
       issue || "Pilih jumlah barang dengan total tagihan lebih besar dari nol.";
-  return { items, total, issue };
+  return { items, total, receiptTotal, issue };
+}
+
+export interface BillAdjustments {shipping:string;discount:string;tax_code:string;tax_name:string;tax_rate:string;tax_basis:"exclusive"|"inclusive";}
+export const emptyBillAdjustments:BillAdjustments={shipping:"0",discount:"0",tax_code:"",tax_name:"",tax_rate:"0",tax_basis:"exclusive"};
+export function billFinancialPreview(subtotal:bigint, draft:BillAdjustments) {
+ const parse=(v:string)=>{if(!/^\d+(\.\d{1,2})?$/.test(v))return null;const[w,f=""]=v.split(".");return BigInt(w)*100n+BigInt(f.padEnd(2,"0"));};
+ const shipping=parse(draft.shipping),discount=parse(draft.discount),rate=parse(draft.tax_rate);
+ let issue="";
+ if(shipping===null||discount===null||rate===null)issue="Ongkir, diskon, dan tarif pajak maksimal dua desimal.";
+ const base=subtotal+(shipping??0n)-(discount??0n);
+ if(base<=0n)issue||="Diskon harus lebih kecil dari subtotal ditambah ongkir.";
+ if((rate??0n)>10000n)issue||="Tarif pajak maksimal 100%.";
+ const hasTax=!!draft.tax_code.trim()||!!draft.tax_name.trim()||(rate??0n)>0n;
+ if(hasTax&&(!draft.tax_code.trim()||!draft.tax_name.trim()))issue||="Isi kode dan nama pajak yang dipilih.";
+ if(draft.tax_code.trim().length>64||draft.tax_name.trim().length>150)issue||="Kode pajak maksimal 64 dan nama maksimal 150 karakter.";
+ const divisor=draft.tax_basis==="inclusive"?10000n+(rate??0n):10000n;
+ const tax=base>0n?(base*(rate??0n)*2n+divisor)/(2n*divisor):0n;
+ const total=base+(draft.tax_basis==="exclusive"?tax:0n);
+ if(total>100000000000000n)issue||="Total tagihan maksimal Rp1 triliun.";
+ return {shipping:shipping??0n,discount:discount??0n,tax,total,issue,payload:{shipping:draft.shipping,discount:draft.discount,...(hasTax?{tax:{code:draft.tax_code.trim(),name:draft.tax_name.trim(),rate:draft.tax_rate,basis:draft.tax_basis}}:{})}};
 }

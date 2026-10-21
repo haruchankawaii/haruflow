@@ -126,6 +126,10 @@ Prioritas berikut mengikuti kebutuhan pilot pengguna setelah validasi paket ters
 
 Integrasi, HR/payroll, produksi, POS, multi-company/multicurrency, SSO, dan plugin tetap menjadi perluasan jangka berikutnya yang memerlukan lingkup tersendiri. Tidak ada jadwal rilis atau SLA yang dijanjikan dalam rencana ini.
 
+### Pembaruan enam prioritas usaha kecil
+
+Implementasi kandidat sekarang mencakup pembelian lanjutan, beberapa kas/bank dan rekonsiliasi, stok lokasi/lot/seri/reservasi, periode/tahun buku, impor transaksi historis dan operasi Windows. Panduan serta batas implementasi ada di [cakupan usaha kecil](COMMUNITY_SMALL_BUSINESS.md). Butir prioritas di atas tetap menjadi konteks kebutuhan pilot; fitur yang tersedia tidak berarti penerimaan bisnis nyata sudah selesai. [Form pilot](SMALL_BUSINESS_PILOT.md) memisahkan hasil sintetis dari persetujuan pemilik.
+
 ## 7. Skenario penerimaan yang harus tetap terjaga
 
 Gunakan transaksi tanpa pajak dan periksa melalui dokumen, mutasi, serta jurnal:

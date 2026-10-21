@@ -142,10 +142,10 @@ pub(crate) async fn journal(
 async fn dashboard(State(state): State<AppState>, _user: AuthUser) -> AppResult<Json<Value>> {
     let result: Value = sqlx::query_scalar(r#"
         SELECT jsonb_build_object(
-            'revenue',COALESCE((SELECT sum(credit-debit) FROM journal_lines WHERE account_code='4000'),0)::text,
+            'revenue',COALESCE((SELECT sum(l.credit-l.debit) FROM journal_lines l JOIN journal_entries j ON j.id=l.journal_id WHERE l.account_code='4000' AND j.reporting_kind<>'year_close'),0)::text,
             'outstanding',COALESCE((SELECT sum(debit-credit) FROM journal_lines WHERE account_code='1200'),0)::text,
             'inventory_value',COALESCE((SELECT sum(inventory_value) FROM products),0)::text,
-            'cash',COALESCE((SELECT sum(debit-credit) FROM journal_lines WHERE account_code='1100'),0)::text,
+            'cash',COALESCE((SELECT sum(debit-credit) FROM journal_lines WHERE account_code IN(SELECT account_code FROM treasury_accounts)),0)::text,
             'orders_count',(SELECT count(*) FROM sales_orders),
             'products_count',(SELECT count(*) FROM products),
             'customers_count',(SELECT count(*) FROM customers),
@@ -295,6 +295,8 @@ struct ReceiptInput {
     quantity: String,
     unit_cost: String,
     reference: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stock_context: Option<crate::inventory_extensions::StockContext>,
     idempotency_key: Uuid,
 }
 
@@ -311,6 +313,11 @@ async fn receive_stock(
         return Ok(Json(result));
     }
     crate::corrections::check_open(&mut tx).await?;
+    crate::inventory_extensions::set_context(
+        &mut tx,
+        body.stock_context.clone().unwrap_or_default(),
+    )
+    .await?;
     let quantity = parse(&body.quantity, 3, "Quantity")?;
     let unit_cost = parse(&body.unit_cost, 4, "Unit cost")?;
     let reference = optional_text(body.reference, 200, "Reference")?;
@@ -612,6 +619,8 @@ async fn invoices(State(state): State<AppState>, _user: AuthUser) -> AppResult<J
 #[derive(Deserialize, Serialize)]
 struct PaymentInput {
     amount: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cash_account_code: Option<String>,
     reference: Option<String>,
     idempotency_key: Uuid,
 }
@@ -640,6 +649,8 @@ async fn pay_invoice(
         return Ok(Json(result));
     }
     crate::corrections::check_open(&mut tx).await?;
+    let cash_account =
+        crate::treasury::cash_account(&mut tx, body.cash_account_code.as_deref()).await?;
     let invoice = sqlx::query(
         "SELECT total,credit_total,paid,number,status FROM invoices WHERE id=$1 FOR UPDATE",
     )
@@ -683,7 +694,7 @@ async fn pay_invoice(
         "payment",
         payment_id,
         &format!("Payment for {}", invoice.get::<String, _>("number")),
-        ("1100", "1200"),
+        (&cash_account, "1200"),
         amount,
     )
     .await?;

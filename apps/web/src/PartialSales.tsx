@@ -15,6 +15,8 @@ import { useResource } from "./hooks";
 import { ReasonForm } from "./InvoiceDetail";
 import type { Order, OrderLine, Role } from "./types";
 import { AttachmentsPanel } from "./AttachmentsPanel";
+import { StockContextFields } from "./StockContextFields";
+import type { StockContextInput } from "./inventory-model";
 
 export default function OrderDetail({
   id,
@@ -372,6 +374,7 @@ function AllocationForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const selected = lines.filter((line) => Number(values[line.id!] ?? 0) > 0);
+  const [stockContexts, setStockContexts] = useState<Record<string, StockContextInput>>({});
   const invoiceMinor = selected.reduce((sum, line) => {
     const quantity = toMinorUnits(line.quantity);
     const cumulative =
@@ -408,6 +411,7 @@ function AllocationForm({
           items: selected.map((line) => ({
             line_id: line.id,
             quantity: values[line.id!],
+            ...(action === "ship" && stockContexts[line.id!] ? {stock_context:stockContexts[line.id!]} : {}),
           })),
           idempotency_key: key,
         },
@@ -439,6 +443,7 @@ function AllocationForm({
             tetap tersedia pada pesanan.
           </p>
           {lines.map((line) => (
+            <div key={line.id}>
             <FormField
               key={line.id}
               label={`${line.sku} · ${(line as OrderLine & { name?: string }).name ?? line.product_name ?? ""} (maks. ${number(action === "ship" ? line.unshipped_quantity : line.invoiceable_quantity)})`}
@@ -465,6 +470,8 @@ function AllocationForm({
                 }}
               />
             </FormField>
+            {action === "ship" && line.product_kind !== "service" && <details><summary>Gudang dan lot / seri {line.sku}</summary><StockContextFields productId={line.product_id} value={stockContexts[line.id!]??{}} disabled={busy} onChange={value => {setStockContexts(current => ({...current,[line.id!]:value}));setKey(crypto.randomUUID());}} /></details>}
+            </div>
           ))}
           {action === "invoice" && (
             <div className="order-total">

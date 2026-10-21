@@ -1021,3 +1021,207 @@ async fn supplier_bill_upgrade_preserves_custom_accounts_and_blocks_manual_contr
     .unwrap();
     assert_eq!(credit, amount(&posted, "total"));
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn procurement_mixed_services_variance_tax_returns_and_reversal_preserve_stock(pool: PgPool) {
+    let (app, _, cookie) = fixture(&pool).await;
+    let supplier = supplier(&app, &cookie, "EXT-MIX").await;
+    let stock = product(&app, &cookie, "EXT-STOCK").await;
+    let service=call(&app,&cookie,"POST","/api/products",Some(json!({"sku":"EXT-SERVICE","name":"Jasa pemasangan","kind":"service","unit":"jam","price":"50"}))).await;
+    let draft=call(&app,&cookie,"POST","/api/purchase-orders",Some(json!({"supplier_id":supplier["id"],"items":[{"product_id":stock["id"],"quantity":"2","unit_cost":"100"},{"product_id":service["id"],"quantity":"1","unit_cost":"50"}],"idempotency_key":Uuid::new_v4()}))).await;
+    let confirmed = call(
+        &app,
+        &cookie,
+        "POST",
+        &format!("/api/purchase-orders/{}/confirm", id(&draft)),
+        Some(action(&draft)),
+    )
+    .await;
+    let received = call(
+        &app,
+        &cookie,
+        "POST",
+        &format!("/api/purchase-orders/{}/receive", id(&draft)),
+        Some(action(&confirmed)),
+    )
+    .await;
+    let r = receipt(&received);
+    assert_eq!(r["items"][1]["movement_id"], Value::Null);
+    let moves: i64 = sqlx::query_scalar("SELECT count(*) FROM inventory_movements")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(moves, 1);
+    let mut input = bill_body(&pool, &received, "EXT-MIX-INVOICE").await;
+    input["items"] = json!([{"receipt_line_id":r["items"][0]["id"],"quantity":"2","unit_cost":"110"},{"receipt_line_id":r["items"][1]["id"],"quantity":"1","unit_cost":"60"}]);
+    input["shipping"] = json!("20");
+    input["discount"] = json!("10");
+    input["tax"] = json!({"code":"TEST10","name":"Pajak contoh","rate":"10","basis":"exclusive"});
+    let posted = call(&app, &cookie, "POST", BILLS, Some(input.clone())).await;
+    assert_eq!(amount(&posted, "receipt_value"), d("250"));
+    assert_eq!(amount(&posted, "subtotal"), d("280"));
+    assert_eq!(amount(&posted, "tax_value"), d("29"));
+    assert_eq!(amount(&posted, "total"), d("319"));
+    assert_eq!(
+        call(&app, &cookie, "POST", BILLS, Some(input.clone())).await,
+        posted
+    );
+    input["shipping"] = json!("21");
+    assert_eq!(
+        request(&app, &cookie, "POST", BILLS, Some(input)).await.0,
+        StatusCode::CONFLICT
+    );
+    let values: (Decimal, Decimal) =
+        sqlx::query_as("SELECT quantity,inventory_value FROM products WHERE id=$1")
+            .bind(uid(&stock))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(values, (d("2"), d("200")));
+    let accrual:Decimal=sqlx::query_scalar("SELECT COALESCE(sum(debit-credit),0) FROM journal_lines WHERE account_code=(SELECT code FROM accounts WHERE system_role='purchase_receipt_accrual')").fetch_one(&pool).await.unwrap();
+    assert_eq!(accrual, Decimal::ZERO);
+    let ret=call(&app,&cookie,"POST",&format!("{BILLS}/{}/returns",id(&posted)),Some(json!({"version":posted["version"],"reason":"Kembalikan barang dan batalkan jasa","items":[{"bill_line_id":posted["items"][0]["id"],"quantity":"2"},{"bill_line_id":posted["items"][1]["id"],"quantity":"1"}],"idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(amount(&ret, "credit_total"), d("319"));
+    assert_eq!(ret["status"], "paid");
+    let tax:Decimal=sqlx::query_scalar("SELECT COALESCE(sum(debit-credit),0) FROM journal_lines WHERE account_code=(SELECT code FROM accounts WHERE system_role='purchase_input_tax')").fetch_one(&pool).await.unwrap();
+    assert_eq!(tax, Decimal::ZERO);
+    let return_id = ret["returns"][0]["id"].as_str().unwrap();
+    let restored=call(&app,&cookie,"POST",&format!("/api/supplier-returns/{return_id}/reverse"),Some(json!({"version":ret["version"],"reason":"Koreksi pengembalian supplier","idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(amount(&restored, "credit_total"), Decimal::ZERO);
+    let void = call(
+        &app,
+        &cookie,
+        "POST",
+        &reverse_bill_path(&restored),
+        Some(reverse_bill(&restored)),
+    )
+    .await;
+    assert_eq!(void["status"], "void");
+    let fresh = get_order(&app, &cookie, &received).await;
+    assert_eq!(
+        request(
+            &app,
+            &cookie,
+            "POST",
+            &reverse_receipt_path(&fresh),
+            Some(reverse_receipt(&fresh))
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let bad:i64=sqlx::query_scalar("SELECT count(*) FROM (SELECT journal_id FROM journal_lines GROUP BY journal_id HAVING sum(debit)<>sum(credit)) x").fetch_one(&pool).await.unwrap();
+    assert_eq!(bad, 0);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn procurement_partial_invoices_clear_original_accrual_and_inclusive_tax_rounds(
+    pool: PgPool,
+) {
+    let (app, _, cookie) = fixture(&pool).await;
+    let supplier = supplier(&app, &cookie, "EXT-PARTIAL").await;
+    let stock = product(&app, &cookie, "EXT-PARTIAL").await;
+    let order = received(&app, &cookie, &supplier, &stock).await;
+    let r = receipt(&order);
+    let mut input = bill_body(&pool, &order, "PARTIAL-1").await;
+    input["items"] =
+        json!([{"receipt_line_id":r["items"][0]["id"],"quantity":"0.5","unit_cost":"20"}]);
+    input["tax"] =
+        json!({"code":"T10","name":"Pajak contoh inklusif","rate":"10","basis":"inclusive"});
+    let posted = call(&app, &cookie, "POST", BILLS, Some(input)).await;
+    assert_eq!(amount(&posted, "total"), d("10"));
+    assert_eq!(amount(&posted, "tax_value"), d("0.91"));
+    let next = get_order(&app, &cookie, &order).await;
+    let mut last = bill_body(&pool, &next, "PARTIAL-2").await;
+    last["items"] =
+        json!([{"receipt_line_id":r["items"][0]["id"],"quantity":"0.625","unit_cost":"30"}]);
+    last["discount"] = json!("0.01");
+    let last = call(&app, &cookie, "POST", BILLS, Some(last)).await;
+    assert_eq!(amount(&last, "total"), d("18.74"));
+    assert_eq!(
+        amount(&posted, "receipt_value") + amount(&last, "receipt_value"),
+        amount(r, "total")
+    );
+    let accrual:Decimal=sqlx::query_scalar("SELECT COALESCE(sum(debit-credit),0) FROM journal_lines WHERE account_code=(SELECT code FROM accounts WHERE system_role='purchase_receipt_accrual')").fetch_one(&pool).await.unwrap();
+    assert_eq!(accrual, Decimal::ZERO);
+    let fresh = get_order(&app, &cookie, &order).await;
+    assert_eq!(receipt(&fresh)["can_bill"], false);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn procurement_rejects_invalid_adjustments_without_any_posting(pool: PgPool) {
+    let (app, _, cookie) = fixture(&pool).await;
+    let supplier = supplier(&app, &cookie, "EXT-INVALID").await;
+    let stock = product(&app, &cookie, "EXT-INVALID").await;
+    let order = received(&app, &cookie, &supplier, &stock).await;
+    let before = snapshot(&pool).await;
+    for (field, value) in [
+        ("discount", json!("999")),
+        ("shipping", json!("-1")),
+        ("shipping", json!("1.001")),
+        (
+            "tax",
+            json!({"code":"X","name":"Test","rate":"101","basis":"exclusive"}),
+        ),
+        (
+            "tax",
+            json!({"code":"X","name":"Test","rate":"10","basis":"unknown"}),
+        ),
+    ] {
+        let mut body = bill_body(&pool, &order, "INVALID").await;
+        body[field] = value;
+        let (status, value) = request(&app, &cookie, "POST", BILLS, Some(body)).await;
+        assert!(status.is_client_error(), "{status}: {value}");
+        assert_eq!(snapshot(&pool).await, before);
+    }
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn procurement_service_acceptance_and_bill_reverse_without_inventory_movements(pool: PgPool) {
+    let (app, _, cookie) = fixture(&pool).await;
+    let supplier = supplier(&app, &cookie, "EXT-SERVICE").await;
+    let service=call(&app,&cookie,"POST","/api/products",Some(json!({"sku":"ONLY-SERVICE","name":"Jasa konsultasi","kind":"service","unit":"jam","price":"50"}))).await;
+    let draft=call(&app,&cookie,"POST","/api/purchase-orders",Some(json!({"supplier_id":supplier["id"],"items":[{"product_id":service["id"],"quantity":"1","unit_cost":"50"}],"idempotency_key":Uuid::new_v4()}))).await;
+    let confirmed = call(
+        &app,
+        &cookie,
+        "POST",
+        &format!("/api/purchase-orders/{}/confirm", id(&draft)),
+        Some(action(&draft)),
+    )
+    .await;
+    let accepted = call(
+        &app,
+        &cookie,
+        "POST",
+        &format!("/api/purchase-orders/{}/receive", id(&draft)),
+        Some(action(&confirmed)),
+    )
+    .await;
+    let invoice = bill(&pool, &app, &cookie, &accepted, "SERVICE-INVOICE").await;
+    call(
+        &app,
+        &cookie,
+        "POST",
+        &reverse_bill_path(&invoice),
+        Some(reverse_bill(&invoice)),
+    )
+    .await;
+    let fresh = get_order(&app, &cookie, &accepted).await;
+    let undone = call(
+        &app,
+        &cookie,
+        "POST",
+        &reverse_receipt_path(&fresh),
+        Some(reverse_receipt(&fresh)),
+    )
+    .await;
+    assert_eq!(undone["status"], "confirmed");
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM inventory_movements")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    let balances:Decimal=sqlx::query_scalar("SELECT COALESCE(sum(debit-credit),0) FROM journal_lines WHERE account_code=(SELECT code FROM accounts WHERE system_role='purchase_service_expense')").fetch_one(&pool).await.unwrap();
+    assert_eq!(balances, Decimal::ZERO);
+}

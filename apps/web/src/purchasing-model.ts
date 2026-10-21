@@ -18,6 +18,7 @@ export interface PurchaseItem {
   product_id: string;
   product_sku: string;
   product_name: string;
+  product_kind?: "stock" | "service";
   unit: string;
   quantity: string;
   unit_cost: string;
@@ -57,7 +58,8 @@ export interface PurchaseReceipt {
   created_at: string;
   items: {
     id: string;
-    movement_id: string;
+    movement_id: string | null;
+    product_kind?: "stock" | "service";
     product_id: string;
     product_sku: string;
     product_name: string;
@@ -119,7 +121,7 @@ export interface PurchaseDraft {
 }
 
 export const purchaseProducts = (products: Product[]) =>
-  products.filter((product) => product.kind !== "service");
+  products;
 
 export function purchaseDraft(order?: PurchaseOrder): PurchaseDraft {
   return {
@@ -160,6 +162,8 @@ export function receiptPreview(
   quantities: Record<string, string>,
 ) {
   let total = 0n;
+  let stockTotal = 0n;
+  let serviceTotal = 0n;
   let issue = "";
   const items: { order_line_id: string; quantity: string }[] = [];
   for (const line of order.items) {
@@ -192,13 +196,14 @@ export function receiptPreview(
       issue ||=
         "Nilai setiap baris penerimaan harus lebih dari nol setelah pembulatan; perbesar jumlah atau isi 0 untuk melewati barang.";
     total += allocated;
+    if (line.product_kind === "service") serviceTotal += allocated; else stockTotal += allocated;
   }
   if (items.length === 0)
     issue ||= "Isi jumlah barang yang benar-benar diterima.";
   if (total <= 0n)
     issue ||=
       "Nilai penerimaan setelah pembulatan harus lebih dari nol; perbesar jumlah.";
-  return { total, items, issue, valid: !issue };
+  return { total, stockTotal, serviceTotal, items, issue, valid: !issue };
 }
 export function purchasePreview(draft: PurchaseDraft) {
   let total = 0n;

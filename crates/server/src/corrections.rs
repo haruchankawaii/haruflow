@@ -216,8 +216,9 @@ async fn close_period(
             "Close date must be after the previous closed period",
         ));
     }
-    sqlx::query("UPDATE accounting_period SET closed_through=$1,closed_by=$2,reason=$3,closed_at=now() WHERE singleton")
-        .bind(through).bind(user.id).bind(&reason).execute(&mut *tx).await?;
+    let version =
+        crate::fiscal::record_period(&mut tx, &user, "close", previous, Some(through), &reason)
+            .await?;
     let event_id = Uuid::new_v4();
     audit(
         &mut tx,
@@ -228,7 +229,7 @@ async fn close_period(
         json!({"through":through,"reason":reason}),
     )
     .await?;
-    let result = json!({"closed_through":through,"reason":reason});
+    let result = json!({"closed_through":through,"reason":reason,"version":version});
     remember(&mut tx, body.idempotency_key, &request, &result).await?;
     tx.commit().await?;
     Ok(Json(result))
@@ -240,6 +241,8 @@ struct AdjustmentInput {
     quantity: String,
     unit_cost: Option<String>,
     reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stock_context: Option<crate::inventory_extensions::StockContext>,
     idempotency_key: Uuid,
 }
 
@@ -258,6 +261,11 @@ async fn adjust_stock(
     check_open(&mut tx).await?;
     let quantity = Decimal::from_str(&body.quantity)
         .map_err(|_| AppError::bad_request("Quantity must be a signed decimal string"))?;
+    crate::inventory_extensions::set_context(
+        &mut tx,
+        body.stock_context.clone().unwrap_or_default(),
+    )
+    .await?;
     let magnitude = parse(&quantity.abs().to_string(), 3, "Quantity")?;
     let reason = reason(&body.reason)?;
     let product = sqlx::query(
@@ -499,18 +507,14 @@ async fn reverse_payment(
             "Payment balance does not permit this reversal",
         ));
     }
-    // check_open holds the shared posting lock, so another cash posting cannot
-    // spend this balance between checking it and recording the reversal.
-    let cash: Decimal = sqlx::query_scalar(
-        "SELECT COALESCE(sum(debit-credit),0) FROM journal_lines WHERE account_code='1100'",
+    let original_journal: Uuid = sqlx::query_scalar(
+        "SELECT id FROM journal_entries WHERE source_type='payment' AND source_id=$1",
     )
+    .bind(payment_id)
     .fetch_one(&mut *tx)
     .await?;
-    if cash < amount {
-        return Err(AppError::conflict(
-            "Cash balance is insufficient to reverse this payment",
-        ));
-    }
+    let cash_account = crate::treasury::journal_cash_account(&mut tx, original_journal).await?;
+    crate::treasury::require_balance(&mut tx, &cash_account, amount).await?;
     let reversal_id = reversal_record(&mut tx, &user, "payment", payment_id, &reason).await?;
     journal(
         &mut tx,
@@ -518,7 +522,7 @@ async fn reverse_payment(
         "reversal",
         reversal_id,
         &format!("Reverse payment: {reason}"),
-        ("1200", "1100"),
+        ("1200", &cash_account),
         amount,
     )
     .await?;

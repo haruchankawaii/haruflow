@@ -12,6 +12,7 @@ export function returnSettlementCash(refund: bigint, mode: ReturnRefundMode) {
 }
 export interface ReturnableItem {
   id: string;
+  product_id?: string;
   quantity: string;
   total?: string;
   value?: string;

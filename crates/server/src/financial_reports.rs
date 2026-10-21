@@ -65,7 +65,7 @@ async fn classify(
         .execute(&mut *tx)
         .await?;
     let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM journal_lines WHERE journal_id=$1 AND account_code='1100')",
+        "SELECT EXISTS(SELECT 1 FROM journal_lines WHERE journal_id=$1 AND account_code IN(SELECT account_code FROM treasury_accounts))",
     )
     .bind(id)
     .fetch_one(&mut *tx)
@@ -125,6 +125,9 @@ fn calendar(value: &str) -> AppResult<NaiveDate> {
 }
 
 fn amount(mut value: Decimal) -> String {
+    if value == Decimal::ZERO {
+        value = Decimal::ZERO;
+    }
     value.rescale(2);
     value.to_string()
 }
@@ -176,11 +179,15 @@ async fn reports(
         ));
     }
 
+    let cash_accounts: Vec<String> =
+        sqlx::query_scalar("SELECT account_code FROM treasury_accounts ORDER BY account_code")
+            .fetch_all(&mut *tx)
+            .await?;
     let rows = sqlx::query(r#"
         WITH activity AS (
             SELECT l.account_code,
                 sum(l.debit-l.credit) AS cumulative,
-                COALESCE(sum(l.debit-l.credit) FILTER (WHERE (j.created_at AT TIME ZONE $1)::date >= $2),0) AS period
+                COALESCE(sum(l.debit-l.credit) FILTER (WHERE (j.created_at AT TIME ZONE $1)::date >= $2 AND j.reporting_kind<>'year_close'),0) AS period
             FROM journal_lines l JOIN journal_entries j ON j.id=l.journal_id
             WHERE (j.created_at AT TIME ZONE $1)::date <= $3 GROUP BY l.account_code
         )
@@ -240,9 +247,9 @@ async fn reports(
             }
             _ => unreachable!("account kind constrained by schema"),
         }
-        if code == "1100" {
-            ending_cash = cumulative;
-            beginning_cash = cumulative - period;
+        if cash_accounts.contains(&code) {
+            ending_cash += cumulative;
+            beginning_cash += cumulative - period;
         }
     }
     let cash_rows = sqlx::query(r#"
@@ -250,10 +257,11 @@ async fn reports(
             SELECT j.id,j.source_type,j.source_id,j.description,j.created_at,
                 COALESCE(r.source_type,j.source_type) AS original_source_type,
                 sum(l.debit) AS cash_in,sum(l.credit) AS cash_out
-            FROM journal_entries j JOIN journal_lines l ON l.journal_id=j.id AND l.account_code='1100'
+            FROM journal_entries j JOIN journal_lines l ON l.journal_id=j.id AND l.account_code IN(SELECT account_code FROM treasury_accounts)
             LEFT JOIN posting_reversals r ON j.source_type='reversal' AND r.id=j.source_id
             WHERE (j.created_at AT TIME ZONE $1)::date BETWEEN $2 AND $3
             GROUP BY j.id,r.source_type
+            HAVING sum(l.debit-l.credit)<>0 OR EXISTS(SELECT 1 FROM journal_lines noncash WHERE noncash.journal_id=j.id AND noncash.account_code NOT IN(SELECT account_code FROM treasury_accounts))
         )
         SELECT c.*,to_jsonb(c.created_at) AS at,
             (SELECT jsonb_build_object('category',m.category,'version',m.version,'reason',m.reason,
@@ -266,7 +274,7 @@ async fn reports(
                 'system_role',x.system_role,'debit',x.debit::text,'credit',x.credit::text) ORDER BY x.code)
                 FROM (SELECT a.code,a.name,a.kind,a.system_role,sum(l.debit) AS debit,sum(l.credit) AS credit
                     FROM journal_lines l JOIN accounts a ON a.code=l.account_code
-                    WHERE l.journal_id=c.id AND l.account_code<>'1100' GROUP BY a.code) x),'[]'::jsonb) AS counterparts
+                    WHERE l.journal_id=c.id AND l.account_code NOT IN(SELECT account_code FROM treasury_accounts) GROUP BY a.code) x),'[]'::jsonb) AS counterparts
         FROM cash c ORDER BY c.created_at,c.id
     "#).bind(&timezone).bind(from).bind(to).fetch_all(&mut *tx).await?;
     let mut totals = [[Decimal::ZERO; 2]; 4];
@@ -331,7 +339,7 @@ async fn reports(
             "retained_earnings_accounts":retained_accounts,"assets_total":amount(assets_total),"liabilities_total":amount(liabilities_total),
             "equity_total":amount(equity_total),"retained_earnings":amount(retained),"liabilities_and_equity_total":amount(liabilities_and_equity),
             "difference":amount(difference),"balanced":difference==Decimal::ZERO},
-        "cash_flow":{"account_code":"1100","beginning_balance":amount(beginning_cash),"ending_balance":amount(ending_cash),
+        "cash_flow":{"account_code":cash_accounts.join(","),"account_codes":cash_accounts,"beginning_balance":amount(beginning_cash),"ending_balance":amount(ending_cash),
             "cash_in":amount(cash_in),"cash_out":amount(cash_out),"net_change":amount(cash_in-cash_out),"difference":amount(cash_difference),
             "reconciled":cash_difference==Decimal::ZERO,"categories":categories,"entries":entries}});
     tx.commit().await?;

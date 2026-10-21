@@ -31,6 +31,8 @@ pub fn router() -> Router<AppState> {
 pub(crate) struct AllocationInput {
     line_id: Uuid,
     quantity: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stock_context: Option<crate::inventory_extensions::StockContext>,
 }
 #[derive(Deserialize, Serialize)]
 pub(crate) struct PartialInput {
@@ -136,6 +138,13 @@ pub(crate) async fn ship_order(
         .await?;
     let mut total = Decimal::ZERO;
     for (line_id, product_id, quantity) in chosen {
+        let context = body
+            .items
+            .as_ref()
+            .and_then(|items| items.iter().find(|item| item.line_id == line_id))
+            .and_then(|item| item.stock_context.clone())
+            .unwrap_or_default();
+        crate::inventory_extensions::set_context(&mut tx, context).await?;
         let product=sqlx::query("SELECT sku,kind,unit,quantity,average_cost,inventory_value FROM products WHERE id=$1 FOR UPDATE")
             .bind(product_id).fetch_one(&mut *tx).await?;
         let before_quantity: Decimal = product.get("quantity");

@@ -2,8 +2,10 @@ import { lineTotal } from "./format";
 import { isControlAccount } from "./account-controls";
 import type { Account, Product } from "./types";
 import { openingPartyPreview, type OpeningParty } from "./opening-parties";
+import type { StockContextInput } from "./inventory-model";
 
 export interface OpeningItem {
+  stock_context?: StockContextInput;
   product_id: string;
   sku: string;
   name: string;
@@ -52,7 +54,7 @@ export interface OpeningState {
 }
 export interface OpeningDraft {
   description: string;
-  items: { product_id: string; quantity: string; unit_cost: string }[];
+  items: { product_id: string; quantity: string; unit_cost: string; stock_context?: StockContextInput }[];
   lines: { account_code: string; debit: string; credit: string }[];
   parties?: OpeningParty[];
 }
@@ -70,10 +72,11 @@ export function openingDraft(document: OpeningDocument | null): OpeningDraft {
   return {
     description: document?.description ?? "Saldo awal usaha",
     items: (document?.items ?? []).map(
-      ({ product_id, quantity, unit_cost }) => ({
+      ({ product_id, quantity, unit_cost, stock_context }) => ({
         product_id,
         quantity,
         unit_cost,
+        ...(stock_context ? {stock_context} : {}),
       }),
     ),
     // The server returns the generated inventory control line as well.

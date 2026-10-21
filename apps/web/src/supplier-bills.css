@@ -377,3 +377,5 @@
     grid-template-columns: 1fr;
   }
 }
+
+.bill-adjustments{border:1px solid var(--border);border-radius:12px;padding:16px;}.bill-adjustments legend{font-weight:600;padding:0 6px}.bill-financial-review{padding:16px;background:var(--surface-subtle,#f6f8fb);border-radius:12px}.bill-financial-review>div{display:flex;justify-content:space-between;gap:16px;margin:8px 0}.bill-financial-review p{margin-bottom:0;color:var(--muted)}

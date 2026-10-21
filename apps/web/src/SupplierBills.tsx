@@ -46,7 +46,7 @@ import { ReturnsPanel } from "./ReturnsPanel";
 import { AttachmentsPanel } from "./AttachmentsPanel";
 import { documentSettlement } from "./document-settlement";
 import { SupplierPayablesInsights } from "./SupplierPayablesInsights";
-import { billAllocationPreview } from "./bills-model";
+import { billAllocationPreview, billFinancialPreview, emptyBillAdjustments, type BillAdjustments } from "./bills-model";
 import { DocumentAllocations } from "./DocumentAllocations";
 
 export function SupplierBills({
@@ -268,7 +268,7 @@ export function SupplierBills({
             description={
               search || status || due
                 ? "Ubah pencarian atau filter untuk melihat tagihan lain."
-                : "Pilih penerimaan PO aktif, lalu isi nomor invoice dan jatuh temponya. Nilai tagihan mengikuti barang yang diterima."
+                : "Pilih penerimaan PO aktif, lalu isi nomor invoice dan jatuh temponya. Harga invoice, ongkir, diskon, serta pajak dapat ditinjau tanpa mengubah biaya persediaan asal."
             }
             action={
               canManage &&
@@ -498,7 +498,11 @@ export function SupplierBillForm({
       (receiptId ? receipt.id === receiptId : receipt.can_bill) &&
       !receipt.reversal,
   );
-  const allocation = billAllocationPreview(source, quantities);
+  const [prices,setPrices]=useState<Record<string,string>>({});
+  const [adjustments,setAdjustments]=useState<BillAdjustments>({...emptyBillAdjustments});
+  const [reviewed,setReviewed]=useState(false);
+  const allocation = billAllocationPreview(source, quantities,prices);
+  const financial=billFinancialPreview(allocation.total,adjustments);
   const [draft, setDraft] = useState<BillDraft>({
     supplier_invoice_number: "",
     invoice_date: "",
@@ -532,15 +536,17 @@ export function SupplierBillForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busyRef.current || !order.data || !source || !eligible) return;
-    if (issue || allocation.issue) {
-      setError(issue || allocation.issue);
+    if (issue || allocation.issue || financial.issue) {
+      setError(issue || allocation.issue || financial.issue);
       return;
     }
+    if(!reviewed){setReviewed(true);return;}
     busyRef.current = true;
     setBusy(true);
     setError("");
     setConflict(false);
     const payload = {
+      ...financial.payload,
       receipt_id: source.id,
       order_version: order.data.version,
       supplier_invoice_number: draft.supplier_invoice_number.trim(),
@@ -568,12 +574,12 @@ export function SupplierBillForm({
     <Modal
       wide
       title="Catat tagihan supplier"
-      description="Pilih jumlah barang yang akan ditagih dari penerimaan PO."
+      description="Tagih barang atau jasa yang diterima, lalu tinjau harga dan penyesuaian."
       onClose={() => {
         if (!busyRef.current) onClose();
       }}
     >
-      <form onSubmit={submit}>
+      <form onSubmit={submit} onChange={()=>setReviewed(false)}>
         <div className="form-body bill-form-body">
           {orders.loading ? (
             <Loading />
@@ -593,7 +599,7 @@ export function SupplierBillForm({
                     event.target.value.split("|");
                   setOrderId(nextOrder ?? "");
                   setReceiptId(nextReceipt ?? "");
-                  setQuantities({});
+                  setQuantities({});setPrices({});setReviewed(false);
                   setError("");
                   setConflict(false);
                 }}
@@ -672,7 +678,7 @@ export function SupplierBillForm({
                             <tr>
                               <th>Barang</th>
                               <th>Sisa belum ditagih</th>
-                              <th>Jumlah ditagih</th>
+                              <th>Jumlah ditagih</th><th>Harga satuan invoice (opsional)</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -709,13 +715,14 @@ export function SupplierBillForm({
                                       }
                                     />
                                   </td>
+                                  <td><input aria-label={`Harga invoice ${line.product_name}`} inputMode="decimal" placeholder={line.unit_cost} value={prices[line.id]??""} disabled={busy} onChange={e=>setPrices(p=>({...p,[line.id]:e.target.value}))}/><small className="muted">Kosong: nilai penerimaan asli · {line.product_kind==="service"?"Jasa":"Stok"}</small></td>
                                 </tr>
                               ))}
                           </tbody>
                         </table>
                       </div>
                       <div className="purchase-detail-total">
-                        <span>Total tagihan</span>
+                        <span>Subtotal harga invoice</span>
                         <strong>{exactMoney(allocation.total)}</strong>
                       </div>
                       <FormError error={allocation.issue} />
@@ -778,19 +785,37 @@ export function SupplierBillForm({
               onChange={(event) => set("notes", event.target.value)}
             />
           </FormField>
+          <fieldset className="bill-adjustments"><legend>Ongkir, diskon, dan pajak</legend>
+            <div className="bill-form-grid">
+              <FormField label="Ongkir"><input inputMode="decimal" value={adjustments.shipping} disabled={busy} onChange={e=>setAdjustments(p=>({...p,shipping:e.target.value}))}/></FormField>
+              <FormField label="Diskon"><input inputMode="decimal" value={adjustments.discount} disabled={busy} onChange={e=>setAdjustments(p=>({...p,discount:e.target.value}))}/></FormField>
+              <FormField label="Kode pajak (opsional)"><input maxLength={64} value={adjustments.tax_code} disabled={busy} onChange={e=>setAdjustments(p=>({...p,tax_code:e.target.value}))}/></FormField>
+              <FormField label="Nama pajak"><input maxLength={150} value={adjustments.tax_name} disabled={busy} onChange={e=>setAdjustments(p=>({...p,tax_name:e.target.value}))}/></FormField>
+              <FormField label="Tarif pajak (%)"><input inputMode="decimal" value={adjustments.tax_rate} disabled={busy} onChange={e=>setAdjustments(p=>({...p,tax_rate:e.target.value}))}/></FormField>
+              <FormField label="Basis harga dan penyesuaian"><select value={adjustments.tax_basis} disabled={busy} onChange={e=>setAdjustments(p=>({...p,tax_basis:e.target.value as BillAdjustments["tax_basis"]}))}><option value="exclusive">Belum termasuk pajak</option><option value="inclusive">Sudah termasuk pajak</option></select></FormField>
+            </div>
+            <p className="muted">Tarif mengikuti dokumen supplier. Pajak dihitung atas subtotal ditambah ongkir dikurangi diskon dan disimpan sebagai pajak masukan. Periksa penerapannya sesuai usaha Anda.</p>
+            <FormError error={financial.issue}/>
+          </fieldset>
+          <div className="bill-financial-review" aria-live="polite">
+            <div><span>Kewajiban penerimaan yang diselesaikan</span><strong>{exactMoney(allocation.receiptTotal)}</strong></div>
+            <div><span>Subtotal invoice</span><strong>{exactMoney(allocation.total)}</strong></div>
+            <div><span>Ongkir / diskon</span><strong>{exactMoney(financial.shipping)} / {exactMoney(financial.discount)}</strong></div>
+            <div><span>Pajak masukan ({adjustments.tax_basis==="inclusive"?"termasuk harga":"ditambahkan"})</span><strong>{exactMoney(financial.tax)}</strong></div>
+            <div><span>Utang supplier bertambah</span><strong>{exactMoney(financial.total)}</strong></div>
+            <p>Selisih harga dibukukan ke beban selisih pembelian. Nilai stok asal dan kas tidak berubah.</p>
+          </div>
           <div className="bill-posting-note">
             <FileText size={19} />
             <div>
               <strong>Ubah kewajiban sementara menjadi utang supplier.</strong>
               <p>
-                Jumlah dan biaya mengikuti penerimaan; nilai tagihan tidak dapat
-                diubah. Kewajiban barang diterima belum ditagih berkurang dan
-                utang supplier bertambah sebesar {exactMoney(allocation.total)}.
-                Stok dan kas tetap. Setelah posting, pembayaran dicatat melalui
-                detail tagihan.
+                Kewajiban penerimaan berkurang sebesar {exactMoney(allocation.receiptTotal)} dan utang supplier bertambah sebesar {exactMoney(financial.total)}.
+                Harga, penyesuaian, dan pajak disimpan saat posting. Setelah posting, koreksi dilakukan melalui pembalikan.
               </p>
             </div>
           </div>
+          {reviewed&&<p className="bill-notice"><Info size={16}/>Tinjauan siap. Pastikan harga, ongkir, diskon, dan pajak sesuai invoice sebelum konfirmasi posting.</p>}
           <FormError error={error} />
           {conflict && (
             <button
@@ -827,6 +852,7 @@ export function SupplierBillForm({
               !eligible ||
               !!issue ||
               !!allocation.issue ||
+              !!financial.issue ||
               summary.loading ||
               !!summary.error
             }
@@ -1040,6 +1066,14 @@ export function SupplierBillDetail({
               </div>
             </div>
             <BillItems items={bill.items} total={bill.total} />
+            <div className="bill-balance" aria-label="Rincian nilai tagihan tersimpan">
+              <span>Nilai penerimaan <strong>{exactMoney(bill.receipt_value ?? bill.total)}</strong></span>
+              <span>Subtotal invoice <strong>{exactMoney(bill.subtotal ?? bill.total)}</strong></span>
+              <span>Ongkir <strong>{exactMoney(bill.shipping ?? "0")}</strong></span>
+              <span>Diskon <strong>{exactMoney(bill.discount ?? "0")}</strong></span>
+              <span>Pajak <strong>{exactMoney(bill.tax_value ?? "0")}</strong></span>
+              {bill.tax_snapshot && <span>{bill.tax_snapshot.code} · {bill.tax_snapshot.name} · {bill.tax_snapshot.rate}% ({bill.tax_snapshot.basis === "inclusive" ? "termasuk harga" : "di luar harga"})</span>}
+            </div>
             <AttachmentsPanel
               documentType="purchase_bill"
               documentId={bill.id}
@@ -1115,8 +1149,7 @@ export function SupplierBillDetail({
                 </>
               )}
               <p className="purchase-history-note">
-                Nama supplier, barang, satuan, dan biaya menggunakan data
-                tersimpan. Tagihan memindahkan kewajiban barang diterima belum
+                Nama supplier, barang/jasa, satuan, biaya, dan penyesuaian menggunakan data tersimpan. Tagihan memindahkan kewajiban penerimaan belum
                 ditagih menjadi utang supplier; stok dan kas tidak berubah.
                 Pembayaran dan koreksinya tersimpan pada riwayat di bawah.
               </p>

@@ -24,6 +24,7 @@ import OpeningBalances from "./OpeningBalances";
 import { DocumentReversal } from "./DocumentReversal";
 import FinancialReports from "./FinancialReports";
 import { AttachmentsPanel } from "./AttachmentsPanel";
+import FiscalPeriods from "./FiscalPeriods";
 
 const kindNames: Record<string, string> = {
   asset: "Aset",
@@ -107,6 +108,7 @@ export default function Accounting({
               ["journals", "Jurnal umum"],
               ["accounts", "Daftar akun"],
               ["opening", "Saldo awal"],
+              ["fiscal", "Periode & tahun buku"],
             ].map(([key, name]) => (
               <button
                 key={key}
@@ -122,7 +124,7 @@ export default function Accounting({
               </button>
             ))}
           </div>
-          {tab !== "opening" && tab !== "reports" && (
+          {!["opening","reports","fiscal"].includes(tab) && (
             <SearchInput
               value={search}
               onChange={setSearch}
@@ -147,7 +149,7 @@ export default function Accounting({
             />
           ) : tab === "reports" ? (
             <FinancialReports role={role} />
-          ) : tab === "opening" ? null : (
+          ) : tab === "fiscal" ? <FiscalPeriods role={role} changed={changed}/> : tab === "opening" ? null : (
             <AccountsView search={search} revision={revision} />
           )}
         </div>

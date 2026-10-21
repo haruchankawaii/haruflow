@@ -3,9 +3,12 @@ import {
   allocationPreview,
   positivePartyAmount,
   partyFundActionInput,
+  targetHref,
+  eventHref,
   statementCsv,
   type PartyStatement,
   type PartyTarget,
+  type PartyEvent,
 } from "./party-balances-model";
 test("financial corrections use the strict reversal contract while actual refunds carry confirmation", () => {
   for (const kind of [
@@ -30,6 +33,20 @@ test("financial corrections use the strict reversal contract while actual refund
       confirmed: true,
       reference: "REF-1",
     });
+});
+test("selected bank belongs only to actual refund creation, never reservation or source reversal", () => {
+  for (const kind of ["refund", "request_pay"] as const)
+    expect(partyFundActionInput(kind, 4, "Dana bank diterima", "50.25", "BANK-1", "1110")).toEqual({ version: 4, reason: "Dana bank diterima", amount: "50.25", reference: "BANK-1", confirmed: true, cash_account_code: "1110" });
+  for (const kind of ["reverse", "refund_reverse", "allocation_reverse", "request_cancel"] as const)
+    expect(partyFundActionInput(kind, 4, "Rekening mengikuti jurnal asal", "50.25", "BANK-1", "1110")).toEqual({ version: 4, reason: "Rekening mengikuti jurnal asal" });
+  expect(partyFundActionInput("request", 4, "Belum memindahkan uang", "50.25", "BANK-1", "1110")).toEqual({ version: 4, reason: "Belum memindahkan uang", amount: "50.25" });
+});
+test("historical debt and its payment events open their imported source document", () => {
+  const href = "?historical=old-invoice#transaction-imports";
+  expect(targetHref({ id: "old-invoice", target_type: "historical_receivable" })).toBe(href);
+  expect(targetHref({ id: "old-invoice", target_type: "historical_payable" })).toBe(href);
+  expect(eventHref({ event_type: "historical_payment", source_type: "historical_payment", source_id: "payment", target_type: "historical_receivable", target_id: "old-invoice" } as PartyEvent)).toBe(href);
+  expect(eventHref({ source_url: "?fund=refund-source#balances" } as PartyEvent)).toBe("?fund=refund-source#balances");
 });
 const target = (
   id: string,

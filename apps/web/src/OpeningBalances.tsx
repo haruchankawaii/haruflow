@@ -36,6 +36,7 @@ import type { OpeningDraft, OpeningSnapshot, OpeningState } from "./opening";
 import type { Account, Product, Role } from "./types";
 import { OpeningPartiesEditor, OpeningPartiesSnapshot } from "./OpeningParties";
 import { openingPartyInput } from "./opening-parties";
+import { StockContextFields } from "./StockContextFields";
 
 export default function OpeningBalances({
   role,
@@ -411,7 +412,7 @@ export default function OpeningBalances({
                             ...draft,
                             items: draft.items.map((row, i) =>
                               i === index
-                                ? { ...row, product_id: e.target.value }
+                                ? { ...row, product_id: e.target.value, stock_context: undefined }
                                 : row,
                             ),
                           })
@@ -478,6 +479,7 @@ export default function OpeningBalances({
                         }
                       />
                     </FormField>
+                    {item.product_id && <details><summary>Gudang dan lot / seri</summary><StockContextFields productId={item.product_id} value={item.stock_context??{}} incoming disabled={busy} onChange={value => edit({...draft,items:draft.items.map((row,i)=>i===index?{...row,stock_context:value}:row)})} /></details>}
                     <div className="opening-row-value">
                       <small>Nilai stok</small>
                       <strong>

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   Check,
@@ -31,6 +31,10 @@ import InvoiceDetail from "./InvoiceDetail";
 import { downloadCsv } from "./export";
 import { isStockProduct } from "./commerce";
 import OrderDetail from "./PartialSales";
+import { CashAccountSelect } from "./CashAccountSelect";
+import { exactMoney } from "./dashboard-charts";
+import { positivePartyAmount } from "./party-balances-model";
+import { requestIdentity, type RequestIdentity } from "./purchasing-model";
 
 export default function Sales({
   role,
@@ -638,86 +642,39 @@ function OrderForm({
   );
 }
 
-function PaymentForm({
-  invoice,
-  onClose,
-  onSaved,
-}: {
-  invoice: Invoice;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
+function PaymentForm({ invoice, onClose, onSaved }: { invoice: Invoice; onClose: () => void; onSaved: () => void }) {
+  const outstanding = invoice.outstanding ?? (Number(invoice.net_total ?? invoice.total) - Number(invoice.paid)).toFixed(2);
+  const [amount, setAmount] = useState(outstanding);
+  const [reference, setReference] = useState("");
+  const [cashAccount, setCashAccount] = useState("1100");
+  const [review, setReview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [key] = useState(() => crypto.randomUUID());
-  const outstanding =
-    invoice.outstanding ??
-    (Number(invoice.net_total ?? invoice.total) - Number(invoice.paid)).toFixed(
-      2,
-    );
+  const busyRef = useRef(false);
+  const identity = useRef<RequestIdentity | null>(null);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setBusy(true);
-    setError("");
+    if (busyRef.current) return;
+    if (!positivePartyAmount(amount, outstanding)) { setError("Isi nominal positif maksimal sisa tagihan dengan dua desimal."); return; }
+    if (!review) { setReview(true); setError(""); return; }
+    const path = `/invoices/${invoice.id}/payments`;
+    const payload = { amount, reference: reference.trim() || null, cash_account_code: cashAccount };
+    identity.current = requestIdentity(identity.current, { path, ...payload });
+    busyRef.current = true; setBusy(true); setError("");
     try {
-      await api(`/invoices/${invoice.id}/payments`, {
-        method: "POST",
-        body: {
-          ...Object.fromEntries(new FormData(event.currentTarget)),
-          idempotency_key: key,
-        },
-      });
+      await api(path, { method: "POST", body: { ...payload, idempotency_key: identity.current.key } });
       onSaved();
-    } catch (error) {
-      setError(errorMessage(error));
-    } finally {
-      setBusy(false);
-    }
+    } catch (error) { setError(errorMessage(error)); }
+    finally { busyRef.current = false; setBusy(false); }
   }
-  return (
-    <Modal
-      title="Catat pembayaran"
-      description={`${invoice.number} · ${invoice.customer_name}`}
-      onClose={() => {
-        if (!busy) onClose();
-      }}
-    >
-      <form onSubmit={submit}>
-        <div className="form-body">
-          <div className="payment-outstanding">
-            <span>Sisa tagihan</span>
-            <strong>{money(outstanding)}</strong>
-          </div>
-          <FormField label="Jumlah pembayaran (Rp) *">
-            <input
-              name="amount"
-              type="number"
-              required
-              min="0.01"
-              max={outstanding}
-              step="0.01"
-              defaultValue={outstanding}
-              autoFocus
-            />
-          </FormField>
-          <FormField label="Referensi pembayaran">
-            <input
-              name="reference"
-              maxLength={150}
-              placeholder="Contoh: Transfer bank 18/10"
-            />
-          </FormField>
-          <div className="info-box">
-            <CreditCard size={18} />
-            <p>
-              Pembayaran akan menambah saldo kas dan mengurangi piutang
-              pelanggan.
-            </p>
-          </div>
-          <FormError error={error} />
-        </div>
-        <FormActions onClose={onClose} busy={busy} label="Simpan pembayaran" />
-      </form>
-    </Modal>
-  );
+  return <Modal title="Catat pembayaran" description={`${invoice.number} · ${invoice.customer_name}`} onClose={() => { if (!busy) onClose(); }}>
+    <form onSubmit={submit}><div className="form-body">
+      <div className="payment-outstanding"><span>Sisa tagihan</span><strong>{money(outstanding)}</strong></div>
+      <CashAccountSelect value={cashAccount} onChange={setCashAccount} disabled={busy || review} label="Rekening penerimaan pelanggan" />
+      <FormField label="Jumlah pembayaran (Rp) *"><input required inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} disabled={busy || review} autoFocus /></FormField>
+      <FormField label="Referensi pembayaran"><input maxLength={150} value={reference} onChange={e => setReference(e.target.value)} disabled={busy || review} placeholder="Contoh: Transfer bank" /></FormField>
+      <div className="info-box"><CreditCard size={18} /><p>{review ? `Konfirmasi penerimaan ${exactMoney(amount)} pada akun ${cashAccount}.` : "Pembayaran akan menambah saldo rekening yang dipilih dan mengurangi piutang pelanggan."} Catat setelah uang benar-benar diterima.</p></div>
+      <FormError error={error} />
+    </div><div className="form-actions"><button className="button secondary" type="button" disabled={busy} onClick={() => review ? setReview(false) : onClose()}>{review ? "Ubah rincian" : "Batal"}</button><button className="button primary" disabled={busy}>{busy ? "Menyimpan…" : review ? "Konfirmasi pembayaran diterima" : "Tinjau pembayaran"}</button></div></form>
+  </Modal>;
 }

@@ -5,6 +5,7 @@ import { exactMoney, moneyCents } from "./dashboard-charts";
 import { dateTime } from "./format";
 import { requestIdentity, type RequestIdentity } from "./purchasing-model";
 import type { SupplierBill, SupplierPayment } from "./bills-model";
+import { CashAccountSelect } from "./CashAccountSelect";
 import { AttachmentsPanel } from "./AttachmentsPanel";
 
 export function SupplierPayments({
@@ -20,6 +21,8 @@ export function SupplierPayments({
 }) {
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
+  const [cashAccount, setCashAccount] = useState("1100");
+  const [review, setReview] = useState(false);
   const [selected, setSelected] = useState<SupplierPayment | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
@@ -44,9 +47,10 @@ export function SupplierPayments({
       setError("Isi alasan pembalikan minimal tiga karakter.");
       return;
     }
+    if (!review) { setReview(true); setError(""); return; }
     const payload = selected
       ? { version: bill.version, reason: reason.trim() }
-      : { version: bill.version, amount, reference: reference.trim() || null };
+      : { version: bill.version, amount, reference: reference.trim() || null, cash_account_code: cashAccount };
     const path = selected
       ? `/supplier-payments/${selected.id}/reverse`
       : `/purchase-bills/${bill.id}/payments`;
@@ -59,6 +63,7 @@ export function SupplierPayments({
         method: "POST",
         body: { ...payload, idempotency_key: identity.current.key },
       });
+      setReview(false);
       setAmount("");
       setReference("");
       setSelected(null);
@@ -129,8 +134,9 @@ export function SupplierPayments({
                         <button
                           type="button"
                           className="text-button danger-text"
-                          disabled={busy}
+                          disabled={busy || review}
                           onClick={() => {
+                            setReview(false);
                             setSelected(payment);
                             setError("");
                           }}
@@ -163,7 +169,7 @@ export function SupplierPayments({
               <p>
                 Kas bertambah dan utang kembali bertambah sebesar{" "}
                 {exactMoney(selected.amount)}. Gunakan untuk mengoreksi
-                pencatatan pembayaran.
+                pencatatan pembayaran. Dana kembali ke rekening pada jurnal asal.
               </p>
               <FormField label="Alasan pembalikan *">
                 <textarea
@@ -172,12 +178,13 @@ export function SupplierPayments({
                   maxLength={1000}
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  disabled={busy}
+                  disabled={busy || review}
                 />
               </FormField>
             </>
           ) : (
             <>
+              <CashAccountSelect value={cashAccount} onChange={setCashAccount} disabled={busy || review} label="Rekening pembayaran supplier" />
               <div className="bill-form-grid">
                 <FormField
                   label="Nominal pembayaran *"
@@ -188,7 +195,7 @@ export function SupplierPayments({
                     inputMode="decimal"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    disabled={busy}
+                    disabled={busy || review}
                     placeholder="Contoh: 60000"
                   />
                 </FormField>
@@ -197,7 +204,7 @@ export function SupplierPayments({
                     maxLength={200}
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
-                    disabled={busy}
+                    disabled={busy || review}
                     placeholder="Nomor bukti pembayaran"
                   />
                 </FormField>
@@ -205,31 +212,34 @@ export function SupplierPayments({
               <button
                 type="button"
                 className="text-button"
-                disabled={busy}
+                disabled={busy || review}
                 onClick={() => setAmount(bill.outstanding)}
               >
                 Isi seluruh sisa utang
               </button>
             </>
           )}
+          {review && <div className="info-box"><p>{selected ? `Pembalikan ${exactMoney(selected.amount)} memakai rekening pada jurnal pembayaran asli.` : `Kas keluar ${exactMoney(amount)} dari akun ${cashAccount}. Pastikan dana benar-benar sudah dibayarkan ke supplier.`}</p></div>}
           <FormError error={error} />
           {error && (
             <button
               type="button"
               className="text-button"
-              disabled={busy}
+              disabled={busy || review}
               onClick={onSaved}
             >
               Muat tagihan terbaru
             </button>
           )}
           <div className="purchase-review-actions">
+            {review && <button type="button" className="button secondary" disabled={busy} onClick={() => setReview(false)}>Ubah rincian</button>}
             {selected && (
               <button
                 type="button"
                 className="button secondary"
-                disabled={busy}
+                disabled={busy || review}
                 onClick={() => {
+                  setReview(false);
                   setSelected(null);
                   setError("");
                 }}
@@ -240,9 +250,9 @@ export function SupplierPayments({
             <button className="button primary" disabled={busy}>
               {busy
                 ? "Memproses…"
-                : selected
-                  ? "Balikkan pembayaran"
-                  : "Catat pembayaran"}
+                : !review
+                  ? "Tinjau pembayaran"
+                  : selected ? "Balikkan pembayaran" : "Konfirmasi pembayaran supplier"}
             </button>
           </div>
         </form>

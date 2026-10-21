@@ -166,20 +166,20 @@ export function financialReportCsv(report: FinancialReport): unknown[][] {
     ],
     ["Neraca", "Selisih", "", balance.difference],
   );
-  rows.push(["Arus kas 1100", "Saldo awal", "1100", cash.beginning_balance]);
+  rows.push(["Arus kas dan bank", "Saldo awal", cash.account_code, cash.beginning_balance]);
   cash.categories.forEach((c) =>
     rows.push(
-      ["Arus kas", `${c.name} / masuk`, "1100", c.cash_in],
-      ["Arus kas", `${c.name} / keluar`, "1100", c.cash_out],
-      ["Arus kas", `${c.name} / neto`, "1100", c.net_change],
+      ["Arus kas", `${c.name} / masuk`, cash.account_code, c.cash_in],
+      ["Arus kas", `${c.name} / keluar`, cash.account_code, c.cash_out],
+      ["Arus kas", `${c.name} / neto`, cash.account_code, c.net_change],
     ),
   );
   rows.push(
-    ["Arus kas 1100", "Total masuk", "1100", cash.cash_in],
-    ["Arus kas 1100", "Total keluar", "1100", cash.cash_out],
-    ["Arus kas 1100", "Perubahan neto", "1100", cash.net_change],
-    ["Arus kas 1100", "Saldo akhir", "1100", cash.ending_balance],
-    ["Arus kas 1100", "Selisih rekonsiliasi", "1100", cash.difference],
+    ["Arus kas dan bank", "Total masuk", cash.account_code, cash.cash_in],
+    ["Arus kas dan bank", "Total keluar", cash.account_code, cash.cash_out],
+    ["Arus kas dan bank", "Perubahan neto", cash.account_code, cash.net_change],
+    ["Arus kas dan bank", "Saldo akhir", cash.account_code, cash.ending_balance],
+    ["Arus kas dan bank", "Selisih rekonsiliasi", cash.account_code, cash.difference],
   );
   cash.entries.forEach((e) => {
     rows.push([

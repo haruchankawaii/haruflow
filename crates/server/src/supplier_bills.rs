@@ -35,6 +35,12 @@ struct BillInput {
     invoice_date: String,
     due_date: String,
     notes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shipping: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    discount: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tax: Option<TaxInput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     items: Option<Vec<BillLineInput>>,
     idempotency_key: Uuid,
@@ -45,6 +51,59 @@ struct BillInput {
 struct BillLineInput {
     receipt_line_id: Uuid,
     quantity: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unit_cost: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct TaxInput {
+    code: String,
+    name: String,
+    rate: String,
+    basis: String,
+}
+
+pub(crate) async fn journal_line(
+    tx: &mut Transaction<'_, Postgres>,
+    journal: Uuid,
+    account: &str,
+    signed: Decimal,
+) -> AppResult<()> {
+    if signed == Decimal::ZERO {
+        return Ok(());
+    }
+    sqlx::query(
+        "INSERT INTO journal_lines(id,journal_id,account_code,debit,credit) VALUES($1,$2,$3,$4,$5)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(journal)
+    .bind(account)
+    .bind(signed.max(Decimal::ZERO))
+    .bind((-signed).max(Decimal::ZERO))
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+async fn control(tx: &mut Transaction<'_, Postgres>, role: &str) -> AppResult<String> {
+    Ok(
+        sqlx::query_scalar("SELECT code FROM accounts WHERE system_role=$1")
+            .bind(role)
+            .fetch_one(&mut **tx)
+            .await?,
+    )
+}
+fn adjustment(value: Option<&str>, label: &str) -> AppResult<Decimal> {
+    let v = value
+        .unwrap_or("0")
+        .parse::<Decimal>()
+        .map_err(|_| AppError::bad_request(format!("{label} harus berupa angka desimal.")))?;
+    if v < Decimal::ZERO || v > Decimal::from(1_000_000_000_000u64) || v.normalize().scale() > 2 {
+        return Err(AppError::bad_request(format!(
+            "{label} harus nol atau positif, maksimal 1 triliun dan dua desimal."
+        )));
+    }
+    Ok(v)
 }
 
 #[derive(Deserialize, Serialize)]
@@ -110,12 +169,12 @@ const BILL_SELECT: &str = r#"
         'status',b.status,'due_status',CASE WHEN b.status='void' THEN 'void'
             WHEN b.status='paid' THEN 'paid'
             WHEN b.due_date<cfg.today THEN 'overdue' WHEN b.due_date=cfg.today THEN 'due_today' ELSE 'upcoming' END,
-        'version',b.version,'notes',b.notes,'journal_id',b.journal_id,'created_at',b.created_at,
+        'version',b.version,'notes',b.notes,'receipt_value',b.receipt_value::text,'subtotal',b.subtotal::text,'shipping',b.shipping::text,'discount',b.discount::text,'tax_value',b.tax_value::text,'tax_snapshot',b.tax_snapshot,'journal_id',b.journal_id,'created_at',b.created_at,
         'can_reverse',purchase_bill_blocked_reason(b.id) IS NULL,
         'reversal_blocked_reason',purchase_bill_blocked_reason(b.id),
         'can_pay',b.status IN ('unpaid','partial') AND cfg.period_open,
         'can_return',b.status<>'void' AND cfg.period_open AND EXISTS(SELECT 1 FROM purchase_bill_lines l JOIN products p ON p.id=l.product_id
-            WHERE l.bill_id=b.id AND l.quantity>supplier_bill_returned_quantity(l.id) AND p.quantity>0 AND p.kind='stock' AND p.unit=l.unit),
+            WHERE l.bill_id=b.id AND l.quantity>supplier_bill_returned_quantity(l.id) AND ((l.product_kind='stock' AND p.quantity>0 AND p.kind='stock') OR l.product_kind='service') AND p.unit=l.unit),
         'returns',supplier_return_history(b.id),
         'payments',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',p.id,'number',p.number,
             'amount',p.amount::text,'reference',p.reference,'journal_id',p.journal_id,'created_at',p.created_at,
@@ -129,7 +188,7 @@ const BILL_SELECT: &str = r#"
         'items',COALESCE((SELECT jsonb_agg(jsonb_build_object(
             'id',l.id,'receipt_line_id',l.receipt_line_id,'movement_id',rl.movement_id,'product_id',l.product_id,'product_sku',l.product_sku,
             'product_name',l.product_name,'unit',l.unit,'quantity',l.quantity::text,
-            'unit_cost',l.unit_cost::text,'value',l.value::text,
+            'unit_cost',l.unit_cost::text,'value',l.value::text,'receipt_value',l.receipt_value::text,'tax_value',l.tax_value::text,'product_kind',l.product_kind,
             'returned_quantity',supplier_bill_returned_quantity(l.id)::text,
             'remaining_return_quantity',(l.quantity-supplier_bill_returned_quantity(l.id))::text,
             'returned_credit',supplier_bill_returned_credit(l.id)::text) ORDER BY l.position)
@@ -209,7 +268,21 @@ async fn create(
         for item in items {
             let quantity = crate::business::parse(&item.quantity, 3, "Jumlah tagihan")?;
             if quantity <= Decimal::ZERO
-                || selected.insert(item.receipt_line_id, quantity).is_some()
+                || selected
+                    .insert(
+                        item.receipt_line_id,
+                        (
+                            quantity,
+                            item.unit_cost
+                                .as_deref()
+                                .map(|v| {
+                                    crate::domain::decimal(v, 4, "Harga invoice")
+                                        .map_err(AppError::bad_request)
+                                })
+                                .transpose()?,
+                        ),
+                    )
+                    .is_some()
             {
                 return Err(AppError::bad_request(
                     "Jumlah harus positif dan baris tidak boleh ganda.",
@@ -255,7 +328,8 @@ async fn create(
     let receipt_lines=sqlx::query("SELECT l.*,purchase_receipt_billed_quantity(l.id) billed_quantity,purchase_receipt_billed_value(l.id) billed_value FROM purchase_receipt_lines l WHERE receipt_id=$1 ORDER BY position")
         .bind(body.receipt_id).fetch_all(&mut *tx).await?;
     let mut allocations = Vec::new();
-    let mut total = Decimal::ZERO;
+    let mut receipt_total = Decimal::ZERO;
+    let mut subtotal = Decimal::ZERO;
     for line in receipt_lines {
         let line_id: Uuid = line.get("id");
         let quantity: Decimal = line.get("quantity");
@@ -263,10 +337,10 @@ async fn create(
         let billed_value: Decimal = line.get("billed_value");
         let value: Decimal = line.get("value");
         let remaining = quantity - billed_quantity;
-        let requested = if body.items.is_some() {
-            selected.remove(&line_id).unwrap_or_default()
+        let (requested, invoice_cost) = if body.items.is_some() {
+            selected.remove(&line_id).unwrap_or((Decimal::ZERO, None))
         } else {
-            remaining
+            (remaining, None)
         };
         if requested > remaining {
             return Err(AppError::conflict(
@@ -290,13 +364,63 @@ async fn create(
         if allocated < Decimal::ZERO || allocated > value - billed_value {
             return Err(AppError::conflict("Nilai alokasi tagihan tidak cocok."));
         }
-        total += allocated;
-        allocations.push((line, requested, allocated));
+        let cost = invoice_cost.unwrap_or(line.get::<Decimal, _>("unit_cost"));
+        let invoice_value = if invoice_cost.is_some() {
+            crate::domain::money(requested * cost)
+        } else {
+            allocated
+        };
+        if invoice_value <= Decimal::ZERO {
+            return Err(AppError::bad_request(
+                "Nilai harga invoice harus positif setelah pembulatan.",
+            ));
+        }
+        receipt_total += allocated;
+        subtotal += invoice_value;
+        allocations.push((line, requested, allocated, cost, invoice_value));
     }
-    if !selected.is_empty() || allocations.is_empty() || total <= Decimal::ZERO {
+    if !selected.is_empty() || allocations.is_empty() || subtotal <= Decimal::ZERO {
         return Err(AppError::bad_request(
             "Pilih barang dari penerimaan ini dengan total tagihan lebih besar dari nol.",
         ));
+    }
+    let shipping = adjustment(body.shipping.as_deref(), "Ongkir")?;
+    let discount = adjustment(body.discount.as_deref(), "Diskon")?;
+    let taxable = subtotal + shipping - discount;
+    if taxable <= Decimal::ZERO {
+        return Err(AppError::bad_request(
+            "Diskon harus lebih kecil dari subtotal ditambah ongkir.",
+        ));
+    }
+    let (tax_value, tax_snapshot, inclusive) = if let Some(tax) = &body.tax {
+        let code = clean_text(&tax.code, 1, 64, false)?;
+        let name = clean_text(&tax.name, 1, 150, false)?;
+        let rate = adjustment(Some(&tax.rate), "Tarif pajak")?;
+        if rate > Decimal::from(100) || !matches!(tax.basis.as_str(), "exclusive" | "inclusive") {
+            return Err(AppError::bad_request(
+                "Tarif pajak 0–100 dan basis exclusive/inclusive wajib dipilih.",
+            ));
+        }
+        let inclusive = tax.basis == "inclusive";
+        let value = crate::domain::money(
+            taxable * rate
+                / (if inclusive {
+                    Decimal::from(100) + rate
+                } else {
+                    Decimal::from(100)
+                }),
+        );
+        (
+            value,
+            Some(json!({"code":code,"name":name,"rate":rate.to_string(),"basis":tax.basis})),
+            inclusive,
+        )
+    } else {
+        (Decimal::ZERO, None, false)
+    };
+    let total = taxable + if inclusive { Decimal::ZERO } else { tax_value };
+    if total > Decimal::from(1_000_000_000_000u64) {
+        return Err(AppError::bad_request("Total tagihan maksimal Rp1 triliun."));
     }
     let id = Uuid::new_v4();
     let journal_id = Uuid::new_v4();
@@ -316,19 +440,58 @@ async fn create(
     sqlx::query("INSERT INTO journal_entries(id,description,source_type,source_id,created_by) VALUES($1,$2,'purchase_bill',$3,$4)")
         .bind(journal_id).bind(format!("Supplier bill {number} / {}", receipt.get::<String,_>("number")))
         .bind(id).bind(user.id).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO journal_lines(id,journal_id,account_code,debit,credit) VALUES($1,$2,$3,$4,0),($5,$2,$6,0,$4)")
-        .bind(Uuid::new_v4()).bind(journal_id).bind(accrual).bind(total).bind(Uuid::new_v4()).bind(payable)
-        .execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO purchase_bills(id,number,receipt_id,order_id,supplier_id,supplier_code,supplier_name,supplier_invoice_number,invoice_date,due_date,notes,total,journal_id,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)")
+    journal_line(&mut tx, journal_id, &accrual, receipt_total).await?;
+    let variance = control(&mut tx, "purchase_price_variance").await?;
+    let shipping_account = control(&mut tx, "purchase_shipping_expense").await?;
+    let discount_account = control(&mut tx, "purchase_discount").await?;
+    let tax_account = control(&mut tx, "purchase_input_tax").await?;
+    journal_line(
+        &mut tx,
+        journal_id,
+        &variance,
+        subtotal - receipt_total - if inclusive { tax_value } else { Decimal::ZERO },
+    )
+    .await?;
+    journal_line(&mut tx, journal_id, &shipping_account, shipping).await?;
+    journal_line(&mut tx, journal_id, &discount_account, -discount).await?;
+    journal_line(&mut tx, journal_id, &tax_account, tax_value).await?;
+    journal_line(&mut tx, journal_id, &payable, -total).await?;
+    sqlx::query("INSERT INTO purchase_bills(id,number,receipt_id,order_id,supplier_id,supplier_code,supplier_name,supplier_invoice_number,invoice_date,due_date,notes,total,journal_id,created_by,receipt_value,subtotal,shipping,discount,tax_value,tax_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)")
         .bind(id).bind(&number).bind(body.receipt_id).bind(order_id).bind(order.get::<Uuid,_>("supplier_id"))
         .bind(order.get::<String,_>("supplier_code")).bind(order.get::<String,_>("supplier_name"))
-        .bind(&supplier_invoice_number).bind(invoice_date).bind(due_date).bind(notes).bind(total).bind(journal_id).bind(user.id)
+        .bind(&supplier_invoice_number).bind(invoice_date).bind(due_date).bind(notes).bind(total).bind(journal_id).bind(user.id).bind(receipt_total).bind(subtotal).bind(shipping).bind(discount).bind(tax_value).bind(tax_snapshot)
         .execute(&mut *tx).await?;
-    for (position, (line, quantity, value)) in allocations.iter().enumerate() {
-        sqlx::query("INSERT INTO purchase_bill_lines(id,bill_id,receipt_line_id,position,product_id,product_sku,product_name,unit,quantity,unit_cost,value) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
+    let mut cumulative = Decimal::ZERO;
+    let mut prior_gross = Decimal::ZERO;
+    let mut prior_tax = Decimal::ZERO;
+    let allocation_count = allocations.len();
+    for (position, (line, quantity, received, cost, invoice_value)) in
+        allocations.iter().enumerate()
+    {
+        cumulative += invoice_value;
+        let gross_to_date = if position + 1 == allocation_count {
+            total
+        } else {
+            crate::domain::money(total * cumulative / subtotal)
+        };
+        let tax_to_date = if position + 1 == allocation_count {
+            tax_value
+        } else {
+            crate::domain::money(tax_value * cumulative / subtotal)
+        };
+        let value = gross_to_date - prior_gross;
+        let allocated_tax = tax_to_date - prior_tax;
+        prior_gross = gross_to_date;
+        prior_tax = tax_to_date;
+        if value <= Decimal::ZERO {
+            return Err(AppError::bad_request(
+                "Diskon membuat nilai satu baris kurang dari satu sen; kurangi diskon.",
+            ));
+        }
+        sqlx::query("INSERT INTO purchase_bill_lines(id,bill_id,receipt_line_id,position,product_id,product_sku,product_name,unit,quantity,unit_cost,value,receipt_value,tax_value,product_kind) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)")
             .bind(Uuid::new_v4()).bind(id).bind(line.get::<Uuid,_>("id")).bind((position+1) as i32)
             .bind(line.get::<Uuid,_>("product_id")).bind(line.get::<String,_>("product_sku")).bind(line.get::<String,_>("product_name"))
-            .bind(line.get::<String,_>("unit")).bind(quantity).bind(line.get::<Decimal,_>("unit_cost")).bind(value).execute(&mut *tx).await?;
+            .bind(line.get::<String,_>("unit")).bind(quantity).bind(cost).bind(value).bind(received).bind(allocated_tax).bind(line.get::<String,_>("product_kind")).execute(&mut *tx).await?;
     }
     sqlx::query("UPDATE purchase_orders SET updated_at=now(),version=version+1 WHERE id=$1")
         .bind(order_id)

@@ -2,7 +2,7 @@
 
 ERP gratis yang di-host sendiri, dengan frontend React/TypeScript dan backend Rust/Axum + PostgreSQL. Satu aplikasi Rust melayani UI dan API; instalasi default hanya menjalankan aplikasi dan PostgreSQL.
 
-Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa pajak otomatis. Tidak memerlukan akun Haruflow Cloud atau layanan lisensi.
+Community untuk usaha kecil: satu perusahaan, mata uang IDR, maksimal 10 akun aktif, serta pilihan beberapa gudang dan kas/bank. Tidak memerlukan akun Haruflow Cloud atau layanan lisensi. Lihat [cakupan lengkap dan batas paket](./docs/COMMUNITY_SMALL_BUSINESS.md) serta [instalasi Windows](./docs/WINDOWS.md).
 
 ## Fitur
 
@@ -26,7 +26,7 @@ Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa paja
 
 Menu Pembelian menyediakan supplier, PO draf/edit/konfirmasi/pembatalan, penerimaan dan penagihan sebagian/penuh, pembayaran supplier, koreksi beralasan, serta chart status PO, umur utang, dan pembayaran. Penerimaan memperbarui stok dan jurnal persediaan/barang diterima belum ditagih; tagihan memindahkan kewajiban tersebut ke utang supplier. Pembayaran mengurangi kas serta utang. Jumlah tersisa tetap terlacak; lihat [panduan pembelian](./docs/PURCHASING.md).
 
-Variasi harga invoice pembelian, pembelian jasa, ongkos/pajak otomatis, multicurrency, multi-company, payroll, serta integrasi bank/pajak belum tersedia. Arus kas memakai akun Kas 1100; satu jurnal yang mencampur aktivitas dapat diklasifikasikan secara manual sebagai satu kelompok. Aplikasi mencatat perpindahan uang aktual, sedangkan transfer bank dilakukan di luar aplikasi. Detail lingkup ada di [status implementasi](./docs/IMPLEMENTATION_STATUS.md).
+Pembelian barang/jasa mendukung harga invoice berbeda, ongkir, diskon dan pajak eksplisit; arus kas mencakup seluruh rekening terdaftar dan mengecualikan transfer internal. Impor mutasi bank memakai pencocokan manual. Periode/tutup tahun, stok lokasi/lot/seri/reservasi, serta impor transaksi historis tersedia sebagai kandidat. Multicurrency, multi-company, payroll, produksi, POS khusus, koneksi bank langsung dan pelaporan pajak otomatis di luar cakupan ini. Detail dan bukti ada di [status implementasi](./docs/IMPLEMENTATION_STATUS.md).
 
 ## Menjalankan dengan Docker Compose
 

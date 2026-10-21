@@ -102,6 +102,11 @@ describe("opening balance preparation", () => {
       { account_code: "3000", debit: "0", credit: "500" },
     ]);
   });
+  test("reloading opening stock retains its warehouse and serial allocations", () => {
+    const stock_context = { warehouse_id: "branch", allocations: [{ warehouse_id: "branch", lot_id: "serial-a", quantity: "1" }] };
+    const document = { description: "Opening", lines: [], items: [{ product_id: "stock", quantity: "1", unit_cost: "500", value: "500", stock_context }] } as unknown as OpeningDocument;
+    expect(openingDraft(document).items).toEqual([{ product_id: "stock", quantity: "1", unit_cost: "500", stock_context }]);
+  });
   test("only balance sheet accounts outside controlled ledgers are selectable", () => {
     const accounts = [
       { code: "1100", name: "Cash", kind: "asset" },
