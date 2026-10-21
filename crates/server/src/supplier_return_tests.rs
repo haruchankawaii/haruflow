@@ -81,6 +81,62 @@ async fn assert_ledger(pool: &PgPool) {
     let unbalanced:i64=sqlx::query_scalar("SELECT count(*) FROM(SELECT journal_id FROM journal_lines GROUP BY journal_id HAVING sum(debit)<>sum(credit)) x").fetch_one(pool).await.unwrap();
     assert_eq!(unbalanced, 0);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn supplier_deferred_return_retains_receivable_without_cash_and_reverses_after_reservation_cancel(
+    pool: PgPool,
+) {
+    let (app, cookie, product, invoice) = setup(&pool).await;
+    fund(&app, &cookie, "100").await;
+    let paid = pay(&app, &cookie, &invoice, "20").await;
+    let original_stock = stock(&pool, &product).await;
+    let mut input = body(&paid, "2");
+    input["refund_confirmed"] = json!(false);
+    input["refund_mode"] = json!("deferred");
+    let returned = call(&app, &cookie, "POST", &path(&paid), Some(input.clone())).await;
+    assert_eq!(
+        call(&app, &cookie, "POST", &path(&paid), Some(input)).await,
+        returned
+    );
+    assert_eq!(cash(&pool).await, d("80"));
+    assert_eq!(amount(&returned, "paid"), d("10"));
+    assert_eq!(amount(&returned, "net_total"), d("10"));
+    let source = &returned["returns"][0];
+    assert_eq!(amount(source, "refund"), Decimal::ZERO);
+    assert_eq!(amount(source, "settlement_credit"), d("10"));
+    assert_eq!(source["can_reverse"], false);
+    let credit = call(
+        &app,
+        &cookie,
+        "GET",
+        &format!(
+            "/api/party-funds/{}",
+            source["credit_fund_id"].as_str().unwrap()
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(amount(&credit, "reserved"), d("10"));
+    assert_eq!(amount(&credit, "available"), Decimal::ZERO);
+    let reverse = format!(
+        "/api/supplier-returns/{}/reverse",
+        source["id"].as_str().unwrap()
+    );
+    let reverse_input = json!({"version":returned["version"],"reason":"Perbaiki retur tanpa mengubah kas","idempotency_key":Uuid::new_v4()});
+    assert_eq!(
+        request(&app, &cookie, "POST", &reverse, Some(reverse_input.clone()))
+            .await
+            .0,
+        409
+    );
+    call(&app,&cookie,"POST",&format!("/api/party-refund-requests/{}/cancel",source["refund_request_id"].as_str().unwrap()),Some(json!({"version":credit["version"],"reason":"Permintaan refund dibatalkan sebelum retur dikoreksi","idempotency_key":Uuid::new_v4()}))).await;
+    let reversed = call(&app, &cookie, "POST", &reverse, Some(reverse_input)).await;
+    assert_eq!(amount(&reversed, "paid"), d("20"));
+    assert_eq!(amount(&reversed, "credit_total"), Decimal::ZERO);
+    assert_eq!(cash(&pool).await, d("80"));
+    assert_eq!(stock(&pool, &product).await, original_stock);
+    assert_ledger(&pool).await;
+}
 #[sqlx::test(migrations = "../../migrations")]
 async fn supplier_return_partial_payment_refund_and_exact_reversal_preserve_original_history(
     pool: PgPool,

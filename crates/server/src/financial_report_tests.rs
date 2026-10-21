@@ -184,7 +184,7 @@ async fn financial_reports_separate_period_profit_from_cumulative_equity_and_cus
     pool: PgPool,
 ) {
     let (app, user, cookie) = fixture(&pool).await;
-    sqlx::query("INSERT INTO accounts(code,name,kind) VALUES('4100','Jasa kustom','revenue'),('5100','Beban kustom','expense'),('1500','Peralatan','asset'),('2300','Pinjaman','liability')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO accounts(code,name,kind) VALUES('4100','Jasa kustom','revenue'),('5100','Beban kustom','expense'),('1500','Peralatan','asset'),('2400','Pinjaman','liability')").execute(&pool).await.unwrap();
     journal(
         &pool,
         user,
@@ -230,7 +230,7 @@ async fn financial_reports_separate_period_profit_from_cumulative_equity_and_cus
         user,
         "manual",
         "2026-02-12T00:00:00Z",
-        &[("1100", "40", "0"), ("2300", "0", "40")],
+        &[("1100", "40", "0"), ("2400", "0", "40")],
     )
     .await;
     journal(

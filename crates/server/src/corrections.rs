@@ -499,6 +499,18 @@ async fn reverse_payment(
             "Payment balance does not permit this reversal",
         ));
     }
+    // check_open holds the shared posting lock, so another cash posting cannot
+    // spend this balance between checking it and recording the reversal.
+    let cash: Decimal = sqlx::query_scalar(
+        "SELECT COALESCE(sum(debit-credit),0) FROM journal_lines WHERE account_code='1100'",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if cash < amount {
+        return Err(AppError::conflict(
+            "Cash balance is insufficient to reverse this payment",
+        ));
+    }
     let reversal_id = reversal_record(&mut tx, &user, "payment", payment_id, &reason).await?;
     journal(
         &mut tx,

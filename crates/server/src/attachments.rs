@@ -48,6 +48,9 @@ fn target(kind: &str) -> AppResult<(&'static str, &'static str)> {
         "journal" => Ok(("journal_entries", "finance")),
         "sales_return" => Ok(("sales_returns", "finance")),
         "supplier_return" => Ok(("supplier_returns", "finance")),
+        "party_fund" => Ok(("party_funds", "finance")),
+        "party_refund" => Ok(("party_refunds", "finance")),
+        "opening_item" => Ok(("opening_party_items", "finance")),
         _ => Err(AppError::not_found()),
     }
 }

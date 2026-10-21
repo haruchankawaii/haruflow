@@ -6,6 +6,7 @@ pub const HELP: &str = "Haruflow Community
   haruflow migrate                         Apply database migrations once
   haruflow serve                           Serve the ERP and frontend (default)
   haruflow healthcheck                     Probe application readiness
+  haruflow version                         Print build/schema identity as JSON
   haruflow admin reset-password EMAIL      Recover an active administrator locally
       [--password-stdin]                   Read one password line from stdin instead of a hidden prompt
 
@@ -17,6 +18,7 @@ HARUFLOW_STATIC_DIR, HARUFLOW_SECURE_COOKIES. See README.md.";
 pub enum Command {
     Help,
     Healthcheck,
+    Version,
     Migrate,
     Serve,
     ResetAdmin { email: String, password_stdin: bool },
@@ -30,6 +32,7 @@ pub fn parse(args: &[String]) -> Result<Command> {
             "serve" => Ok(Command::Serve),
             "migrate" => Ok(Command::Migrate),
             "healthcheck" => Ok(Command::Healthcheck),
+            "version" | "--version" => Ok(Command::Version),
             _ => bail!("Unknown command. Use haruflow --help."),
         },
         [admin, reset, email] if admin == "admin" && reset == "reset-password" => {

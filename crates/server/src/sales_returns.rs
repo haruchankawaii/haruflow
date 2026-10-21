@@ -62,6 +62,8 @@ struct ReturnInput {
     items: Vec<ReturnItem>,
     #[serde(default)]
     refund_confirmed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    refund_mode: Option<String>,
     idempotency_key: Uuid,
 }
 #[derive(Deserialize, Serialize)]
@@ -80,6 +82,16 @@ fn reason(input: &str) -> AppResult<String> {
         ));
     }
     Ok(reason)
+}
+pub(crate) fn settlement_mode(mode: Option<&str>) -> AppResult<&str> {
+    match mode.unwrap_or("immediate") {
+        "immediate" => Ok("immediate"),
+        "credit" => Ok("credit"),
+        "deferred" => Ok("deferred"),
+        _ => Err(AppError::bad_request(
+            "Pilih penyelesaian immediate, credit, atau deferred.",
+        )),
+    }
 }
 fn allocated_value(
     total: Decimal,
@@ -147,6 +159,7 @@ async fn create_return(
     Json(body): Json<ReturnInput>,
 ) -> AppResult<Json<Value>> {
     user.require(&["finance"])?;
+    let mode = settlement_mode(body.refund_mode.as_deref())?;
     let reason = reason(&body.reason)?;
     if body.items.is_empty() || body.items.len() > 100 {
         return Err(AppError::bad_request("Choose 1–100 invoice lines"));
@@ -275,7 +288,13 @@ async fn create_return(
     if new_net < Decimal::ZERO {
         return Err(AppError::conflict("Return credit exceeds invoice amount"));
     }
-    let refund = (old_paid - new_net).max(Decimal::ZERO);
+    let excess = (old_paid - new_net).max(Decimal::ZERO);
+    let refund = if mode == "immediate" {
+        excess
+    } else {
+        Decimal::ZERO
+    };
+    let settlement_credit = excess - refund;
     if refund > Decimal::ZERO && !body.refund_confirmed {
         return Err(AppError::conflict(
             "Confirm the immediate customer cash refund before posting this return",
@@ -302,14 +321,48 @@ async fn create_return(
         journal_id,
         &[
             ("4000", credit_total, Decimal::ZERO),
-            ("1200", Decimal::ZERO, credit_total - refund),
+            ("1200", Decimal::ZERO, credit_total - excess),
             ("1100", Decimal::ZERO, refund),
             ("1300", cost_total, Decimal::ZERO),
             ("5000", Decimal::ZERO, cost_total),
         ],
     )
     .await?;
-    sqlx::query("INSERT INTO sales_returns(id,number,invoice_id,reason,credit_total,refund,cost_total,journal_id,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)").bind(return_id).bind(&number).bind(id).bind(&reason).bind(credit_total).bind(refund).bind(cost_total).bind(journal_id).bind(user.id).execute(&mut *tx).await?;
+    if settlement_credit > Decimal::ZERO {
+        let control = crate::settlements::party_control_account(&mut tx, "customer").await?;
+        post_lines(
+            &mut tx,
+            journal_id,
+            &[(&control, Decimal::ZERO, settlement_credit)],
+        )
+        .await?;
+    }
+    sqlx::query("INSERT INTO sales_returns(id,number,invoice_id,reason,credit_total,refund,cost_total,journal_id,created_by,settlement_mode,settlement_credit) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)").bind(return_id).bind(&number).bind(id).bind(&reason).bind(credit_total).bind(refund).bind(cost_total).bind(journal_id).bind(user.id).bind(mode).bind(settlement_credit).execute(&mut *tx).await?;
+    if settlement_credit > Decimal::ZERO {
+        let customer_id: Uuid = sqlx::query_scalar("SELECT customer_id FROM invoices WHERE id=$1")
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?;
+        let fund = crate::settlements::create_source_fund(
+            &mut tx,
+            &user,
+            crate::settlements::SourceFund {
+                side: "customer",
+                party_id: customer_id,
+                kind: "return_credit",
+                amount: settlement_credit,
+                source_type: "sales_return",
+                source_id: return_id,
+                journal_id,
+                reference: Some(&number),
+            },
+        )
+        .await?;
+        if mode == "deferred" {
+            crate::settlements::reserve_refund(&mut tx, &user, fund, settlement_credit, &reason)
+                .await?;
+        }
+    }
     for line in lines {
         let return_line_id = Uuid::new_v4();
         let mut movement_id = None;
@@ -355,7 +408,7 @@ async fn create_return(
             sqlx::query("INSERT INTO sales_return_sources(return_line_id,shipment_allocation_id,quantity,cost) VALUES($1,$2,$3,$4)").bind(return_line_id).bind(source.allocation_id).bind(source.quantity).bind(source.cost).execute(&mut *tx).await?;
         }
     }
-    let new_paid = old_paid - refund;
+    let new_paid = old_paid - excess;
     sqlx::query(
         "UPDATE invoices SET credit_total=$2,paid=$3,status=$4,version=version+1 WHERE id=$1",
     )
@@ -365,7 +418,7 @@ async fn create_return(
     .bind(invoice_status(new_net, new_paid))
     .execute(&mut *tx)
     .await?;
-    audit(&mut tx,&user,"sales_return.posted","sales_return",return_id,json!({"invoice_id":id,"credit_total":credit_total.to_string(),"refund":refund.to_string(),"cost_total":cost_total.to_string(),"reason":reason})).await?;
+    audit(&mut tx,&user,"sales_return.posted","sales_return",return_id,json!({"invoice_id":id,"credit_total":credit_total.to_string(),"refund":refund.to_string(),"refund_mode":mode,"settlement_credit":settlement_credit.to_string(),"cost_total":cost_total.to_string(),"reason":reason})).await?;
     let result: Value = sqlx::query_scalar(INVOICE_SELECT)
         .bind(id)
         .fetch_one(&mut *tx)
@@ -411,9 +464,15 @@ async fn reverse_return(
         return Ok(Json(result));
     }
     check_open(&mut tx).await?;
-    let original=sqlx::query("SELECT invoice_id,credit_total,refund,cost_total,journal_id FROM sales_returns WHERE id=$1").bind(id).fetch_optional(&mut *tx).await?.ok_or_else(AppError::not_found)?;
+    let original=sqlx::query("SELECT invoice_id,credit_total,refund,settlement_credit,cost_total,journal_id FROM sales_returns WHERE id=$1").bind(id).fetch_optional(&mut *tx).await?.ok_or_else(AppError::not_found)?;
     let invoice_id: Uuid = original.get("invoice_id");
     let invoice = lock_invoice(&mut tx, invoice_id, body.version).await?;
+    if let Some(reason) =
+        crate::settlements::source_fund_blocker(&mut tx, "sales_return", id).await?
+    {
+        return Err(AppError::conflict(reason));
+    }
+    crate::settlements::reverse_source_fund(&mut tx, &user, "sales_return", id, &reason).await?;
     let blocked: Option<String> = sqlx::query_scalar("SELECT sales_return_blocked_reason($1)")
         .bind(id)
         .fetch_one(&mut *tx)
@@ -470,7 +529,9 @@ async fn reverse_return(
     sqlx::query("INSERT INTO journal_lines(id,journal_id,account_code,debit,credit) SELECT gen_random_uuid(),$1,account_code,credit,debit FROM journal_lines WHERE journal_id=$2").bind(journal_id).bind(original.get::<Uuid,_>("journal_id")).execute(&mut *tx).await?;
     let new_credit =
         invoice.get::<Decimal, _>("credit_total") - original.get::<Decimal, _>("credit_total");
-    let new_paid = invoice.get::<Decimal, _>("paid") + original.get::<Decimal, _>("refund");
+    let new_paid = invoice.get::<Decimal, _>("paid")
+        + original.get::<Decimal, _>("refund")
+        + original.get::<Decimal, _>("settlement_credit");
     let net = invoice.get::<Decimal, _>("total") - new_credit;
     if new_credit < Decimal::ZERO || new_paid > net {
         return Err(AppError::conflict(

@@ -134,7 +134,7 @@ const BILL_SELECT: &str = r#"
             'remaining_return_quantity',(l.quantity-supplier_bill_returned_quantity(l.id))::text,
             'returned_credit',supplier_bill_returned_credit(l.id)::text) ORDER BY l.position)
             FROM purchase_bill_lines l JOIN purchase_receipt_lines rl ON rl.id=l.receipt_line_id WHERE l.bill_id=b.id),'[]'::jsonb)
-    ) AS document
+    ) || party_document_settlement('bill',b.id) AS document
     FROM purchase_bills b JOIN purchase_receipts r ON r.id=b.receipt_id JOIN purchase_orders o ON o.id=b.order_id
     CROSS JOIN (SELECT (now() AT TIME ZONE timezone)::date today,
         closed_through IS NULL OR (now() AT TIME ZONE timezone)::date>closed_through period_open

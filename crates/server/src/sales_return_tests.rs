@@ -165,6 +165,157 @@ async fn cash(pool: &PgPool) -> Decimal {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn customer_return_retained_credit_180_120_80_can_allocate_15_without_extra_cash(
+    pool: PgPool,
+) {
+    let (app, cookie, customer, stock, service) = fixture(&pool).await;
+    let original=invoice(&app,&cookie,customer,json!([{"product_id":stock,"quantity":"1","unit_price":"100"},{"product_id":service,"quantity":"1","unit_price":"80"}]),true).await;
+    let paid = call(
+        &app,
+        &cookie,
+        &format!("/api/invoices/{}/payments", uid(&original)),
+        Some(json!({"amount":"120","idempotency_key":Uuid::new_v4()})),
+    )
+    .await;
+    let before = cash(&pool).await;
+    let mut input = return_body(&paid, "RET-SERVICE", "1", false);
+    input["refund_mode"] = json!("credit");
+    let returned = call(
+        &app,
+        &cookie,
+        &format!("/api/invoices/{}/returns", uid(&paid)),
+        Some(input.clone()),
+    )
+    .await;
+    assert_eq!(
+        call(
+            &app,
+            &cookie,
+            &format!("/api/invoices/{}/returns", uid(&paid)),
+            Some(input)
+        )
+        .await,
+        returned
+    );
+    assert_eq!(amount(&returned, "net_total"), d("100"));
+    assert_eq!(amount(&returned, "paid"), d("100"));
+    assert_eq!(cash(&pool).await, before);
+    let source = &returned["returns"][0];
+    assert_eq!(amount(source, "refund"), Decimal::ZERO);
+    assert_eq!(amount(source, "settlement_credit"), d("20"));
+    assert_eq!(source["refund_mode"], "credit");
+    let fund = call(
+        &app,
+        &cookie,
+        &format!(
+            "/api/party-funds/{}",
+            source["credit_fund_id"].as_str().unwrap()
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(amount(&fund, "available"), d("20"));
+    let next = invoice(
+        &app,
+        &cookie,
+        customer,
+        json!([{"product_id":service,"quantity":"1","unit_price":"15"}]),
+        false,
+    )
+    .await;
+    let used=call(&app,&cookie,&format!("/api/party-funds/{}/allocate",uid(&fund)),Some(json!({"version":fund["version"],"items":[{"target_type":"invoice","target_id":next["id"],"amount":"15","version":next["version"]}],"idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(amount(&used, "available"), d("5"));
+    assert_eq!(cash(&pool).await, before);
+    let refunded=call(&app,&cookie,&format!("/api/party-funds/{}/refunds",uid(&used)),Some(json!({"version":used["version"],"amount":"5","reason":"Sisa kredit benar-benar dikembalikan pelanggan","confirmed":true,"idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(amount(&refunded, "available"), Decimal::ZERO);
+    assert_eq!(amount(&refunded, "refunded"), d("5"));
+    assert_eq!(cash(&pool).await, before - d("5"));
+    assert_eq!(
+        request(
+            &app,
+            &cookie,
+            &format!(
+                "/api/sales-returns/{}/reverse",
+                source["id"].as_str().unwrap()
+            ),
+            Some(reverse_body(&returned))
+        )
+        .await
+        .0,
+        409
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn customer_return_deferred_refund_reserves_credit_and_cash_moves_only_when_paid(
+    pool: PgPool,
+) {
+    let (app, cookie, customer, _, service) = fixture(&pool).await;
+    let original = invoice(
+        &app,
+        &cookie,
+        customer,
+        json!([{"product_id":service,"quantity":"2","unit_price":"5"}]),
+        false,
+    )
+    .await;
+    let paid = call(
+        &app,
+        &cookie,
+        &format!("/api/invoices/{}/payments", uid(&original)),
+        Some(json!({"amount":"10","idempotency_key":Uuid::new_v4()})),
+    )
+    .await;
+    let mut input = return_body(&paid, "RET-SERVICE", "1", false);
+    input["refund_mode"] = json!("deferred");
+    let returned = call(
+        &app,
+        &cookie,
+        &format!("/api/invoices/{}/returns", uid(&paid)),
+        Some(input),
+    )
+    .await;
+    let source = &returned["returns"][0];
+    assert_eq!(amount(source, "refund"), Decimal::ZERO);
+    assert_eq!(cash(&pool).await, d("10"));
+    assert_eq!(source["can_reverse"], false);
+    let fund = call(
+        &app,
+        &cookie,
+        &format!(
+            "/api/party-funds/{}",
+            source["credit_fund_id"].as_str().unwrap()
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(amount(&fund, "reserved"), d("5"));
+    assert_eq!(amount(&fund, "available"), Decimal::ZERO);
+    let request_id = source["refund_request_id"].as_str().unwrap();
+    let refunded=call(&app,&cookie,&format!("/api/party-refund-requests/{request_id}/pay"),Some(json!({"version":fund["version"],"amount":"2","reason":"Pengembalian dana sebagian telah diterima pelanggan","confirmed":true,"idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(cash(&pool).await, d("8"));
+    assert_eq!(amount(&refunded, "reserved"), d("3"));
+    let cancelled=call(&app,&cookie,&format!("/api/party-refund-requests/{request_id}/cancel"),Some(json!({"version":refunded["version"],"reason":"Sisa permintaan dibatalkan untuk koreksi","idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(amount(&cancelled, "available"), d("3"));
+    let restored=call(&app,&cookie,&format!("/api/party-refunds/{}/reverse",refunded["refunds"][0]["id"].as_str().unwrap()),Some(json!({"version":cancelled["version"],"reason":"Dana sebagian dikembalikan untuk koreksi","idempotency_key":Uuid::new_v4()}))).await;
+    assert_eq!(amount(&restored, "available"), d("5"));
+    assert_eq!(cash(&pool).await, d("10"));
+    let reversed = call(
+        &app,
+        &cookie,
+        &format!(
+            "/api/sales-returns/{}/reverse",
+            source["id"].as_str().unwrap()
+        ),
+        Some(reverse_body(&returned)),
+    )
+    .await;
+    assert_eq!(amount(&reversed, "paid"), d("10"));
+    assert_eq!(amount(&reversed, "credit_total"), Decimal::ZERO);
+    assert_eq!(cash(&pool).await, d("10"));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn unpaid_return_reduces_receivable_and_restores_exact_stock_on_reversal(pool: PgPool) {
     let (app, cookie, customer, stock, _) = fixture(&pool).await;
     let invoice = invoice(

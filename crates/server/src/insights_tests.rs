@@ -318,3 +318,116 @@ async fn insights_receivables_are_the_current_active_position_outside_the_chart_
         json!({"invoiced":"1600.00","paid":"700.00","outstanding":"900.00","unpaid_count":1,"partial_count":1,"paid_count":1})
     );
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn insights_keep_invoice_settlement_separate_from_opening_debt_and_actual_cash(pool: PgPool) {
+    use crate::supplier_bill_tests::{call, fixture};
+
+    let (app, user, cookie) = fixture(&pool).await;
+    let customer = call(
+        &app,
+        &cookie,
+        "POST",
+        "/api/customers",
+        Some(json!({"name":"Opening and operational invoice customer"})),
+    )
+    .await;
+    let party: Uuid = customer["id"].as_str().unwrap().parse().unwrap();
+    let draft = call(
+        &app,
+        &cookie,
+        "PUT",
+        "/api/accounting/opening",
+        Some(json!({
+            "version":0,"description":"Legacy receivable","items":[],
+            "parties":[{"kind":"receivable","party_id":party,"reference":"OLD-AR-CHART",
+                "document_date":"2020-01-01","due_date":"2020-02-01","amount":"2000"}],
+            "lines":[{"account_code":"3000","debit":"0","credit":"2000"}]
+        })),
+    )
+    .await;
+    call(
+        &app,
+        &cookie,
+        "POST",
+        "/api/accounting/opening/post",
+        Some(json!({"version":draft["document"]["version"],"idempotency_key":Uuid::new_v4()})),
+    )
+    .await;
+    let opening: Uuid =
+        sqlx::query_scalar("SELECT id FROM opening_party_items WHERE kind='receivable'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let invoice = Uuid::new_v4();
+    let order = Uuid::new_v4();
+    let entry = Uuid::new_v4();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("INSERT INTO sales_orders(id,number,customer_id,status,total,created_by) VALUES($1,'CHART-OP-SO',$2,'invoiced',1000,$3)")
+        .bind(order).bind(party).bind(user).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO invoices(id,number,order_id,customer_id,total) VALUES($1,'CHART-OP-INV',$2,$3,1000)")
+        .bind(invoice).bind(order).bind(party).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO journal_entries(id,description,source_type,source_id,created_by) VALUES($1,'Operational invoice','invoice',$2,$3)")
+        .bind(entry).bind(invoice).bind(user).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO journal_lines(id,journal_id,account_code,debit,credit) VALUES($1,$2,'1200',1000,0),($3,$2,'4000',0,1000)")
+        .bind(Uuid::new_v4()).bind(entry).bind(Uuid::new_v4()).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+    let fund = call(
+        &app,
+        &cookie,
+        "POST",
+        "/api/party-funds",
+        Some(json!({"side":"customer","party_id":party,"amount":"500","idempotency_key":Uuid::new_v4()})),
+    )
+    .await;
+    let allocated = call(
+        &app,
+        &cookie,
+        "POST",
+        &format!("/api/party-funds/{}/allocate", fund["id"].as_str().unwrap()),
+        Some(json!({"version":fund["version"],"items":[
+            {"target_type":"invoice","target_id":invoice,"version":1,"amount":"300"},
+            {"target_type":"opening_receivable","target_id":opening,"version":1,"amount":"200"}
+        ],"idempotency_key":Uuid::new_v4()})),
+    )
+    .await;
+    let chart = call(&app, &cookie, "GET", "/api/dashboard/insights", None).await;
+    assert_eq!(
+        amount(&chart["receivables"], "invoiced"),
+        Decimal::from(1000)
+    );
+    assert_eq!(amount(&chart["receivables"], "paid"), Decimal::from(300));
+    assert_eq!(
+        amount(&chart["receivables"], "outstanding"),
+        Decimal::from(700)
+    );
+    assert_eq!(chart["receivables"]["partial_count"], 1);
+    assert_eq!(amount(&chart["totals"], "cash_in"), Decimal::from(500));
+    assert_eq!(amount(&chart["totals"], "cash_out"), Decimal::ZERO);
+    assert_eq!(amount(&chart["totals"], "revenue"), Decimal::from(1000));
+    let allocation = allocated["allocations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|allocation| allocation["target_type"] == "invoice")
+        .unwrap();
+    call(
+        &app,
+        &cookie,
+        "POST",
+        &format!("/api/party-allocations/{}/reverse", allocation["id"].as_str().unwrap()),
+        Some(json!({"version":allocated["version"],"reason":"Correct invoice allocation","idempotency_key":Uuid::new_v4()})),
+    )
+    .await;
+    let corrected = call(&app, &cookie, "GET", "/api/dashboard/insights", None).await;
+    assert_eq!(amount(&corrected["receivables"], "paid"), Decimal::ZERO);
+    assert_eq!(
+        amount(&corrected["receivables"], "outstanding"),
+        Decimal::from(1000)
+    );
+    assert_eq!(corrected["receivables"]["unpaid_count"], 1);
+    assert_eq!(
+        corrected["totals"], chart["totals"],
+        "Allocations and their reversals do not move cash or recognize revenue"
+    );
+}

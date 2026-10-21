@@ -135,7 +135,15 @@ fn amount(mut value: Decimal) -> String {
 fn counterpart_category(code: &str, kind: &str, role: Option<&str>) -> Option<&'static str> {
     if matches!(code, "1200" | "1300")
         || matches!(kind, "revenue" | "expense")
-        || matches!(role, Some("purchase_payable" | "purchase_receipt_accrual"))
+        || matches!(
+            role,
+            Some(
+                "purchase_payable"
+                    | "purchase_receipt_accrual"
+                    | "customer_credit"
+                    | "supplier_advance"
+            )
+        )
     {
         Some("operating")
     } else if kind == "equity" {

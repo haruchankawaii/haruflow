@@ -27,6 +27,8 @@ mod insights_tests;
 mod master_data;
 mod opening;
 #[cfg(test)]
+mod opening_party_tests;
+#[cfg(test)]
 mod opening_tests;
 mod partial_sales;
 #[cfg(test)]
@@ -37,11 +39,20 @@ mod purchase_receipts;
 mod purchasing;
 #[cfg(test)]
 mod purchasing_tests;
+mod records;
+mod runtime;
 #[cfg(test)]
 mod sales_return_tests;
 mod sales_returns;
 #[cfg(test)]
 mod service_tests;
+#[cfg(test)]
+mod settlement_report_tests;
+#[cfg(test)]
+mod settlement_safety_tests;
+#[cfg(test)]
+mod settlement_tests;
+mod settlements;
 #[cfg(test)]
 mod supplier_bill_tests;
 mod supplier_bills;
@@ -63,8 +74,8 @@ mod web_tests;
 use anyhow::{Context, Result, bail};
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Request, State},
-    http::{HeaderValue, Method, StatusCode, header},
+    extract::{DefaultBodyLimit, Request},
+    http::{HeaderValue, Method, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
@@ -96,6 +107,10 @@ async fn main() -> Result<()> {
     let command = cli::parse(&env::args().skip(1).collect::<Vec<_>>())?;
     if command == cli::Command::Help {
         println!("{}", cli::HELP);
+        return Ok(());
+    }
+    if command == cli::Command::Version {
+        println!("{}", runtime::version());
         return Ok(());
     }
     if command == cli::Command::Healthcheck {
@@ -132,7 +147,7 @@ async fn main() -> Result<()> {
         .await
         .context("Cannot connect to PostgreSQL")?;
     if command == cli::Command::Migrate {
-        sqlx::migrate!("../../migrations")
+        runtime::MIGRATIONS
             .run(&db)
             .await
             .context("Database migration failed")?;
@@ -203,6 +218,8 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(financial_reports::router())
         .merge(imports::router())
         .merge(attachments::router())
+        .merge(records::router())
+        .merge(settlements::router())
         .fallback(|| async { error::AppError::not_found() })
         .layer(middleware::from_fn(api_guard));
     Router::new()
@@ -210,7 +227,8 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
             "/health/live",
             get(|| async { Json(json!({"status":"ok"})) }),
         )
-        .route("/health/ready", get(ready))
+        .route("/health/ready", get(runtime::ready))
+        .route("/version", get(|| async { Json(runtime::version()) }))
         .nest("/api", api)
         .fallback_service(
             ServeDir::new(&static_dir)
@@ -220,19 +238,6 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .layer(middleware::from_fn(security_headers))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
-}
-
-async fn ready(State(state): State<AppState>) -> impl IntoResponse {
-    match sqlx::query_scalar::<_, i32>("SELECT 1")
-        .fetch_one(&state.db)
-        .await
-    {
-        Ok(_) => (StatusCode::OK, Json(json!({"status":"ready"}))),
-        Err(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"status":"unavailable"})),
-        ),
-    }
 }
 
 async fn api_guard(request: Request, next: Next) -> Response {

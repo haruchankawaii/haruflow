@@ -36,6 +36,9 @@ async fn insights(
     // One statement gives all series, totals, and the current invoice position
     // the same database snapshot. Corrections affect their posting month; an
     // opening balance contributes to cash movements but never to revenue.
+    // The receivables donut is explicitly scoped to operational invoices:
+    // paid includes credit allocations as well as payments, not cash receipts.
+    // Opening receivables belong to the ledger KPI and party aging instead.
     let result = sqlx::query_scalar::<_, Value>(
         r#"
         WITH bounds AS (

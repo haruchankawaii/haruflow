@@ -143,7 +143,7 @@ async fn dashboard(State(state): State<AppState>, _user: AuthUser) -> AppResult<
     let result: Value = sqlx::query_scalar(r#"
         SELECT jsonb_build_object(
             'revenue',COALESCE((SELECT sum(credit-debit) FROM journal_lines WHERE account_code='4000'),0)::text,
-            'outstanding',COALESCE((SELECT sum(total-credit_total-paid) FROM invoices WHERE status<>'void'),0)::text,
+            'outstanding',COALESCE((SELECT sum(debit-credit) FROM journal_lines WHERE account_code='1200'),0)::text,
             'inventory_value',COALESCE((SELECT sum(inventory_value) FROM products),0)::text,
             'cash',COALESCE((SELECT sum(debit-credit) FROM journal_lines WHERE account_code='1100'),0)::text,
             'orders_count',(SELECT count(*) FROM sales_orders),
@@ -174,6 +174,7 @@ struct CustomerInput {
     email: Option<String>,
     phone: Option<String>,
     address: Option<String>,
+    payment_terms_days: Option<i32>,
 }
 
 async fn create_customer(
@@ -186,10 +187,21 @@ async fn create_customer(
     let email = optional_text(body.email, 254, "Email")?;
     let phone = optional_text(body.phone, 64, "Phone")?;
     let address = optional_text(body.address, 1000, "Address")?;
+    let terms = body.payment_terms_days.unwrap_or(0);
+    if !(0..=3650).contains(&terms) {
+        return Err(AppError::bad_request(
+            "Payment terms must be between 0 and 3650 days",
+        ));
+    }
     let id = Uuid::new_v4();
     let mut tx = state.db.begin().await?;
-    let result: Value = sqlx::query_scalar("INSERT INTO customers(id,name,email,phone,address) VALUES($1,$2,$3,$4,$5) RETURNING to_jsonb(customers)")
-        .bind(id).bind(name).bind(email).bind(phone).bind(address).fetch_one(&mut *tx).await?;
+    let result: Value = if body.payment_terms_days.is_some() {
+        sqlx::query_scalar("INSERT INTO customers(id,name,email,phone,address,payment_terms_days) VALUES($1,$2,$3,$4,$5,$6) RETURNING to_jsonb(customers)")
+            .bind(id).bind(name).bind(email).bind(phone).bind(address).bind(terms).fetch_one(&mut *tx).await?
+    } else {
+        sqlx::query_scalar("INSERT INTO customers(id,name,email,phone,address) VALUES($1,$2,$3,$4,$5) RETURNING to_jsonb(customers)")
+            .bind(id).bind(name).bind(email).bind(phone).bind(address).fetch_one(&mut *tx).await?
+    };
     audit(
         &mut tx,
         &user,
