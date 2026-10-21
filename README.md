@@ -13,19 +13,20 @@ Versi pengembangan awal: satu perusahaan, satu gudang, mata uang IDR, tanpa paja
 - Sales order → konfirmasi → pengiriman sebagian/penuh untuk barang → invoice sebagian/penuh → pembayaran sebagian/penuh.
 - Produk jasa/nonstok dapat ditagih langsung setelah konfirmasi, tanpa pergerakan stok; pesanan campuran tetap mengirim barang terlebih dahulu.
 - Jurnal otomatis, jurnal manual seimbang, neraca saldo, dan penutupan periode.
-- Saldo awal kas/aset/modal dan stok melalui draf, pemeriksaan, posting satu kali, serta pembalikan sebelum transaksi operasional dimulai. Lihat [panduan saldo awal](./docs/OPENING_BALANCES.md).
+- Saldo awal kas/aset/modal, stok, piutang/utang per dokumen, serta sisa uang muka/kredit pelanggan dan supplier melalui draf seimbang. Rincian pihak dapat diisi manual atau melalui CSV dengan preview; posting tetap satu kali sebelum operasi. Lihat [panduan saldo awal](./docs/OPENING_BALANCES.md).
+- Buku pembantu **Saldo pihak** untuk piutang/utang, uang muka, kredit, alokasi lintas tagihan pihak yang sama, serta refund tertunda/sebagian. Chart aging, posisi per tanggal, rekonsiliasi ke ledger, CSV, dan cetak tersedia. Lihat [panduan saldo pihak](./docs/PARTY_BALANCES.md).
 - Koreksi pembayaran, invoice, dan pengiriman melalui reversal dengan alasan; riwayat posted dipertahankan.
 - Pembalikan jurnal manual dan penerimaan stok terbaru yang memiliki snapshot biaya; dokumen asal dan alasan koreksi tetap tersimpan. Lihat [panduan koreksi dan chart](./docs/CORRECTIONS_AND_CHARTS.md).
-- Dashboard, pencarian, ekspor CSV, dan tampilan cetak invoice.
+- Dashboard, pencarian, ekspor CSV, dan tampilan cetak invoice. **Riwayat lengkap** menyediakan pencarian/filter dan pagination server untuk data di luar daftar ringkas; ekspor mengambil seluruh hasil filter sampai 10.000 baris. Lihat [panduan riwayat](./docs/HISTORY.md).
 - Chart pendapatan/HPP dan mutasi kas dengan pilihan 3/6/12 bulan, serta posisi invoice terbayar/piutang saat ini.
 - Laporan laba rugi, neraca, dan arus kas dengan rentang tanggal, chart, CSV, rincian akun/jurnal, serta klasifikasi arus kas beralasan. Lihat [panduan laporan](./docs/FINANCIAL_REPORTS.md).
-- Retur pelanggan dan supplier sebagian/penuh, kredit tagihan, pencatatan refund aktual, jurnal biaya persediaan, serta pembalikan beralasan. Lihat [panduan retur](./docs/RETURNS.md).
+- Retur pelanggan dan supplier sebagian/penuh, kredit tagihan, pilihan refund aktual/simpan kredit/menunggu refund, jurnal biaya persediaan, serta pembalikan beralasan. Lihat [panduan retur](./docs/RETURNS.md).
 - Impor pelanggan, supplier, dan produk dari CSV UTF-8, dengan template, preview wajib, validasi per baris, perlindungan duplikasi, serta penyimpanan atomik. Lihat [panduan impor](./docs/IMPORTS.md).
 - Lampiran bukti PDF/PNG/JPEG pada dokumen dan pembayaran, unduhan setelah login, arsip/pemulihan beralasan, serta riwayat. Isi file ikut backup database. Lihat [panduan lampiran](./docs/ATTACHMENTS.md).
 
 Menu Pembelian menyediakan supplier, PO draf/edit/konfirmasi/pembatalan, penerimaan dan penagihan sebagian/penuh, pembayaran supplier, koreksi beralasan, serta chart status PO, umur utang, dan pembayaran. Penerimaan memperbarui stok dan jurnal persediaan/barang diterima belum ditagih; tagihan memindahkan kewajiban tersebut ke utang supplier. Pembayaran mengurangi kas serta utang. Jumlah tersisa tetap terlacak; lihat [panduan pembelian](./docs/PURCHASING.md).
 
-Uang muka, refund tertunda/kredit pelanggan, variasi harga invoice pembelian, ongkos/pajak otomatis, multicurrency, multi-company, payroll, serta integrasi bank/pajak belum tersedia. Arus kas memakai akun Kas 1100; satu jurnal yang mencampur aktivitas dapat diklasifikasikan secara manual sebagai satu kelompok. Detail lingkup ada di [status implementasi](./docs/IMPLEMENTATION_STATUS.md).
+Variasi harga invoice pembelian, pembelian jasa, ongkos/pajak otomatis, multicurrency, multi-company, payroll, serta integrasi bank/pajak belum tersedia. Arus kas memakai akun Kas 1100; satu jurnal yang mencampur aktivitas dapat diklasifikasikan secara manual sebagai satu kelompok. Aplikasi mencatat perpindahan uang aktual, sedangkan transfer bank dilakukan di luar aplikasi. Detail lingkup ada di [status implementasi](./docs/IMPLEMENTATION_STATUS.md).
 
 ## Menjalankan dengan Docker Compose
 
@@ -70,6 +71,7 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked -- --test-threads=1
 bun run --cwd apps/web test
 bun run build:web
+node --test scripts/backup-manifest.test.mjs
 ```
 
 `.env` hanya dibaca otomatis oleh executable, sehingga untuk `cargo test` tetap set `DATABASE_URL` di environment shell. Gunakan format `postgres://user:password@127.0.0.1:5432/postgres`; tes tidak memakai database aplikasi sebagai tempat fixture. Database tes yang gagal mungkin disimpan SQLx untuk investigasi.
@@ -94,7 +96,9 @@ node scripts/database.mjs backup
 node scripts/database.mjs restore backups/nama-file.backup --confirm-restore
 ```
 
-Backup menggunakan `pg_dump` dalam container PostgreSQL. Restore mengganti isi database, menghentikan aplikasi, dan memakai satu transaksi. Aplikasi tetap berhenti setelah restore untuk memberi kesempatan verifikasi versi. Cadangkan `.env` dengan enkripsi secara terpisah dan uji restore pada instalasi lain. Lihat [runbook operasi](./docs/OPERATIONS.md).
+Backup menggunakan `pg_dump` dalam container PostgreSQL, disertai manifest versi aplikasi/schema, ukuran, dan SHA-256. Utilitas memeriksa manifest serta arsip sebelum restore. Restore mengganti isi database, menghentikan aplikasi, dan memakai satu transaksi. Aplikasi tetap berhenti setelah restore untuk memberi kesempatan verifikasi versi dan migrasi eksplisit. Cadangkan `.env` dengan enkripsi secara terpisah dan uji restore pada instalasi lain. Lihat [runbook operasi](./docs/OPERATIONS.md).
+
+Perintah `haruflow version` dan endpoint `/version` menampilkan identitas build tanpa konfigurasi rahasia. Readiness memeriksa kecocokan migrasi sebelum aplikasi dinyatakan siap. Panduan [kandidat rilis](./docs/RELEASE_CANDIDATE.md) menjelaskan pembuatan paket berisi binary, web, source yang sesuai, dan checksum; workflow kandidat tidak menerbitkan tag atau image registry otomatis. Pilot usaha nyata tetap memerlukan hasil penggunaan yang dicatat.
 
 ## Struktur dan dokumen
 
@@ -103,7 +107,7 @@ Backup menggunakan `pg_dump` dalam container PostgreSQL. Restore mengganti isi d
 - `migrations`: migrasi schema PostgreSQL yang berurutan.
 - `deploy/community`: Docker Compose untuk instalasi mandiri.
 - [Rencana Community](./docs/COMMUNITY_PLAN.md), [proposal arsitektur](./haruflow.md), dan [operasi](./docs/OPERATIONS.md).
-- [Status implementasi dan batas baseline](./docs/IMPLEMENTATION_STATUS.md).
+- [Status implementasi dan batas fitur](./docs/IMPLEMENTATION_STATUS.md), [saldo pihak](./docs/PARTY_BALANCES.md), [riwayat lengkap](./docs/HISTORY.md), dan [kandidat rilis](./docs/RELEASE_CANDIDATE.md).
 
 ## License
 

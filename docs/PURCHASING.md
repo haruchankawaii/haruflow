@@ -52,7 +52,7 @@ Buka **Pembelian → Tagihan → Catat tagihan**, atau mulai dari penerimaan ter
 
 Jurnal tagihan adalah **debit Barang diterima belum ditagih / kredit Utang supplier** sebesar bagian yang ditagih. Stok, biaya rata-rata, kas, pendapatan, dan HPP tidak berubah. Status pemenuhan PO juga tidak berubah karena penagihan.
 
-Akun kontrol Utang supplier memakai kode kosong 2200–2299 atau kode sepuluh digit kosong; akun pengguna dan akun penampung penerimaan tidak digunakan ulang. Jurnal manual dan saldo awal tidak dapat mengisi akun ini. Pembukaan utang historis per supplier belum tersedia.
+Akun kontrol Utang supplier memakai kode kosong 2200–2299 atau kode sepuluh digit kosong; akun pengguna dan akun penampung penerimaan tidak digunakan ulang. Jurnal manual dan saldo akun umum tidak dapat mengisi akun ini. Utang historis dimasukkan melalui rincian per supplier/dokumen pada [saldo awal](./OPENING_BALANCES.md), sehingga akun kontrol tetap cocok dengan buku pembantu.
 
 Contoh: PO 10 unit, diterima 4, lalu ditagih 2. Sisa penerimaan PO masih 6 unit; dari 4 unit yang sudah diterima masih ada 2 unit belum ditagih. Menerima atau menagih bagian selanjutnya tidak memerlukan PO baru.
 
@@ -62,7 +62,9 @@ Pada detail tagihan, buka bagian **Pembayaran supplier**. Isi nominal positif sa
 
 Posting menyimpan dokumen `SP-000001`, jurnal **debit Utang supplier / kredit Kas 1100**, pembaruan saldo/status tagihan, dan audit bersama-sama. Stok dan beban tidak berubah. Status tagihan adalah **Belum dibayar**, **Dibayar sebagian**, **Lunas**, atau **Dibatalkan**. Contoh tagihan Rp180.000 dibayar Rp60.000 menyisakan utang Rp120.000; membayar sisanya membuat tagihan lunas.
 
-Pembayaran berlebih, saldo kas tidak cukup, versi lama, dan penggunaan ulang kunci untuk request berbeda ditolak. Riwayat pembayaran serta jurnal asal dapat dibuka dari tagihan.
+Pembayaran langsung yang melebihi sisa tagihan, saldo kas tidak cukup, versi lama, dan penggunaan ulang kunci untuk request berbeda ditolak. Riwayat pembayaran serta jurnal asal dapat dibuka dari tagihan.
+
+Untuk DP atau dana yang melebihi sisa satu tagihan, gunakan **Saldo pihak → Supplier → Catat uang muka**. Catat dana aktual sekali, lalu alokasikan sebagian/penuh ke satu atau beberapa tagihan supplier yang sama, termasuk utang pembukaan. Alokasi mengurangi uang muka serta utang dan tidak mengurangi kas lagi. Sisa dana tetap tersedia untuk alokasi berikutnya atau refund dari supplier. Rincian tagihan membedakan pembayaran kas dari pemakaian saldo; lihat [saldo pihak](./PARTY_BALANCES.md).
 
 Pembayaran yang salah dibalik dengan alasan 3–1.000 karakter pada periode terbuka. Pembalikan menambah jurnal lawan persis, mengembalikan kas, dan membuka kembali sisa utang yang sesuai. Pembayaran asal tidak dihapus. Retur aktif pada tagihan harus dibalik terlebih dahulu sebelum pembayaran asal dapat dibalik.
 
@@ -70,15 +72,15 @@ Pembayaran yang salah dibalik dengan alasan 3–1.000 karakter pada periode terb
 
 Pilih **Retur ke supplier** pada detail tagihan untuk mencatat sebagian atau seluruh barang yang belum pernah diretur. Stok saat ini harus cukup dan satuan harus cocok. Kredit mengikuti nilai tagihan asal; stok keluar memakai biaya rata-rata saat retur. Selisih dicatat pada akun kontrol beban **Selisih nilai retur pembelian**, memakai kode kosong 5900–5999 atau kode sepuluh digit kosong tanpa mengambil alih akun pengguna.
 
-**Nilai bersih = total awal − kredit retur aktif. Sisa utang = nilai bersih − pembayaran bersih.** Bila pembayaran yang sudah ada melebihi nilai bersih baru, retur mencatat kas masuk dari supplier sebesar kelebihan tersebut dan mengurangi pembayaran bersih. Konfirmasi dana aktual diperlukan sebelum posting refund. Refund tertunda atau saldo kredit lintas tagihan belum tersedia.
+**Nilai bersih = total awal − kredit retur aktif. Sisa utang = nilai bersih − total penyelesaian aktif.** Total penyelesaian membedakan pembayaran kas, alokasi uang muka/kredit, serta kredit yang sudah dipindahkan dari tagihan. Bila penyelesaian melebihi nilai bersih baru, pilih **Dana sudah dikembalikan**, **Simpan kredit pihak**, atau **Menunggu refund**. Refund langsung mencatat kas masuk aktual dari supplier dan memerlukan konfirmasi. Dua pilihan lain membuat kredit supplier tanpa kas baru; refund tertunda juga menyisihkan saldo agar tidak terpakai pada tagihan lain.
 
-Contoh tagihan Rp180.000 sudah dibayar Rp120.000, kemudian diretur Rp80.000: nilai bersih menjadi Rp100.000, supplier mengembalikan Rp20.000, pembayaran bersih menjadi Rp100.000, dan sisa utang nol. Riwayat pembayaran Rp120.000 tetap tersimpan bersama riwayat refund. Tagihan dengan nilai bersih nol dapat berstatus Lunas walaupun penyelesaiannya berasal dari kredit retur.
+Contoh tagihan Rp180.000 sudah dibayar Rp120.000, kemudian diretur Rp80.000: nilai bersih menjadi Rp100.000 dan sisa utang nol. Kelebihan Rp20.000 dapat diterima sebagai refund aktual, menjadi kredit untuk tagihan lain, atau menunggu refund. Bila refund belum terjadi, kas belum bertambah. Riwayat pembayaran Rp120.000 tetap tersimpan bersama sumber kredit/refundnya. Tagihan dengan nilai bersih nol dapat berstatus Lunas walaupun penyelesaiannya berasal dari kredit retur.
 
 Retur komersial tidak membuka kembali jumlah yang sudah diterima atau ditagih pada PO. Barang pengganti atau pembelian kembali dicatat melalui transaksi pengganti. Lihat [panduan retur](./RETURNS.md) untuk jurnal, persediaan, refund, dan pembalikan aman.
 
 ## Koreksi dan urutan ketergantungan
 
-Tagihan yang sudah diposting tidak dapat diedit atau dihapus. Jika perlu membatalkannya, balikkan **retur aktif → pembayaran aktif → tagihan**, sesuai dokumen yang ada dan syarat masing-masing. Pembalikan tagihan membuat jurnal **debit Utang supplier / kredit Barang diterima belum ditagih**, mengubah status menjadi Dibatalkan, dan memulihkan jumlah penerimaan yang dapat ditagih. Dokumen PB pengganti dapat memakai nomor invoice supplier yang sudah dibatalkan.
+Tagihan yang sudah diposting tidak dapat diedit atau dihapus. Jika perlu membatalkannya, beresi dependensi kredit/refund pada retur, lalu balikkan **retur aktif → pembayaran/alokasi aktif → tagihan**, sesuai dokumen yang ada dan syarat masing-masing. Dana yang telah disisihkan perlu dibatalkan sisanya; alokasi/refund aktual harus dibalik sebelum sumber kredit dapat dibalik. Pembalikan tagihan membuat jurnal **debit Utang supplier / kredit Barang diterima belum ditagih**, mengubah status menjadi Dibatalkan, dan memulihkan jumlah penerimaan yang dapat ditagih. Dokumen PB pengganti dapat memakai nomor invoice supplier yang sudah dibatalkan.
 
 Penerimaan dikoreksi dari riwayat PO setelah semua tagihan aktif yang menggunakannya dibalik. Setiap produk harus belum mempunyai mutasi setelah penerimaan, dan jumlah/nilai/biaya rata-rata harus cocok dengan snapshot. Mutasi yang kemudian telah dibalik tetap merupakan riwayat lanjutan. Jika satu barang gagal, seluruh pembalikan penerimaan ditolak.
 
@@ -90,16 +92,18 @@ Penerimaan, tagihan, pembayaran, retur, dan pembalikannya memakai waktu posting 
 
 ## Membaca chart dan laporan
 
-Chart PO menunjukkan jumlah seluruh PO menurut status Draf, Dikonfirmasi, Diterima sebagian, Diterima, dan Dibatalkan. Nominal **Menunggu penerimaan** menghitung nilai bagian PO dikonfirmasi yang belum diterima; **Barang diterima, belum ditagih** menghitung sisa nilai penerimaan aktif yang belum ditagih; **Utang supplier** menghitung sisa setelah kredit retur serta pembayaran. Memindahkan kewajiban dari penerimaan ke tagihan tidak mengubah jumlah barang yang diterima.
+Chart PO menunjukkan jumlah seluruh PO menurut status Draf, Dikonfirmasi, Diterima sebagian, Diterima, dan Dibatalkan. Nominal **Menunggu penerimaan** menghitung nilai bagian PO dikonfirmasi yang belum diterima; **Barang diterima, belum ditagih** menghitung sisa nilai penerimaan aktif yang belum ditagih. Posisi utang pada Pembelian berasal dari tagihan operasional setelah kredit retur dan penyelesaian aktif, sehingga tidak mencakup utang pembukaan. Memindahkan kewajiban dari penerimaan ke tagihan tidak mengubah jumlah barang yang diterima.
 
 Chart jatuh tempo membagi sisa utang menjadi Belum jatuh tempo, Jatuh tempo hari ini, dan Lewat jatuh tempo. Bagian **Umur utang dan pembayaran** mengelompokkan sisa menjadi belum terlambat, 1–30, 31–60, 61–90, dan lebih dari 90 hari. Hari jatuh tempo belum dianggap terlambat. Perhitungan memakai hari perusahaan saat ini; pembayaran sebagian dan kredit retur mengurangi nominal yang ditampilkan. Tagihan lunas atau dibatalkan tidak menambah umur utang.
 
-Riwayat kas supplier dapat dipilih untuk 3, 6, atau 12 bulan. Angka keluar dan kembali mencakup pembayaran, pembalikan pembayaran, refund retur, serta pembalikan refund menurut bulan posting; angka neto adalah kas keluar dikurangi kas kembali. Ini bukan umur utang historis pada tanggal lampau.
+Riwayat kas supplier pada Pembelian dapat dipilih untuk 3, 6, atau 12 bulan. Angka keluar dan kembali mencakup pembayaran langsung, pembalikan pembayaran, refund langsung retur, serta pembalikannya menurut bulan posting; angka neto adalah kas keluar dikurangi kas kembali. Grafik ini bukan umur utang historis atau seluruh kas supplier. Dana/refund yang dicatat melalui **Saldo pihak** ditelusuri di buku pembantu; arus kas menyeluruh tersedia pada laporan keuangan.
 
-Daftar PO/tagihan, pencarian, filter, dan CSV daftar memakai paling banyak 500 dokumen terbaru. Ringkasan/chart dan analisis umur utang memakai seluruh dokumen. Rincian umur utang dapat difilter per kelompok dan diekspor CSV. Tautan tagihan, penerimaan, PO, dan jurnal membantu memeriksa sumber angka.
+Daftar ringkas PO/tagihan, pencarian, filter, dan CSV daftar memakai paling banyak 500 dokumen terbaru. Ringkasan/chart dan analisis umur utang memakai seluruh tagihan operasional. Rincian umur utang dapat difilter per kelompok dan diekspor CSV. Gunakan **Riwayat lengkap** untuk mencari dokumen di luar daftar ringkas dan mengekspor seluruh filter sampai batas yang ditampilkan. Tautan tagihan, penerimaan, PO, dan jurnal membantu memeriksa sumber angka.
+
+Untuk posisi utang gabungan tagihan operasional dan pembukaan, kredit tersedia, refund tertunda, serta aging pada tanggal tertentu, buka **Saldo pihak → Supplier**. Kredit yang belum dialokasikan tidak otomatis mengurangi tagihan terlambat.
 
 Buka **Akuntansi → Laporan keuangan** untuk laba rugi, neraca, dan arus kas beserta CSV dan rincian jurnal. Laba rugi serta arus kas memakai rentang tanggal posting; neraca memakai akumulasi sampai tanggal akhir. Arus kas mencakup akun Kas 1100. Lihat [panduan laporan keuangan](./FINANCIAL_REPORTS.md).
 
 ## Batas yang masih berlaku
 
-Pembelian jasa, perubahan biaya invoice terhadap penerimaan, pajak, ongkir/biaya tambahan, uang muka supplier, refund tertunda, serta kredit lintas tagihan belum mempunyai alur khusus. Instalasi tetap satu perusahaan, satu gudang logis, dan IDR. Untuk pengiriman serta invoice penjualan sebagian, baca [pemenuhan penjualan](./SALES_FULFILLMENT.md).
+Pembelian jasa, perubahan biaya invoice terhadap penerimaan, pajak, serta ongkir/biaya tambahan belum mempunyai alur khusus. Instalasi tetap satu perusahaan, satu gudang logis, dan IDR. Uang muka, kredit lintas tagihan, dan refund tertunda tersedia melalui **Saldo pihak**, dengan alokasi terbatas pada supplier yang sama. Untuk pengiriman serta invoice penjualan sebagian, baca [pemenuhan penjualan](./SALES_FULFILLMENT.md).

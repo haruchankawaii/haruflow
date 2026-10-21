@@ -18,6 +18,8 @@ Tab **Laba rugi** menjumlahkan seluruh akun kelompok Pendapatan dan Beban pada r
 
 Pembelian persediaan belum otomatis menjadi beban: nilainya lebih dahulu masuk persediaan. HPP muncul melalui jurnal pengiriman. Penerimaan PO dan tagihan supplier juga mempunyai jurnal aset/liabilitas tersendiri. Membayar utang supplier mengurangi kas dan utang; pembayaran tersebut tidak dibebankan sekali lagi pada laba rugi.
 
+Uang muka pelanggan merupakan kewajiban dan uang muka supplier merupakan aset sampai diselesaikan. Keduanya belum merupakan pendapatan/beban. Alokasi ke tagihan memindahkan saldo kontrol dan tidak mencatat kas lagi. Saldo pihak pembukaan juga tidak membuat ulang pendapatan, beban, atau pembayaran historis.
+
 Retur pelanggan mengurangi pendapatan dan membalik biaya historis barang yang dikembalikan. Selisih nilai retur pembelian, bila ada, ikut masuk melalui akun beban **Selisih nilai retur pembelian**. Koreksi dapat menghasilkan pendapatan atau beban bersih negatif pada suatu periode; tanda minus tetap ditampilkan.
 
 Klik nama akun untuk membuka rincian buku besarnya sesuai rentang laporan, lalu klik jurnal untuk memeriksa debit dan kredit sumbernya.
@@ -28,8 +30,8 @@ Tab **Neraca** memakai akumulasi seluruh jurnal sampai tanggal akhir, termasuk t
 
 Neraca menampilkan:
 
-- **Aset:** seluruh akun kelompok aset, termasuk kas, piutang, persediaan, dan akun aset tambahan.
-- **Liabilitas:** seluruh akun kewajiban, termasuk barang diterima belum ditagih, utang supplier, dan akun tambahan.
+- **Aset:** seluruh akun kelompok aset, termasuk kas, piutang, persediaan, uang muka/kredit supplier, dan akun aset tambahan.
+- **Liabilitas:** seluruh akun kewajiban, termasuk barang diterima belum ditagih, utang supplier, uang muka/kredit pelanggan, dan akun tambahan.
 - **Ekuitas tercatat:** saldo akun kelompok ekuitas.
 - **Laba/rugi akumulasi:** saldo bersih akun pendapatan dikurangi beban sampai tanggal neraca. Buka rinciannya untuk melihat akun pembentuknya.
 
@@ -47,7 +49,7 @@ Laporan memperlihatkan saldo sebelum tanggal awal, seluruh debit kas sebagai kas
 
 Aktivitas dibagi menjadi Operasi, Investasi, Pendanaan, dan **Belum terklasifikasi / saldo awal**. Pemetaan otomatis menggunakan akun lawan jurnal:
 
-- Akun pendapatan, beban, piutang `1200`, persediaan `1300`, dan akun kontrol kewajiban pembelian masuk Operasi.
+- Akun pendapatan, beban, piutang `1200`, persediaan `1300`, akun kontrol kewajiban pembelian, serta uang muka/kredit pelanggan dan supplier masuk Operasi.
 - Akun ekuitas masuk Pendanaan, kecuali jurnal saldo awal pembukuan.
 - Saldo awal pembukuan, jurnal yang mencampurkan kelompok berbeda, akun aset/liabilitas tambahan yang sifatnya belum jelas, dan jurnal berisi debit sekaligus kredit Kas 1100 masuk kelompok belum terklasifikasi.
 

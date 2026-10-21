@@ -10,7 +10,7 @@ Jenis yang didukung adalah **PDF, PNG, dan JPEG**. Batasnya **5 MiB per file**, 
 
 Nama file harus 1–200 karakter, tanpa spasi tepi, pemisah direktori, atau karakter kontrol; nama `.` dan `..` ditolak. Nama dipakai sebagai keterangan unduhan, bukan sebagai path penyimpanan pada server. Isi lampiran disimpan bersama metadata ukuran dan SHA-256. Permintaan unggah ulang yang sama tidak membuat file ganda.
 
-Lampiran tersedia untuk pesanan penjualan, invoice, pembayaran pelanggan, PO, penerimaan PO, tagihan supplier, pembayaran supplier, jurnal, retur pelanggan, dan retur supplier. Lampiran pada pembayaran menggunakan identitas pembayaran tersebut, terpisah dari lampiran invoice atau tagihan induknya.
+Lampiran tersedia untuk 13 jenis sumber: pesanan penjualan, invoice, pembayaran pelanggan, PO, penerimaan PO, tagihan supplier, pembayaran supplier, jurnal, retur pelanggan, retur supplier, sumber dana pihak, refund aktual, serta rincian saldo pembukaan. Lampiran pada pembayaran/refund menggunakan identitas transaksi tersebut, terpisah dari invoice, tagihan, atau sumber dana induknya. Pada **Saldo pihak**, buka **Bukti sumber dana** atau rincian refund; bukti tagihan lama dapat ditambahkan pada rincian pembukaan.
 
 ## Hak akses dan unduhan
 
@@ -19,7 +19,7 @@ Semua pengguna yang sudah masuk dapat membaca lampiran sesuai cakupan satu perus
 - Administrator dapat menambahkan, mengarsipkan, dan memulihkan seluruh jenis lampiran.
 - Sales mengelola lampiran pesanan penjualan.
 - Warehouse mengelola lampiran PO dan penerimaan PO.
-- Finance mengelola lampiran invoice, pembayaran, tagihan, jurnal, serta retur.
+- Finance mengelola lampiran invoice, pembayaran, tagihan, jurnal, retur, sumber dana pihak, refund aktual, serta rincian pembukaan.
 
 Mengunggah bukti pembayaran tidak mencatat pembayaran secara otomatis. Gunakan alur pembayaran untuk mencatat dana aktual, lalu hubungkan buktinya. Lampiran juga tidak menjalankan transfer bank, membaca isi nota secara otomatis, atau menentukan kebenaran nilai dokumen.
 

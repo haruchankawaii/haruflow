@@ -1,0 +1,43 @@
+# Kandidat rilis dan pengukuran Community
+
+Kandidat teknis, pengukuran sintetis, pilot usaha nyata, dan publikasi adalah hasil berbeda. Keberhasilan satu tahap tidak menyatakan semua tahap selesai.
+
+## Identitas build dan readiness
+
+`haruflow version` dan `GET /version` menghasilkan nama aplikasi, versi paket, commit build, dan schema yang dibutuhkan; respons tidak berisi secrets. Build lokal mencoba membaca commit Git. Docker menerima `--build-arg HARUFLOW_BUILD_COMMIT=<40-karakter-SHA>`; identitas yang tidak valid menjadi `unknown`.
+
+`GET /health/live` memeriksa proses HTTP. `/health/ready` memerlukan seluruh migrasi build sudah berhasil dan checksum cocok. Database yang terhubung tetapi tertinggal, lebih baru, atau berbeda checksum menghasilkan 503. Migrasi tetap eksplisit, termasuk setelah restore backup lama.
+
+## Paket kandidat
+
+Workflow manual **Community release candidate** memerlukan **Community checks** lulus pada commit yang sama. Paket Linux/Windows berisi executable native, frontend, `BUILD.json`, `SHA256SUMS`, panduan awal, lisensi AGPL, serta seluruh corresponding source yang dilacak Git. Artefak tersedia pada run Actions; workflow tidak membuat tag, GitHub Release, atau publikasi registry.
+
+Paket source menyertakan Dockerfile/Compose dan panduan operasi. PostgreSQL tetap perlu disiapkan terpisah untuk executable native; tidak ada installer PostgreSQL otomatis. Untuk membangun lokal, commit source, set `HARUFLOW_BUILD_COMMIT` ke SHA tersebut, lalu:
+
+```sh
+bun run build:web
+cargo build --release --locked
+node scripts/package-release.mjs
+```
+
+Script menolak working tree kotor dan executable dari commit berbeda. Folder kandidat dibuat eksklusif dalam `output/releases/`, tanpa menimpa kandidat lain. `HARUFLOW_RELEASE_BINARY` memilih executable. Pada Linux, pulihkan izin executable dengan `chmod +x ./haruflow` setelah mengunduh artefak Actions. Panduan native memakai `./haruflow` pada Linux dan `.\haruflow.exe` pada PowerShell. Verifikasi checksum dan uji instalasi pada lingkungan baru sebelum distribusi.
+
+## Pengukuran sintetis berulang
+
+`node scripts/performance.mjs` membuat database acak `haruflow_perf_<8-hex>`, melakukan migrasi/setup, menambahkan 1.200 pelanggan serta 100 jurnal, lalu mengukur daftar server, laporan, posting, retry bersamaan, upload/download file 5 MiB, backup, dan restore. Server uji dihentikan dan hanya database yang dibuat script dihapus setelah selesai. Database bisnis dan preview tidak menjadi target.
+
+Prasyarat: executable, PostgreSQL pengujian yang mengizinkan pembuatan database, serta `psql`/`pg_dump`/`pg_restore` yang cocok. Konfigurasi:
+
+- `HARUFLOW_PERF_POSTGRES_URL`: koneksi admin pengujian; default `postgres://postgres@127.0.0.1:55432/postgres`.
+- `HARUFLOW_PERF_BINARY`: executable; default `target/debug/haruflow` atau `.exe` pada Windows. Gunakan release untuk mengukur kandidat produksi.
+- `HARUFLOW_PERF_PSQL`, `HARUFLOW_PERF_PG_DUMP`, `HARUFLOW_PERF_PG_RESTORE`: lokasi utilitas bila tidak ada di PATH.
+- `HARUFLOW_PERF_ROWS`: 100–50.000 pelanggan; default 1.200.
+- `HARUFLOW_PERF_CONCURRENCY`: 1–10 permintaan bersamaan; default 5.
+
+JSON pada `output/performance/` mencatat perangkat/OS/RAM, profile dan commit, PostgreSQL, dataset, jumlah permintaan, konkurensi, error, p50/p95, backup/restore, serta kecocokan kas/jurnal/checksum file. Angka dari perangkat, build, atau workload berbeda tidak dapat dibandingkan sebagai ukuran setara. Hasil loopback sintetis bukan SLA produksi atau bukti pilot bisnis.
+
+## Pilot usaha nyata
+
+Siapkan usaha sasaran, tanggal mulai pencatatan, saldo stok/piutang/utang/kredit yang direkonsiliasi, operator/hak akses hingga 10 akun aktif, perangkat server, HTTPS, dan backup terpisah. Tentukan kehilangan data maksimum serta sasaran durasi pemulihan.
+
+Jalankan pembukaan → transaksi sebagian → DP/pembayaran → retur/kredit → refund → koreksi → laporan, lalu latihan restore di lingkungan lain. Catat penerimaan pemilik usaha dan batas fitur yang berpengaruh. Pajak otomatis, banyak gudang, serta integrasi bank belum tersedia. Pilot baru dinyatakan selesai setelah ada dataset dan hasil usaha yang benar-benar diuji.

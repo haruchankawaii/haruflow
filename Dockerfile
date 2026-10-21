@@ -7,12 +7,17 @@ RUN bun run build
 
 FROM rust:1.98.1-slim-bookworm AS core
 WORKDIR /source
+ARG HARUFLOW_BUILD_COMMIT=unknown
+ENV HARUFLOW_BUILD_COMMIT=${HARUFLOW_BUILD_COMMIT}
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 COPY migrations/ migrations/
 RUN cargo build --release --locked
 
 FROM debian:bookworm-slim
+ARG HARUFLOW_BUILD_COMMIT=unknown
+LABEL org.opencontainers.image.source="https://github.com/haruchankawaii/haruflow" \
+      org.opencontainers.image.revision=${HARUFLOW_BUILD_COMMIT}
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home haruflow

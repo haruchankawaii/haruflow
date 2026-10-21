@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { access, link, mkdir, open, unlink } from 'node:fs/promises';
+import { access, link, mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { once } from 'node:events';
 import { finished, pipeline } from 'node:stream/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fingerprint, validateManifest } from './backup-manifest.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const compose = ['compose', '--env-file', '.env', '-f', 'deploy/community/compose.yml'];
@@ -21,7 +22,50 @@ function docker(args, options = {}) {
   return { child, done };
 }
 
+async function capture(args) {
+  const { child, done } = docker(args, { stdio: ['ignore', 'pipe', 'inherit'] });
+  let content = '';
+  for await (const chunk of child.stdout) {
+    content += chunk.toString('utf8');
+    if (content.length > 65536) { child.kill(); throw new Error('Metadata operasional terlalu besar.'); }
+  }
+  await done;
+  return content.trim();
+}
+
+async function identity() {
+  const application = JSON.parse(await capture(['run', '--rm', '--no-deps', 'app', 'version']));
+  const psql = ['exec', '-T', 'postgres', 'psql', '-U', 'haruflow', '-d', 'haruflow', '-Atq', '-v', 'ON_ERROR_STOP=1', '-c'];
+  // A restore target can be an empty, freshly created database. PostgreSQL
+  // resolves table names even in an unused CASE branch, so check separately.
+  const migrated = await capture([...psql, "SELECT to_regclass('public._sqlx_migrations') IS NOT NULL;"]);
+  const schema = migrated === 't' ? 'COALESCE((SELECT max(version) FROM _sqlx_migrations WHERE success),0)' : '0';
+  const database = JSON.parse(await capture([...psql,
+    `SELECT json_build_object('schema_version',${schema},'postgres_version',current_setting('server_version'));`]));
+  return { application, ...database, postgres_major: Number.parseInt(database.postgres_version, 10) };
+}
+
+async function inspect(path, target) {
+  const actual = await fingerprint(path);
+  let metadata;
+  try { metadata = JSON.parse(await readFile(`${path}.json`, 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (metadata?.format === 2) validateManifest(metadata, actual, target);
+  else if (metadata && metadata.format !== 1) throw new Error('Format manifest backup belum didukung.');
+  else console.warn('Backup lama tanpa checksum format 2: integritas akan diperiksa melalui pg_restore --list; identitas versi perlu diperiksa operator.');
+  // Inspect archive structure before stopping the app or changing its database.
+  const { child, done } = docker(['exec', '-T', 'postgres', 'pg_restore', '--list'], { stdio: ['pipe', 'ignore', 'inherit'] });
+  const streamed = pipeline(createReadStream(path), child.stdin).catch(error => {
+    // pg_restore --list may exit after reading only the archive TOC. A clean
+    // exit is checked separately; it need not consume all proof-file bytes.
+    if (!['EPIPE', 'ERR_STREAM_PREMATURE_CLOSE'].includes(error.code)) throw error;
+  });
+  await Promise.all([streamed, done]);
+  return metadata;
+}
+
 async function backup(path) {
+  const build = await identity();
   const partial = `${path}.partial`;
   const metadataPartial = `${partial}.json`;
   const metadataPath = `${path}.json`;
@@ -54,7 +98,8 @@ async function backup(path) {
     const metadata = await open(metadataPartial, 'wx', 0o600);
     ownsMetadataPartial = true;
     try {
-      await metadata.writeFile(JSON.stringify({ format: 1, created_at: new Date().toISOString(), application: 'Haruflow Community 0.1.0', database: 'haruflow', archive: path }, null, 2));
+      await metadata.writeFile(JSON.stringify({ format: 2, created_at: new Date().toISOString(), ...build,
+        ...await fingerprint(partial), database: 'haruflow', archive: path }, null, 2));
     } finally {
       await metadata.close();
     }
@@ -99,12 +144,19 @@ try {
   } else if (mode === 'restore' && requestedPath && confirmation === '--confirm-restore') {
     const path = resolve(root, requestedPath);
     await access(path);
+    const target = await identity();
+    const metadata = await inspect(path, { schema_version: target.application.schema_version, postgres_major: target.postgres_major });
     await docker(['stop', 'app'], { stdio: 'inherit' }).done;
     const { child, done } = docker(['exec', '-T', 'postgres', 'pg_restore', '-U', 'haruflow', '-d', 'haruflow', '--clean', '--if-exists', '--single-transaction', '--exit-on-error'], { stdio: ['pipe', 'inherit', 'inherit'] });
     await Promise.all([pipeline(createReadStream(path), child.stdin), done]);
-    console.log('Restore selesai. Aplikasi tetap berhenti: pastikan versi image sesuai backup, lalu jalankan docker compose --env-file .env -f deploy/community/compose.yml up -d app dan verifikasi saldo.');
+    console.log('Restore selesai. Aplikasi tetap berhenti: pastikan versi image sesuai backup, jalankan migrate bila diperlukan, lalu jalankan docker compose --env-file .env -f deploy/community/compose.yml up -d app dan verifikasi saldo.');
+    if (metadata?.schema_version < target.application.schema_version) console.log('Backup memakai schema lebih lama; jalankan migrasi eksplisit sebelum aplikasi dinyalakan.');
+  } else if (mode === 'verify' && requestedPath) {
+    const target = await identity();
+    await inspect(resolve(root, requestedPath), { schema_version: target.application.schema_version, postgres_major: target.postgres_major });
+    console.log('Ukuran, checksum bila tersedia, identitas schema, dan struktur arsip backup lolos pemeriksaan. Database tidak diubah.');
   } else {
-    throw new Error('Gunakan: node scripts/database.mjs backup [file.backup]\nAtau: node scripts/database.mjs restore file.backup --confirm-restore\nRestore mengganti isi database. Gunakan instalasi tujuan yang benar dan backup terlebih dahulu.');
+    throw new Error('Gunakan: node scripts/database.mjs backup [file.backup]\nAtau: node scripts/database.mjs verify file.backup\nAtau: node scripts/database.mjs restore file.backup --confirm-restore\nRestore mengganti isi database. Gunakan instalasi tujuan yang benar dan backup terlebih dahulu.');
   }
 } catch (error) {
   console.error(error.message);

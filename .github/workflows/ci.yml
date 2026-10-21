@@ -50,18 +50,20 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun test
       - run: bun run build
+      - run: node --test ../../scripts/backup-manifest.test.mjs
 
   container:
     runs-on: ubuntu-latest
     needs: [backend, frontend]
     env:
       COMPOSE_PROJECT_NAME: haruflow-ci
+      HARUFLOW_SETTLEMENT_SMOKE_URL: http://127.0.0.1:8080
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: docker build -t haruflow/community:local .
+      - run: docker build --build-arg HARUFLOW_BUILD_COMMIT=${{ github.sha }} -t haruflow/community:local .
       - run: docker run --rm haruflow/community:local --help
       - run: node scripts/configure.mjs
       - run: docker compose --env-file .env -f deploy/community/compose.yml up -d --wait postgres
@@ -69,11 +71,39 @@ jobs:
       - run: docker compose --env-file .env -f deploy/community/compose.yml up -d --wait --wait-timeout 90 app
       - run: node scripts/smoke.mjs seed
       - run: node scripts/database.mjs backup backups/ci.backup
+      - run: node scripts/database.mjs verify backups/ci.backup
       - run: node scripts/smoke.mjs mutate
       - run: node scripts/database.mjs restore backups/ci.backup --confirm-restore
       - run: docker compose --env-file .env -f deploy/community/compose.yml up -d --wait --wait-timeout 90 app
       - run: node scripts/smoke.mjs verify
       - run: node scripts/smoke.mjs recover
+      # The second scenario needs a fresh company because opening balances are startup-only.
+      - run: docker compose --env-file .env -f deploy/community/compose.yml down -v
+      - run: docker compose --env-file .env -f deploy/community/compose.yml up -d --wait postgres
+      - run: docker compose --env-file .env -f deploy/community/compose.yml run --rm migrate
+      - run: docker compose --env-file .env -f deploy/community/compose.yml up -d --wait --wait-timeout 90 app
+      - name: Seed disposable settlement fixture
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          import { spawnSync } from 'node:child_process';
+          const token = readFileSync('.env', 'utf8').match(/^HARUFLOW_SETUP_TOKEN=(.+)$/m)?.[1].trim();
+          if (!token) throw new Error('Missing disposable setup token');
+          const result = spawnSync(process.execPath, ['scripts/settlements-smoke.mjs', 'seed'], {
+            stdio: 'inherit', env: { ...process.env, HARUFLOW_SETTLEMENT_SMOKE_SETUP_TOKEN: token },
+          });
+          process.exit(result.status ?? 1);
+          JS
+      - run: node scripts/database.mjs backup backups/settlements-ci.backup
+      - run: node scripts/database.mjs verify backups/settlements-ci.backup
+      - run: node scripts/settlements-smoke.mjs mutate
+      # Restore into an empty database as on a replacement server. This also
+      # verifies metadata inspection before _sqlx_migrations exists.
+      - run: docker compose --env-file .env -f deploy/community/compose.yml down -v
+      - run: docker compose --env-file .env -f deploy/community/compose.yml up -d --wait postgres
+      - run: node scripts/database.mjs restore backups/settlements-ci.backup --confirm-restore
+      - run: docker compose --env-file .env -f deploy/community/compose.yml up -d --wait --wait-timeout 90 app
+      - run: node scripts/settlements-smoke.mjs verify
       - if: failure()
         run: docker compose --env-file .env -f deploy/community/compose.yml logs --tail=100
       - if: always()

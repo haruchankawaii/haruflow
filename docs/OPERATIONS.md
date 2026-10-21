@@ -66,13 +66,13 @@ Nomor invoice supplier unik per supplier untuk seluruh tagihan yang belum dibata
 
 Pembayaran supplier mengurangi Kas 1100 dan Utang supplier, dengan nominal positif sampai sisa tagihan dan maksimal Rp1 triliun per pembayaran. Saldo kas harus cukup. Aplikasi mencatat dana yang dibayarkan, bukan mentransfer uang otomatis. Pembayaran berulang memakai kunci yang sama tidak mencatat dua transaksi. Riwayat dokumen, jurnal, referensi, dan pembalikan beralasan tetap tersedia.
 
-Retur supplier mengurangi stok pada biaya rata-rata saat retur; kredit mengikuti nilai tagihan asal. Selisih nilai persediaan dan kredit masuk akun sistem beban **Selisih nilai retur pembelian**. Bila pembayaran sudah melebihi nilai tagihan bersih setelah kredit, refund langsung mencatat kas masuk dan mengurangi pembayaran bersih, dengan konfirmasi dana aktual. Refund tertunda dan kredit lintas dokumen belum tersedia. Retur tidak membuka kembali pemenuhan PO atau penagihan asal.
+Retur supplier mengurangi stok pada biaya rata-rata saat retur; kredit mengikuti nilai tagihan asal. Selisih nilai persediaan dan kredit masuk akun sistem beban **Selisih nilai retur pembelian**. Kelebihan pembayaran dapat menjadi kredit pihak, refund tertunda, atau refund langsung setelah konfirmasi kas aktual. Alokasi kredit tidak memindahkan kas lagi. Retur tetap tidak membuka kembali pemenuhan PO atau penagihan asal. Lihat [saldo pihak](./PARTY_BALANCES.md).
 
-Daftar PO/tagihan, pencarian, dan CSV daftar dibatasi 500 terbaru. Ringkasan/chart memakai seluruh dokumen dalam satu snapshot. Umur utang dihitung dari sisa setelah pembayaran serta kredit retur, pada hari perusahaan saat ini: belum terlambat, 1–30, 31–60, 61–90, dan lebih dari 90 hari. Hari jatuh tempo belum terlambat. Analisis menyediakan rincian/CSV serta kas supplier 3/6/12 bulan, termasuk pembayaran, refund, dan pembalikannya. Lihat [panduan pembelian](./PURCHASING.md).
+Daftar PO/tagihan utama dibatasi 500 terbaru. **Riwayat lengkap** menyediakan pencarian server, halaman catatan lama, dan CSV seluruh hasil filter sampai 10.000 baris; hasil lebih besar ditolak dengan petunjuk mempersempit filter. Ringkasan/chart tetap memakai seluruh data. Umur utang menyediakan kelompok belum terlambat, 1–30, 31–60, 61–90, dan lebih dari 90 hari. Buku pembantu saldo pihak juga mencakup tagihan pembukaan dan posisi historis menurut tanggal perusahaan; jatuh tempo yang tidak diketahui ditandai terpisah. Lihat [pembelian](./PURCHASING.md) dan [saldo pihak](./PARTY_BALANCES.md).
 
 Produk jasa/nonstok tidak memiliki saldo persediaan, biaya rata-rata, atau HPP stok. Jasa penjualan dapat ditagih sesudah konfirmasi tanpa pengiriman; barang hanya dapat ditagih sampai jumlah yang dikirim. Pesanan campuran mendukung pemilihan baris yang memenuhi syarat. Jenis produk tidak dapat diganti setelah digunakan pada pesanan, PO, atau mutasi. Pembelian jasa belum tersedia.
 
-Jurnal manual dan saldo awal tidak dapat langsung mengisi akun kontrol piutang 1200, persediaan 1300, atau akun dengan peran sistem. Akun penampung penerimaan PO dipilih dari kode bebas 2110–2199, Utang supplier dari 2200–2299, dan Selisih nilai retur pembelian dari 5900–5999; masing-masing memakai kode sepuluh digit kosong bila rentangnya penuh. Akun pengguna yang ada tidak diambil alih. Gunakan alur operasional agar saldo subledger tetap cocok; pembukaan piutang/utang historis per pihak belum tersedia.
+Jurnal manual tidak dapat langsung mengisi akun kontrol piutang 1200, persediaan 1300, atau akun dengan peran sistem. Saldo awal menghasilkan kontrol dari rincian stok/piutang/utang/kredit yang sesuai, bukan baris akun kontrol bebas. Akun penampung PO dipilih dari kode bebas 2110–2199, utang supplier 2200–2299, kredit pelanggan 2300–2399, uang muka/kredit supplier 1400–1499, dan selisih retur pembelian 5900–5999; rentang penuh memakai kode sepuluh digit kosong. Akun pengguna tidak diambil alih. Gunakan alur operasional dan periksa rekonsiliasi buku pembantu terhadap ledger.
 
 ## Koreksi transaksi dan penutupan periode
 
@@ -104,7 +104,9 @@ Finance/Admin dapat memberi klasifikasi arus kas dengan alasan dan versi. Klasif
 
 Lampiran bukti disimpan dalam PostgreSQL bersama metadata dan riwayatnya; tidak ada folder upload terpisah. Backup database yang sama menyertakan file aktif/arsip, preview/riwayat impor, serta master hasil impor. Ukuran dan durasi backup bertambah mengikuti file yang disimpan. Setelah restore, cocokkan juga ukuran dan SHA-256 contoh lampiran dengan unduhannya, bukan hanya nama file. Lihat [impor](./IMPORTS.md) dan [lampiran](./ATTACHMENTS.md).
 
-Jalankan `node scripts/database.mjs backup` dari root repository. Script menjalankan `pg_dump -Fc`, menulis arsip pada folder `backups/`, dan membuat metadata waktu serta versi aplikasi. Nama file dapat diberikan sebagai argumen kedua. Arsip ditulis ke file `.partial` secara eksklusif dan nama final baru diterbitkan setelah dump selesai. File final atau `.partial` yang sudah ada tidak ditimpa atau dihapus. Gunakan filesystem yang mendukung hard link untuk lokasi backup; file sementara dan final berada di direktori yang sama.
+Jalankan `node scripts/database.mjs backup` dari root repository. Script menjalankan `pg_dump -Fc`, menulis arsip pada `backups/`, serta manifest format 2 dengan waktu, versi/commit aplikasi, schema, PostgreSQL, ukuran byte, dan SHA-256. Nama file dapat diberikan sebagai argumen kedua. Arsip/metadata `.partial` dibuat eksklusif dan nama final baru diterbitkan setelah selesai; file milik run lain tidak ditimpa/dihapus. Gunakan filesystem yang mendukung hard link pada direktori backup.
+
+`node scripts/database.mjs verify arsip.backup` memeriksa ukuran/checksum manifest, kompatibilitas schema/versi mayor PostgreSQL, serta daftar isi arsip melalui `pg_restore --list` tanpa mengubah database. Restore menjalankan pemeriksaan ini sebelum menghentikan aplikasi. Backup lama tanpa manifest format 2 tetap dapat dipakai dengan pemberitahuan bahwa checksum/identitas versi belum tersedia; periksa sumbernya dan lakukan latihan restore. Daftar isi arsip tidak menggantikan pembuktian pemulihan seluruh data/file. Perbedaan mayor PostgreSQL memerlukan prosedur migrasi tersendiri.
 
 Cadangkan arsip, versi/tag atau digest image aplikasi, dan konfigurasi yang diperlukan ke lokasi lain yang terenkripsi. `.env` berisi secrets dan harus disimpan dengan perlindungan terpisah. Backup dalam disk yang sama tidak melindungi dari kegagalan disk.
 
@@ -116,7 +118,7 @@ Operator menentukan jadwal dan retensi, misalnya backup harian serta sebelum upg
 2. Jalankan PostgreSQL tujuan. Jangan menjalankan aplikasi penerima penulisan selama restore.
 3. Jalankan `node scripts/database.mjs restore path/arsip.backup --confirm-restore`. Script menghentikan aplikasi tujuan, melakukan restore satu transaksi, dan membiarkan aplikasi berhenti.
 4. Pastikan command berhasil. Kegagalan restore tidak boleh diabaikan; jangan menyalakan aplikasi sebelum hasilnya jelas.
-5. Jalankan `docker compose --env-file .env -f deploy/community/compose.yml up -d app`. Perintah ini juga membuat container aplikasi bila instalasi tujuan baru menjalankan PostgreSQL.
+5. Jika schema backup lebih lama dari aplikasi, jalankan `docker compose --env-file .env -f deploy/community/compose.yml run --rm migrate` dahulu. Lalu jalankan `docker compose --env-file .env -f deploy/community/compose.yml up -d app`; container aplikasi dibuat bila belum ada.
 6. Periksa `/health/ready`, login, dokumen dan riwayatnya, jumlah/nilai stok, piutang, kewajiban penerimaan belum ditagih, utang bersih, kas, serta debit/kredit neraca saldo terhadap sumber backup. Cocokkan alokasi pengiriman/penerimaan/invoice/tagihan sebagian, pembayaran, kredit/refund retur, dan jurnal pembaliknya. Periksa juga laporan keuangan serta riwayat klasifikasi arus kas.
 7. Catat tanggal, versi image, arsip, durasi, dan hasil verifikasi. Ulangi latihan secara berkala.
 
@@ -130,6 +132,8 @@ Secara default file Compose menggunakan nama proyek `haruflow`. Untuk latihan pa
 4. Jalankan `docker compose --env-file .env -f deploy/community/compose.yml run --rm migrate` sekali. Server tidak menjalankan migrasi otomatis di setiap startup.
 5. Jalankan aplikasi, periksa readiness dan alur transaksi representatif.
 6. Simpan versi yang diterapkan dan hasil pemeriksaan.
+
+Readiness memeriksa seluruh migrasi dan checksum, bukan hanya koneksi PostgreSQL. `/version` atau `haruflow version` menunjukkan identitas build/schema tanpa secrets. Lihat [kandidat rilis dan pengukuran](./RELEASE_CANDIDATE.md) untuk artefak, checksum, runner performa, dan syarat pilot usaha nyata.
 
 Jangan mengedit migrasi yang sudah diterapkan. Tambahkan migrasi baru berurutan. Rollback executable hanya aman bila schema masih kompatibel. Jika tidak, pulihkan backup dengan versi aplikasi yang cocok dan perhitungkan perubahan setelah waktu backup.
 

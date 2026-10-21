@@ -21,7 +21,7 @@ Batas pembatalan:
 - Saldo saat ini harus cocok dengan posisi hasil penerimaan. Permintaan yang tidak cocok ditolak tanpa mengubah stok atau jurnal.
 - Penerimaan yang sudah dibatalkan tidak dapat dibatalkan lagi. Periode pembukuan saat ini harus masih terbuka, sama seperti pembalikan jurnal manual.
 
-Alasan pemblokiran ditampilkan pada riwayat. Untuk selisih stok yang sudah melewati batas ini, periksa transaksi terkait sebelum memakai **Sesuaikan stok** dengan alasan dan biaya yang benar. Alur di atas berlaku untuk penerimaan stok manual yang mengkredit modal awal. Penerimaan dari PO dikoreksi melalui riwayat **Pembelian** dan membalik akun barang diterima belum ditagih; lihat [panduan pembelian](./PURCHASING.md). Penyesuaian stok saja tidak otomatis membalik kewajiban PO. Pembatalan penerimaan bukan retur komersial kepada supplier; tagihan dan pembayaran supplier belum tersedia.
+Alasan pemblokiran ditampilkan pada riwayat. Untuk selisih stok yang sudah melewati batas ini, periksa transaksi terkait sebelum memakai **Sesuaikan stok** dengan alasan dan biaya yang benar. Alur di atas berlaku untuk penerimaan stok manual yang mengkredit modal awal. Penerimaan dari PO dikoreksi melalui riwayat **Pembelian** dan membalik akun barang diterima belum ditagih; lihat [panduan pembelian](./PURCHASING.md). Penyesuaian stok saja tidak otomatis membalik kewajiban PO. Pembatalan penerimaan berbeda dari retur komersial ke supplier yang dicatat melalui tagihan.
 
 ## Membaca dashboard
 
@@ -29,6 +29,8 @@ Kartu utama menampilkan saldo saat ini atau akumulasi seluruh transaksi. Pilihan
 
 - **Pendapatan dan HPP:** berasal dari jurnal akun pendapatan `4000` dan HPP `5000`, dikelompokkan menurut bulan posting di zona waktu perusahaan. Pembalikan masuk ke bulan pembalikan, sehingga nilai bersih dapat negatif. Laba kotor adalah pendapatan dikurangi HPP; angka ini belum mengurangi beban operasional lain atau pajak.
 - **Mutasi kas:** kas masuk adalah debit dan kas keluar adalah kredit pada akun kas `1100`. Selisih menunjukkan perubahan kas pada rentang tersebut, bukan saldo akhir kas. Saldo awal, modal, jurnal manual, dan pembalikannya ikut dihitung; kas masuk bukan hanya pembayaran pelanggan.
-- **Posisi invoice aktif:** bagian terbayar dibanding sisa piutang dari seluruh invoice aktif saat ini, beserta jumlah invoice lunas, sebagian, dan belum dibayar. Bagian ini tidak mengikuti pilihan bulan. Invoice yang dibatalkan tidak dihitung; belum ada kelompok piutang jatuh tempo karena tanggal jatuh tempo belum tersedia.
+- **Posisi invoice aktif:** nilai yang diselesaikan dibanding sisa piutang dari seluruh invoice operasional aktif, beserta jumlah invoice lunas, sebagian, dan belum dibayar. Penyelesaian dapat mencakup pembayaran kas dan alokasi uang muka/kredit; angka ini tidak boleh dibaca sebagai kas masuk. Chart tidak mengikuti pilihan bulan dan tidak mencakup piutang pembukaan. KPI piutang memakai akun kontrol termasuk pembukaan, sehingga cakupannya lebih luas.
+
+Buka **Saldo pihak** untuk aging yang menggabungkan invoice/tagihan operasional dan pembukaan, dengan posisi per tanggal serta rincian piutang/utang, kredit tersedia, dan refund disisihkan. Invoice lama yang tanggal/jatuh temponya belum diisi dikelompokkan sebagai belum diketahui. Lihat [saldo pihak](./PARTY_BALANCES.md).
 
 Sorot atau fokuskan batang chart untuk melihat nominal tepatnya. Rincian bulanan tersedia untuk memeriksa angka tanpa hanya mengandalkan bentuk grafik. Chart mengikuti data nyata, tanpa mengisi transaksi contoh ke dalam pembukuan pengguna.

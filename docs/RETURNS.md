@@ -11,7 +11,7 @@ Untuk retur pelanggan, buka **Penjualan → Invoice**, lalu rincian invoice dan 
 1. Pilih **Catat retur** pada dokumen aktif yang mempunyai jumlah tersisa untuk diretur.
 2. Isi jumlah pada satu atau beberapa baris barang/jasa. Baris yang tidak diisi tidak diretur. Jumlah tidak boleh melebihi sisa pada baris sumber.
 3. Periksa kredit retur, sisa tagihan setelah retur, dan pengembalian uang. Kredit mengikuti nilai pada invoice/tagihan asal, bukan harga katalog saat ini.
-4. Jika diperlukan pengembalian uang, pastikan perpindahan uang benar-benar sudah terjadi dan centang konfirmasinya. Aplikasi mencatat kas; aplikasi tidak melakukan transfer bank atau menyerahkan uang secara otomatis.
+4. Jika timbul kelebihan pembayaran, pilih **Dana sudah dikembalikan**, **Simpan kredit pihak**, atau **Menunggu refund**. Untuk refund langsung, pastikan perpindahan uang benar-benar sudah terjadi dan centang konfirmasinya. Dua pilihan lainnya belum mencatat kas; refund tertunda menyisihkan kredit agar tidak terpakai pada tagihan lain. Aplikasi mencatat kas; aplikasi tidak melakukan transfer bank atau menyerahkan uang secara otomatis.
 5. Isi alasan 3–1.000 karakter, pilih **Tinjau retur**, periksa jumlah serta nominal, lalu **Posting retur**. Gunakan **Ubah rincian** jika masih ada yang salah.
 
 Setiap retur dapat memuat 1–100 baris yang berbeda. Jumlah memakai ketelitian sampai tiga desimal dan maksimal 1.000.000.000 per baris. Baris sumber dari dokumen lain tidak dapat digunakan. Versi dokumen diperiksa saat posting; jika dokumen berubah, muat ulang dan tinjau kembali sebelum mencoba lagi.
@@ -20,17 +20,21 @@ Pencatatan berhasil memperbarui stok yang terkait, kredit, saldo tagihan, kas bi
 
 ## Kredit dan pengembalian uang
 
-**Nilai tagihan bersih = total awal − kredit retur aktif.** Saldo pembayaran bersih sudah memperhitungkan dana yang dikembalikan melalui retur. Riwayat pembayaran asal dan riwayat retur tetap dapat diperiksa masing-masing.
+**Nilai tagihan bersih = total awal − kredit retur aktif.** Total penyelesaian tagihan memperhitungkan refund langsung dan kelebihan yang dipindahkan menjadi kredit pihak. Rincian memisahkan kas aktual, pemakaian saldo, kredit yang dipindahkan, dan sisa tagihan. Riwayat pembayaran asal dan riwayat retur tetap dapat diperiksa masing-masing.
 
 Contoh tagihan awal Rp180.000 dengan kredit retur Rp80.000:
 
 - Belum dibayar: tagihan bersih menjadi Rp100.000; sisa tagihan Rp100.000; tidak ada pengembalian uang.
-- Sudah dibayar Rp120.000: tagihan bersih Rp100.000; Rp20.000 dikembalikan; pembayaran bersih menjadi Rp100.000; sisa tagihan nol.
-- Sudah dibayar penuh Rp180.000: Rp80.000 dikembalikan; tagihan bersih dan pembayaran bersih masing-masing Rp100.000; sisa tagihan nol.
+- Sudah dibayar Rp120.000: tagihan bersih Rp100.000; kelebihan Rp20.000 dapat dikembalikan langsung, disimpan sebagai kredit, atau disisihkan untuk refund. Total penyelesaian pada tagihan menjadi Rp100.000; sisa tagihan nol.
+- Sudah dibayar penuh Rp180.000: kelebihan Rp80.000 memakai pilihan penyelesaian yang sama. Tagihan bersih dan total penyelesaian masing-masing Rp100.000; sisa tagihan nol.
 
 Pada retur pelanggan, pengembalian uang berarti **kas keluar kepada pelanggan**. Pada retur supplier, pengembalian uang berarti **kas masuk dari supplier**. Bila kredit masih tertutup oleh sisa tagihan yang belum dibayar, kredit lebih dahulu mengurangi piutang atau utang tanpa mencatat kas.
 
-Alur saat ini mencatat pengembalian uang **langsung bersama retur** dan memerlukan konfirmasi dana aktual. Belum ada alur refund tertunda, saldo kredit pelanggan/supplier untuk dokumen lain, atau pemindahan kredit lintas invoice. Jika dana belum berpindah, alur refund tersebut belum dapat dicatat sebagai pengembalian uang yang selesai. Pengembalian dana pelanggan juga memerlukan saldo kas yang cukup.
+**Refund langsung** mencatat kas bersama retur dan memerlukan konfirmasi dana aktual. **Simpan kredit pihak** membuat sumber kredit retur pada **Saldo pihak**, yang dapat dialokasikan sebagian/penuh ke tagihan lain milik pihak yang sama atau direfund kemudian. **Refund tertunda** membuat sumber kredit sekaligus permintaan refund atas kelebihannya; kas belum berubah dan saldo yang disisihkan tidak dapat dialokasikan ke tagihan lain.
+
+Permintaan refund dapat dibayar sebagian/penuh setelah uang benar-benar berpindah atau dibatalkan untuk melepaskan sisa sisihannya. Pembatalan tidak menghapus pembayaran refund yang sudah terjadi. Pengembalian dana pelanggan memerlukan saldo kas yang cukup. Lihat [saldo pihak, alokasi, dan refund](./PARTY_BALANCES.md) untuk riwayat serta koreksinya.
+
+Upgrade mempertahankan refund langsung pada retur lama. Sistem tidak membuat kredit baru untuk uang yang sudah selesai dikembalikan dan tidak memposting ulang jurnal/kas historis.
 
 Tagihan yang seluruh nilai bersihnya telah dikreditkan dapat berstatus **Lunas** dengan nilai bersih nol. Status tersebut menunjukkan tidak ada sisa tagihan; periksa kredit dan riwayat dana untuk mengetahui penyebabnya.
 
@@ -64,7 +68,9 @@ Jika perlu barang pengganti atau pembelian kembali, catat transaksi penggantinya
 
 Pilih **Koreksi retur** pada riwayat yang masih memenuhi syarat, isi alasan, tinjau, lalu pilih **Balikkan retur**. Pembalikan menambah jurnal lawan dan, untuk barang stok, mutasi lawan. Retur asal, alasan awal, alasan koreksi, serta tautan jurnal asal/pembalik tetap tersimpan; retur yang sama tidak dapat dibalik dua kali.
 
-Bila retur sebelumnya mencatat refund, pembalikan juga mencatat arus uang yang berlawanan. Konfirmasikan perpindahan dana tersebut: retur pelanggan dibalik dengan menerima uang kembali dari pelanggan, sedangkan retur supplier dibalik dengan mengembalikan dana refund kepada supplier. Pembalikan refund supplier memerlukan kas yang cukup.
+Bila retur sebelumnya mencatat refund langsung, pembalikan juga mencatat arus uang yang berlawanan. Konfirmasikan perpindahan dana tersebut: retur pelanggan dibalik dengan menerima uang kembali dari pelanggan, sedangkan retur supplier dibalik dengan mengembalikan dana refund kepada supplier. Pembalikan refund supplier memerlukan kas yang cukup.
+
+Bila retur menghasilkan kredit tersimpan/refund tertunda, selesaikan dependensinya terlebih dahulu: balikkan alokasi dan refund aktual dari kredit tersebut, kemudian batalkan sisa permintaan refund. Setelah tidak ada pemakaian atau sisihan aktif, pembalikan retur juga membalik sumber kreditnya. Pembalikan sumber tidak mencatat ulang kas refund yang telah ditangani melalui dokumen refund tersendiri.
 
 Pembalikan barang stok hanya dapat dilakukan ketika setiap produk belum mempunyai mutasi setelah retur, dan posisi stok masih cocok dengan snapshot retur. Mutasi yang kemudian telah dibalik tetap merupakan riwayat berikutnya. Untuk retur jasa, tidak ada pemeriksaan mutasi stok, tetapi persyaratan dokumen, saldo, dan periode tetap berlaku. Periode saat pembalikan diposting harus terbuka.
 

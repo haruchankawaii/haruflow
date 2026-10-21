@@ -1,7 +1,7 @@
 # Rencana Haruflow Community
 
-Status: fondasi Community, lima perluasan operasional utama, impor master CSV, dan lampiran bukti transaksi telah diimplementasikan; aplikasi masih merupakan versi pengembangan, belum rilis stabil.
-Tanggal pembaruan: 20 Oktober 2026.
+Status: fondasi Community, transaksi dagang, impor/lampiran, serta paket saldo pihak dan persiapan kandidat rilis telah diimplementasikan. Validasi paket dicatat terpisah; aplikasi masih merupakan versi pengembangan, belum rilis stabil.
+Tanggal pembaruan: 21 Oktober 2026.
 Dasar: arah produk dalam `haruflow.md` dan implementasi aktual repository. Rincian hasil pengujian serta batas fitur dicatat di [status implementasi](./IMPLEMENTATION_STATUS.md).
 
 ## 1. Arah produk
@@ -12,7 +12,7 @@ Pengguna dapat menyiapkan perusahaan dan pengguna, memposting saldo awal, mengel
 
 Community tidak memerlukan akun Haruflow, layanan lisensi, atau koneksi ke Haruflow Cloud. Instalasi resmi membatasi 10 akun aktif, termasuk administrator; akun nonaktif tetap menyimpan riwayat dan melepaskan slot. Lisensi tetap mengikuti `LICENSE` dalam repository. Lihat [batas pengguna dan perlindungan kode](./USER_LIMIT.md), termasuk ketentuan upgrade akun lama serta keterbatasan perlindungan instalasi self-hosted.
 
-Pemilik instalasi mengelola server, akses jaringan/TLS, backup, secrets, dan upgrade. Saat ini tersedia source, Dockerfile/Compose, serta panduan operasional. Image rilis pada registry, installer pengguna akhir, pilot bisnis, dan SLA belum tersedia.
+Pemilik instalasi mengelola server, akses jaringan/TLS, backup, secrets, dan upgrade. Saat ini tersedia source, Dockerfile/Compose, panduan operasional, identitas build, manifest backup, dan alat pembuat kandidat rilis beserta checksum. Publikasi image registry, installer pengguna akhir, pilot bisnis, dan SLA belum tersedia.
 
 ## 2. Lingkup yang sudah diimplementasikan
 
@@ -21,33 +21,41 @@ Pemilik instalasi mengelola server, akses jaringan/TLS, backup, secrets, dan upg
 - Setup perusahaan/admin, autentikasi lokal, sesi yang dapat dicabut, pengelolaan pengguna, role Administrator/Sales/Warehouse/Finance/Viewer, dan pemulihan admin melalui perintah lokal.
 - Profil perusahaan, kontak, serta awalan nomor dokumen; zona waktu dapat diubah sebelum jurnal pertama. Mata uang tetap IDR.
 - Pelanggan, supplier, produk barang/jasa, satuan dasar, bagan akun dasar serta akun tambahan, dan audit aktivitas penting.
-- Saldo awal stok serta akun yang diperbolehkan melalui draf, pemeriksaan keseimbangan, posting atomik, dan pembalikan sebelum transaksi operasional.
+- Saldo awal stok, akun umum yang diperbolehkan, piutang/utang per dokumen, serta uang muka/kredit lama per pelanggan/supplier melalui draf seimbang dan posting atomik sebelum transaksi operasional. Rincian pihak mendukung input manual dan CSV dengan preview.
 - Persediaan dengan biaya rata-rata bergerak, penerimaan stok manual, adjustment, riwayat mutasi, dan koreksi berbasis snapshot ketika belum ada mutasi lanjutan.
-- Jurnal berpasangan otomatis/manual, buku besar, neraca saldo, penutupan periode, pencarian, pagination UI, CSV, dan cetak invoice melalui browser.
-- Satu aplikasi Rust melayani API dan frontend; Compose aplikasi/PostgreSQL, migrasi eksplisit, health check, CI, serta utilitas backup/restore tersedia.
+- Jurnal berpasangan otomatis/manual, buku besar, neraca saldo, penutupan periode, pencarian, CSV, dan cetak invoice melalui browser. Pusat **Riwayat lengkap** menambahkan pagination/pencarian server serta ekspor seluruh filter dengan batas yang jelas.
+- Satu aplikasi Rust melayani API dan frontend; Compose aplikasi/PostgreSQL, migrasi eksplisit, readiness yang memeriksa schema, identitas versi/commit, CI, serta utilitas backup/restore dengan manifest dan SHA-256 tersedia.
 
 ### Lima perluasan Community yang sudah selesai diimplementasikan
 
 1. **Pembayaran supplier sebagian/penuh.** Pembayaran dari tagihan mengurangi Kas 1100 dan utang supplier, menolak kelebihan pembayaran, menyimpan idempotensi/audit/jurnal, serta menyediakan pembalikan beralasan dengan pemeriksaan dependensi.
 2. **Umur utang dan chart pembayaran.** Umur utang memakai kelompok belum lewat jatuh tempo (termasuk hari ini), terlambat 1–30/31–60/61–90/lebih dari 90 hari, rincian supplier, dan pergerakan pembayaran. Ringkasan jatuh tempo juga membedakan tagihan hari ini dari yang belum jatuh tempo. Ringkasan memakai seluruh dokumen yang relevan, bukan hanya daftar dokumen terbaru.
-3. **Retur pelanggan dan supplier sebagian/penuh.** Retur berasal dari invoice/tagihan, mengurangi nilai tagihan, memperbarui persediaan bila relevan, dan mencatat refund langsung jika pembayaran melebihi nilai bersih baru. Riwayat dan jurnal pembalik tetap tersimpan. [Panduan retur](./RETURNS.md) menjelaskan biaya, pembulatan, refund aktual, dan batas koreksi.
+3. **Retur pelanggan dan supplier sebagian/penuh.** Retur berasal dari invoice/tagihan, mengurangi nilai tagihan, serta memperbarui persediaan bila relevan. Bila terjadi kelebihan pembayaran, pilih refund aktual, simpan kredit pihak, atau tunggu refund. Riwayat dan jurnal pembalik tetap tersimpan. [Panduan retur](./RETURNS.md) menjelaskan biaya, pembulatan, refund aktual, dan batas koreksi.
 4. **Pemenuhan serta penagihan bertahap.** Sales order dapat dikirim dan diinvoiskan sebagian/penuh dengan sisa per baris tetap terlacak. PO dapat diterima dan ditagih sebagian/penuh; satu penerimaan dapat memiliki beberapa tagihan untuk bagian jumlah yang berbeda. Alokasi dan pembulatan mencegah jumlah atau nilai ditagih dua kali. Lihat [pemenuhan penjualan](./SALES_FULFILLMENT.md) dan [pembelian](./PURCHASING.md).
 5. **Laporan keuangan.** Laba rugi periode, neraca kumulatif, dan arus kas Kas 1100 tersedia dengan tanggal perusahaan, chart, CSV, serta rincian akun/jurnal. Arus kas menyediakan klasifikasi manual beralasan dengan versi dan riwayat. Lihat [panduan laporan](./FINANCIAL_REPORTS.md) untuk dasar perhitungan serta cakupannya.
 
 Alur operasional sekarang mencakup penjualan → pengiriman → invoice → pembayaran, serta supplier → PO → penerimaan → tagihan → pembayaran. Retur merupakan transaksi komersial tersendiri; retur tidak membuka ulang jumlah pesanan yang sudah dipenuhi atau ditagih.
 
+### Saldo pihak dan persiapan operasional
+
+- **Saldo pihak** menampilkan buku pembantu, posisi per tanggal, aging termasuk tagihan pembukaan, rekonsiliasi dengan akun kontrol, CSV, dan cetak. Jatuh tempo invoice baru mengikuti jangka pembayaran pelanggan; tanggal lama yang belum diketahui tetap ditandai sampai dilengkapi.
+- Dana aktual pelanggan/supplier dicatat sebagai uang muka. Dana dapat dialokasikan sebagian/penuh ke beberapa tagihan pihak yang sama, termasuk tagihan pembukaan, tanpa mencatat kas kembali. Kelebihan dana tetap menjadi saldo yang dapat ditelusuri.
+- Kredit retur dan kredit lama dapat dipakai lintas tagihan atau direfund. Permintaan refund menyisihkan dana, pembayaran refund dapat sebagian, dan pembatalan melepaskan sisa yang belum dibayar. Koreksi mengikuti dependensi dan mempertahankan riwayat.
+- Lampiran mencakup sumber dana, refund aktual, dan rincian pembukaan selain dokumen sebelumnya. Alat pengukuran memakai database sementara; hasil pengukuran dan hasil pilot dilaporkan terpisah.
+- Kandidat rilis dapat disiapkan dari source bersih dan commit yang sama dengan binary. Paket menyertakan source, web, lisensi, identitas build, dan checksum; workflow memeriksa CI pada commit yang dipaketkan. Lihat [saldo pihak](./PARTY_BALANCES.md), [riwayat](./HISTORY.md), dan [kandidat rilis](./RELEASE_CANDIDATE.md).
+
 ## 3. Batas produk saat ini
 
-Selesainya lima perluasan di atas belum berarti seluruh rencana ERP atau persiapan rilis stabil selesai. Batas berikut masih berlaku:
+Implementasi di atas belum berarti seluruh rencana ERP atau persiapan rilis stabil selesai. Batas berikut masih berlaku:
 
 - Satu perusahaan, satu gudang logis, dan IDR. Belum ada banyak gudang/cabang, transfer gudang, multicurrency, atau konsolidasi perusahaan.
 - Pembelian berfokus pada barang stok dari PO. Tagihan mengikuti jumlah dan nilai penerimaan; pembelian jasa, selisih harga invoice, ongkir, diskon, dan pajak otomatis belum tersedia.
-- Belum ada uang muka, overpayment, refund tertunda, atau saldo kredit pelanggan/supplier yang digunakan pada dokumen lain. Refund pada retur saat ini harus mencerminkan uang yang benar-benar sudah berpindah.
-- Impor CSV saat ini hanya membuat master pelanggan/supplier/produk; belum ada impor dokumen transaksi. Saldo awal piutang per pelanggan dan utang per supplier belum tersedia. Saldo awal akun umum tidak menggantikan rincian kewajiban per pihak.
+- Pembayaran langsung invoice/tagihan dibatasi sisa dokumen. Untuk dana berlebih gunakan pencatatan uang muka lalu alokasikan bagian pelunasan secara eksplisit; sisa menjadi saldo pihak. Transfer antar pihak, netting pelanggan/supplier, dan transfer bank otomatis belum tersedia.
+- Impor CSV membuat master pelanggan/supplier/produk dan rincian saldo pihak pada draf pembukaan; belum ada impor dokumen transaksi operasional. Pembukaan tetap hanya sebelum operasi, bukan sarana memasukkan ulang transaksi historis.
 - Satuan dasar belum mempunyai konversi. Lot/batch, serial number, tanggal kedaluwarsa, dan reservasi stok belum tersedia.
 - Arus kas terbatas pada Kas 1100. Akun aset lain belum otomatis menjadi kas/setara kas. Klasifikasi manual berlaku untuk satu jurnal secara utuh; pembagian satu jurnal ke beberapa aktivitas belum tersedia. Laporan belum menyatakan kepatuhan terhadap format pelaporan atau perpajakan tertentu.
 - Belum ada HR/payroll, produksi, POS offline, aplikasi mobile native, integrasi bank/pajak, SSO, marketplace plugin, email, atau jobs/outbox. Lampiran berada di PostgreSQL; storage eksternal dan retensi otomatis belum tersedia.
-- Listing master belum mempunyai pagination server. Beberapa daftar operasional dibatasi pada dokumen terbaru; rincian buku besar memberi penanda bila tampilan terpotong, sementara saldo dan ringkasan tetap dihitung dari seluruh data yang sesuai.
+- Daftar ringkas operasional tetap membatasi jumlah dokumen terbaru. Gunakan **Riwayat lengkap** untuk pencarian dan pagination server di luar batas tersebut; ekspor maksimal 10.000 hasil filter dan menolak hasil lebih besar tanpa memotongnya. Rincian buku besar tetap memberi penanda bila terpotong; saldo dan ringkasan memakai seluruh data yang sesuai.
 
 Fitur lanjutan dapat tetap dikembangkan dalam Community. Batas di atas menjelaskan lingkup aktual serta urutan pekerjaan, bukan keputusan permanen pemisahan lisensi Enterprise.
 
@@ -76,23 +84,23 @@ OpenAPI dan client TypeScript yang dihasilkan dari kontrak belum tersedia. Antre
 - Penerimaan PO mendebit persediaan dan mengkredit barang diterima belum ditagih. Tagihan memindahkan kewajiban ke utang supplier; pembayaran mengurangi utang serta kas. Penerimaan manual tetap mengikuti akun lawan alurnya sendiri.
 - Invoice penjualan mencatat piutang dan pendapatan; pengiriman mencatat HPP dan pengurangan persediaan; pembayaran mengurangi piutang dan menambah kas.
 - Retur pelanggan atas barang memakai biaya historis pengiriman. Retur supplier memakai biaya rata-rata stok saat retur; selisih terhadap kredit tagihan dicatat pada akun selisih retur pembelian. Jasa tidak membuat mutasi persediaan.
-- Pembayaran dibatasi sisa tagihan bersih setelah retur. Pengembalian uang dicatat bersama retur bila pembayaran yang sudah ada melebihi nilai bersih baru.
+- Pembayaran langsung dibatasi sisa tagihan bersih setelah retur. Uang muka/kredit dialokasikan ke sisa tersebut tanpa kas baru. Kelebihan setelah retur diselesaikan dengan refund aktual, kredit tersimpan, atau refund tertunda; hanya perpindahan uang aktual yang mengubah kas.
 - Setiap jurnal posted seimbang. Posting dan pembalikan memakai tanggal saat ini menurut zona waktu perusahaan; periode tertutup menolak posting baru. Tanggal invoice supplier tidak memundurkan jurnal.
 - Dokumen posted tidak diedit atau dihapus. Koreksi memakai reversal beralasan yang merujuk dokumen asal. Retur aktif harus dibalik sebelum pembalikan pembayaran/invoice/tagihan; dependensi alokasi serta mutasi stok lanjutan tetap diperiksa.
 - Pembalikan stok harus cocok dengan snapshot dan belum mempunyai mutasi berikutnya. Membalik transaksi lanjutan tidak menghapus riwayat mutasinya.
-- Saldo awal dapat dikoreksi melalui reversal sebelum aktivitas operasional. Persediaan awal harus cocok dengan akun kontrol persediaan; akun kontrol operasional lainnya dilindungi dari jurnal manual/saldo awal yang memutus rincian sumbernya.
+- Saldo awal dapat dikoreksi melalui reversal sebelum aktivitas operasional dan pemakaian rinciannya. Persediaan serta saldo pihak awal berasal dari rincian yang cocok dengan akun kontrol; jurnal manual dan saldo akun umum tidak dapat melewati rincian sumber tersebut.
 - Laporan memakai ledger dan dokumen posted dengan tanggal serta zona waktu yang jelas. Laba rugi memakai periode, neraca memakai akumulasi sampai tanggal akhir, dan arus kas mencakup seluruh pergerakan Kas 1100 dalam cakupannya.
 
 ## 6. Prioritas Community yang masih perlu dikerjakan
 
-Lingkup terperinci untuk paket saldo awal piutang/utang, uang muka, kredit/refund tertunda, laporan, riwayat besar, dan persiapan kandidat rilis ada pada [paket pengembangan berikutnya](./COMMUNITY_NEXT_PACKAGE.md). Dokumen tersebut merupakan rencana, bukan daftar fitur yang sudah tersedia.
+Lingkup serta kriteria penerimaan paket saldo pihak dan persiapan kandidat rilis ada pada [catatan paket pengembangan](./COMMUNITY_NEXT_PACKAGE.md). Implementasi fitur dan bukti kelulusan validasi dicatat terpisah pada [status implementasi](./IMPLEMENTATION_STATUS.md).
 
-Urutan berikut menjadi acuan setelah pembayaran, umur utang, retur, pemenuhan bertahap, dan tiga laporan keuangan tersedia. Prioritas akhirnya mengikuti kebutuhan pilot pengguna; daftar ini tidak menambah implementasi pada upgrade yang sedang diselesaikan.
+Prioritas berikut mengikuti kebutuhan pilot pengguna setelah validasi paket tersebut. Implementasi fitur tidak menggantikan latihan operasi maupun penerimaan usaha nyata.
 
 ### Prioritas 1 — Kesiapan rilis dan pemakaian nyata
 
-- Selesaikan review kandidat rilis, catatan perubahan, pengelompokan batas fitur, dan panduan upgrade dari versi sebelumnya.
-- Terbitkan artefak/image bertag versi tetap beserta checksum; tentukan kebutuhan installer untuk pengguna sasaran.
+- Tinjau kandidat yang telah dibangun terhadap hasil CI, instalasi bersih, upgrade, checksum, dan panduan operasi.
+- Tentukan target distribusi, lalu terbitkan versi/tag/image registry bila disetujui; tentukan kebutuhan installer untuk pengguna sasaran. Alat pembuat kandidat tidak menerbitkannya otomatis.
 - Jalankan pilot dengan usaha dagang dan dataset yang mewakili transaksi nyata. Catat perangkat, ukuran data, serta hasil pengukuran baca/posting dan akses bersamaan.
 - Jadwalkan latihan pemulihan pada lingkungan terpisah dan pemeriksaan upgrade rutin. Backup/restore dasar sudah mempunyai utilitas serta smoke test; keberhasilan itu belum menggantikan latihan operasional dan pengukuran kapasitas.
 - Uji lebih lanjut kegagalan koneksi, timeout, restart ketika posting, dan kebutuhan beberapa instance. Penambahan worker hanya diperlukan ketika ada pekerjaan latar belakang.
@@ -100,13 +108,13 @@ Urutan berikut menjadi acuan setelah pembayaran, umur utang, retur, pemenuhan be
 ### Prioritas 2 — Migrasi data dan bukti transaksi
 
 - Impor master pelanggan/supplier/produk sudah menyediakan template, preview, validasi per baris, duplikasi, commit atomik, dan riwayat. Lihat [panduan impor](./IMPORTS.md). Impor dokumen transaksi masih perlu dikembangkan sesuai kebutuhan pilot.
-- Saldo awal piutang per pelanggan dan utang per supplier yang terhubung ke ledger serta pembayaran berikutnya.
+- Validasi pemetaan saldo pembukaan dengan data usaha pilot dan cocokkan rincian piutang/utang/kredit terhadap pembukuan asal. Fitur manual/CSV dan alokasi sudah tersedia.
 - Lampiran bukti transaksi PDF/PNG/JPEG sudah tersedia dengan hak tulis per jenis dokumen, unduhan terautentikasi, arsip/pemulihan, serta isi file dalam backup PostgreSQL. Lihat [panduan lampiran](./ATTACHMENTS.md). Retensi/penghapusan permanen dan storage eksternal belum tersedia.
-- Pagination server serta pencarian riwayat yang lebih besar tanpa mengubah kebenaran total laporan.
+- Ukur **Riwayat lengkap** dengan volume dan pola pencarian usaha sasaran; perluas sumber riwayat bila ada dokumen yang belum tercakup.
 
 ### Prioritas 3 — Kelengkapan transaksi dagang
 
-- Uang muka, kredit lintas dokumen, dan refund tertunda dengan saldo pihak serta jejak penyelesaian yang dapat direkonsiliasi.
+- Uji penerimaan alur uang muka, kredit lintas dokumen, dan refund tertunda bersama pengguna pilot; fitur saldo serta jejak penyelesaiannya sudah tersedia.
 - Pembelian jasa, selisih harga invoice terhadap penerimaan, ongkir/diskon, dan perhitungan pajak sesuai kebijakan usaha yang dipilih.
 - Penanganan barang pengganti serta retur yang lebih kompleks berdasarkan kebutuhan pilot, tanpa membuka ulang pesanan secara diam-diam.
 
@@ -142,4 +150,4 @@ Skenario ini menjadi acuan regresi, bukan pernyataan bahwa seluruh skenario pilo
 - Uji performa menggunakan dataset dan perangkat yang dicatat. Sasaran waktu respons ditetapkan dari pengukuran workload, bukan dianggap sebagai SLA sebelum ada bukti.
 - Pengguna pilot dapat menyelesaikan alur bisnis utama berdasarkan panduan dan memahami laporan, koreksi, serta batas fitur.
 
-Lima perluasan operasional kini sudah masuk implementasi Community. Fokus berikutnya adalah membuat pengguna dapat memindahkan data, menjalankan alur yang tersedia, dan mengoperasikannya secara konsisten sebelum memperluas domain lagi.
+Fokus berikutnya adalah menuntaskan validasi kandidat dan pemakaian pilot, agar pengguna dapat memindahkan data, menjalankan alur yang tersedia, dan mengoperasikannya secara konsisten sebelum memperluas domain lagi.

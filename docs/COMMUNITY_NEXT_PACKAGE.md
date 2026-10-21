@@ -1,8 +1,18 @@
-# Paket pengembangan Community berikutnya
+# Paket saldo pihak dan kandidat rilis Community
 
-Status: rencana lingkup, 20 Oktober 2026. Fitur dalam dokumen ini belum diimplementasikan. Dasar rencana adalah implementasi sampai batas 10 akun aktif pada migrasi 0021.
+Status: implementasi paket tersedia, 21 Oktober 2026; migrasi 0022–0025 menambah ledger saldo pihak, rincian pembukaan, read model penyelesaian, dan indeks riwayat. Dokumen ini mempertahankan lingkup serta kriteria penerimaan sebagai acuan pemeriksaan. Kelulusan pengujian, upgrade, pengukuran, dan pembuatan artefak dicatat berdasarkan bukti aktual pada [status implementasi](./IMPLEMENTATION_STATUS.md), bukan disimpulkan dari keberadaan fiturnya.
 
-Tujuan paket adalah membantu usaha berpindah ke Haruflow dengan saldo yang benar, mengelola dana pelanggan/supplier sampai selesai, serta menyiapkan kandidat rilis yang dapat diuji. Paket dikerjakan sebagai satu rangkaian dengan beberapa checkpoint yang diuji, di-commit, dan di-push; bukan satu perubahan besar tanpa pemeriksaan antara.
+Tujuan paket adalah membantu usaha berpindah ke Haruflow dengan saldo yang benar, mengelola dana pelanggan/supplier sampai selesai, serta menyiapkan kandidat rilis yang dapat diuji. Checkpoint mencakup migrasi/API, UI, serta operasi/dokumentasi dan diperiksa sebelum commit/push.
+
+## Implementasi yang tersedia
+
+- Bagian 1: empat jenis saldo pihak pada draf pembukaan, input manual/CSV dengan preview, posting seimbang, rincian pembukaan, lampiran, serta pemeriksaan dependensi pembalikan.
+- Bagian 2–4: **Saldo pihak**, buku pembantu dan rekonsiliasi ledger, uang muka, alokasi ke tagihan operasional/pembukaan, kredit retur, refund tertunda/sebagian, pembatalan sisihan, serta reversal beralasan. Dana berlebih dicatat sebagai uang muka dan dialokasikan secara eksplisit.
+- Bagian 5: tanggal/jatuh tempo invoice, jangka pembayaran pelanggan, aging dengan kelompok tanggal belum diketahui, posisi per tanggal, chart/CSV/cetak buku pembantu, serta penyelesaian tanpa penggandaan kas. Dashboard membedakan posisi piutang keseluruhan dari chart invoice operasional.
+- Bagian 6: **Riwayat lengkap** memakai pagination/pencarian/filter server dan ekspor seluruh filter hingga 10.000 baris. Runner pengukuran membuat database sementara; hasilnya harus dilaporkan bersama profil perangkat/workload dan tidak menjadi SLA.
+- Bagian 7: identitas versi/commit/schema, readiness migrasi, manifest backup/hash/kompatibilitas, panduan upgrade, pemeriksaan CI commit kandidat, serta workflow dan alat paket kandidat berisi source, binary, web, dan checksum. Penerbitan publik dan pilot bisnis tetap merupakan langkah terpisah.
+
+Panduan penggunaan: [saldo awal](./OPENING_BALANCES.md), [saldo pihak](./PARTY_BALANCES.md), [retur](./RETURNS.md), [riwayat lengkap](./HISTORY.md), [operasi](./OPERATIONS.md), dan [kandidat rilis](./RELEASE_CANDIDATE.md).
 
 ## 1. Saldo awal piutang dan utang
 
