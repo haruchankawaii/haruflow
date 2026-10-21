@@ -22,6 +22,8 @@ node scripts/package-release.mjs
 
 Script menolak working tree kotor dan executable dari commit berbeda. Folder kandidat dibuat eksklusif dalam `output/releases/`, tanpa menimpa kandidat lain. `HARUFLOW_RELEASE_BINARY` memilih executable. Pada Linux, pulihkan izin executable dengan `chmod +x ./haruflow` setelah mengunduh artefak Actions. Panduan native memakai `./haruflow` pada Linux dan `.\haruflow.exe` pada PowerShell. Verifikasi checksum dan uji instalasi pada lingkungan baru sebelum distribusi.
 
+Paket Windows menyertakan `Install-Haruflow.ps1` dan panduan [Windows](WINDOWS.md). Installer per pengguna memeriksa manifest, membuat backup sebelum upgrade, menyimpan konfigurasi pribadi dan menyediakan start/stop. `scripts/windows/Test-Install.ps1` memeriksa instalasi pada database acak/folder workspace tanpa pintasan desktop. Runner [kesiapan usaha kecil](SMALL_BUSINESS_PILOT.md) mencakup gangguan proses, retry/restart dan restore.
+
 ## Pengukuran sintetis berulang
 
 `node scripts/performance.mjs` membuat database acak `haruflow_perf_<8-hex>`, melakukan migrasi/setup, menambahkan 1.200 pelanggan serta 100 jurnal, lalu mengukur daftar server, laporan, posting, retry bersamaan, upload/download file 5 MiB, backup, dan restore. Server uji dihentikan dan hanya database yang dibuat script dihapus setelah selesai. Database bisnis dan preview tidak menjadi target.
@@ -40,4 +42,4 @@ JSON pada `output/performance/` mencatat perangkat/OS/RAM, profile dan commit, P
 
 Siapkan usaha sasaran, tanggal mulai pencatatan, saldo stok/piutang/utang/kredit yang direkonsiliasi, operator/hak akses hingga 10 akun aktif, perangkat server, HTTPS, dan backup terpisah. Tentukan kehilangan data maksimum serta sasaran durasi pemulihan.
 
-Jalankan pembukaan → transaksi sebagian → DP/pembayaran → retur/kredit → refund → koreksi → laporan, lalu latihan restore di lingkungan lain. Catat penerimaan pemilik usaha dan batas fitur yang berpengaruh. Pajak otomatis, banyak gudang, serta integrasi bank belum tersedia. Pilot baru dinyatakan selesai setelah ada dataset dan hasil usaha yang benar-benar diuji.
+Jalankan pembukaan → transaksi sebagian → DP/pembayaran → retur/kredit → refund → koreksi → laporan, lalu latihan restore di lingkungan lain. Beberapa gudang, rekening/rekonsiliasi CSV, pajak eksplisit, impor historis dan tutup tahun sudah tersedia. Pelaporan pajak otomatis serta koneksi bank langsung belum tersedia. Pilot baru selesai setelah data nyata dan hasilnya diperiksa serta diterima pemilik; gunakan [form penerimaan usaha kecil](SMALL_BUSINESS_PILOT.md).
