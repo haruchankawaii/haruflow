@@ -16,6 +16,8 @@ import {
   ShieldCheck,
   ShoppingBag,
   ClipboardList,
+  HandCoins,
+  History as HistoryIcon,
   Sprout,
   Users,
   WalletCards,
@@ -33,6 +35,8 @@ import Sales from "./Sales";
 import Accounting from "./Accounting";
 import Settings from "./Settings";
 import Purchasing from "./Purchasing";
+import PartyBalances from "./PartyBalances";
+import History from "./History";
 import type { Session } from "./types";
 
 const navigation = [
@@ -42,6 +46,8 @@ const navigation = [
   { key: "inventory", label: "Inventori", icon: Package },
   { key: "customers", label: "Pelanggan", icon: Users },
   { key: "accounting", label: "Akuntansi", icon: WalletCards },
+  { key: "balances", label: "Saldo pihak", icon: HandCoins },
+  { key: "history", label: "Riwayat lengkap", icon: HistoryIcon },
 ];
 const validPages = [...navigation.map((item) => item.key), "settings"];
 
@@ -336,6 +342,10 @@ export default function App() {
                 <Customers role={session.user.role} changed={changed} />
               ) : page === "accounting" ? (
                 <Accounting role={session.user.role} changed={changed} />
+              ) : page === "balances" ? (
+                <PartyBalances role={session.user.role} changed={changed} />
+              ) : page === "history" ? (
+                <History />
               ) : (
                 <Settings
                   session={session}

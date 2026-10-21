@@ -29,6 +29,7 @@ export interface Customer {
   phone?: string;
   address?: string;
   created_at?: string;
+  payment_terms_days?: number;
 }
 export interface Product {
   id: string;

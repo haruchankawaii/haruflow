@@ -1,6 +1,15 @@
 import { moneyCents } from "./dashboard-charts";
 
 export type ReturnKind = "sales" | "supplier";
+export type ReturnRefundMode = "immediate" | "credit" | "deferred";
+export const returnRefundNames: Record<ReturnRefundMode, string> = {
+  immediate: "Dana sudah dikembalikan",
+  credit: "Simpan kredit pihak",
+  deferred: "Menunggu refund",
+};
+export function returnSettlementCash(refund: bigint, mode: ReturnRefundMode) {
+  return mode === "immediate" ? refund : 0n;
+}
 export interface ReturnableItem {
   id: string;
   quantity: string;
@@ -23,6 +32,11 @@ export interface ReturnRecord {
   inventory_value?: string;
   cost_total?: string;
   refund: string;
+  refund_mode?: ReturnRefundMode;
+  settlement_mode?: ReturnRefundMode;
+  settlement_credit?: string;
+  credit_fund_id?: string | null;
+  refund_request_id?: string | null;
   reason: string;
   journal_id: string;
   created_at: string;

@@ -97,18 +97,18 @@ export function PurchaseStatusChart({
             </small>
           </div>
           <div>
-            <span>Utang supplier tercatat</span>
+            <span>Sisa tagihan pembelian</span>
             <strong>{exactMoney(summary.supplier_payable_total)}</strong>
             <small>
-              Tagihan aktif yang belum dibayar. Lihat jatuh tempo pada tab
-              Tagihan.
+              Tagihan aktif setelah pembayaran dan pemakaian kredit. Lihat
+              jatuh tempo pada tab Tagihan; utang saldo awal tersedia di Saldo pihak.
             </small>
           </div>
         </div>
       </div>
       <p className="purchase-chart-scope">
-        Seluruh PO sepanjang waktu, termasuk di luar 500 dokumen terbaru. Grafik
-        tidak mengikuti pencarian atau filter daftar. Nilai menggunakan biaya
+        Seluruh PO sepanjang waktu. Grafik tidak mengikuti pencarian atau filter
+        daftar. Nilai menggunakan biaya
         beli tersimpan dalam IDR.
       </p>
     </section>

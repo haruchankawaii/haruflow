@@ -1,6 +1,7 @@
 import { moneyCents } from "./dashboard-charts";
 import type { PurchaseOrder, PurchaseReceipt } from "./purchasing-model";
 import type { ReturnableItem, ReturnRecord } from "./returns-model";
+import type { DocumentAllocation } from "./DocumentAllocations";
 
 export type BillDueStatus =
   "upcoming" | "due_today" | "overdue" | "void" | "paid";
@@ -15,6 +16,7 @@ export interface SupplierPayment {
   reversal: PurchaseReceipt["reversal"];
 }
 export interface SupplierBill {
+  fund_allocations?: DocumentAllocation[];
   credit_total: string;
   net_total: string;
   can_return: boolean;

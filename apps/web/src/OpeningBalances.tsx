@@ -34,6 +34,8 @@ import {
 } from "./opening";
 import type { OpeningDraft, OpeningSnapshot, OpeningState } from "./opening";
 import type { Account, Product, Role } from "./types";
+import { OpeningPartiesEditor, OpeningPartiesSnapshot } from "./OpeningParties";
+import { openingPartyInput } from "./opening-parties";
 
 export default function OpeningBalances({
   role,
@@ -157,6 +159,7 @@ export default function OpeningBalances({
         method: "PUT",
         body: {
           ...draft,
+          parties: (draft.parties ?? []).map(openingPartyInput),
           version: document?.version ?? 0,
           lines: draft.lines.map((line) => ({
             ...line,
@@ -259,7 +262,8 @@ export default function OpeningBalances({
           Nilai persediaan otomatis masuk debit akun 1300. Masukkan saldo kas
           atau aset lain pada debit dan modal atau kewajiban pada kredit sesuai
           posisi usaha. Contoh: kas Rp100.000 + stok Rp500.000 = modal
-          Rp600.000. Saldo awal piutang per pelanggan belum tersedia.
+          Rp600.000. Piutang, utang, serta kredit/uang muka lama diisi per pihak
+          agar tetap dapat diselesaikan dan cocok dengan akun kontrol.
         </p>
       </div>
       {!canEdit && (
@@ -521,6 +525,10 @@ export default function OpeningBalances({
                 </span>
                 <strong>{money(preview.inventory)}</strong>
               </div>
+              <OpeningPartiesEditor
+                parties={draft.parties ?? []}
+                onChange={(parties) => edit({ ...draft, parties })}
+              />
               <div className="opening-section-heading">
                 <div>
                   <h3>Saldo akun lainnya</h3>
@@ -944,6 +952,7 @@ function Totals({
 function Snapshot({ snapshot }: { snapshot: OpeningSnapshot }) {
   return (
     <div className="opening-snapshot">
+      <OpeningPartiesSnapshot parties={snapshot.parties ?? []} />
       {!!snapshot.items.length && (
         <div className="table-scroll">
           <table>

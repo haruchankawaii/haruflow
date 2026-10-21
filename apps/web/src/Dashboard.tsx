@@ -57,7 +57,7 @@ export default function Dashboard({
       title: "Piutang usaha",
       amount: data.outstanding,
       icon: Wallet,
-      note: "Sisa invoice aktif saat ini · seluruh waktu",
+      note: "Saldo piutang pembukuan, termasuk saldo awal",
       tone: "amber",
     },
     {

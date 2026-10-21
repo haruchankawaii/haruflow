@@ -44,8 +44,10 @@ import "./supplier-bills.css";
 import { SupplierPayments } from "./SupplierPayments";
 import { ReturnsPanel } from "./ReturnsPanel";
 import { AttachmentsPanel } from "./AttachmentsPanel";
+import { documentSettlement } from "./document-settlement";
 import { SupplierPayablesInsights } from "./SupplierPayablesInsights";
 import { billAllocationPreview } from "./bills-model";
+import { DocumentAllocations } from "./DocumentAllocations";
 
 export function SupplierBills({
   revision,
@@ -285,9 +287,10 @@ export function SupplierBills({
         </div>
       </section>
       <p className="purchase-history-note">
-        Daftar, pencarian, dan ekspor mencakup hingga 500 tagihan terbaru.
-        Grafik dan ringkasan supplier mencakup seluruh sisa utang. Pembayaran
-        serta koreksinya tersedia pada detail tagihan.
+        Daftar, pencarian, dan ekspor mencakup seluruh riwayat tagihan pembelian.
+        Grafik dan ringkasan supplier mencakup sisa tagihan pembelian aktif setelah
+        pembayaran dan pemakaian kredit. Utang saldo awal tersedia di Saldo pihak.
+        Pembayaran serta koreksinya tersedia pada detail tagihan.
       </p>
     </>
   );
@@ -387,7 +390,7 @@ function BillStatusChart({
         </div>
         <div className="purchase-chart-highlights">
           <div className="received">
-            <span>Total utang supplier</span>
+            <span>Sisa tagihan pembelian</span>
             <strong>{exactMoney(summary.outstanding_total)}</strong>
             <small>
               {summary.counts.unpaid.toLocaleString("id-ID")} tagihan aktif.
@@ -397,10 +400,11 @@ function BillStatusChart({
         </div>
       </div>
       <p className="purchase-chart-scope">
-        Seluruh tagihan aktif sepanjang waktu, termasuk di luar 500 dokumen
-        terbaru. Tidak mengikuti filter daftar. Jatuh tempo mengikuti tanggal
-        perusahaan, bukan tanggal perangkat. Ini ringkasan jatuh tempo; kelompok
-        umur utang dan pembayaran tersedia pada ringkasan di atas.
+        Seluruh tagihan pembelian aktif sepanjang waktu. Tidak mengikuti filter
+        daftar. Utang saldo awal tidak termasuk; lihat Saldo pihak untuk seluruh
+        tagihan. Jatuh tempo mengikuti tanggal perusahaan, bukan tanggal perangkat.
+        Ini ringkasan jatuh tempo; kelompok umur tagihan dan penyelesaiannya
+        tersedia pada ringkasan di atas.
       </p>
     </section>
   );
@@ -1050,6 +1054,10 @@ export function SupplierBillDetail({
               }}
               onJournal={setJournalId}
             />
+            <DocumentAllocations
+              items={bill.fund_allocations}
+              onJournal={setJournalId}
+            />
             <ReturnsPanel
               kind="supplier"
               documentId={bill.id}
@@ -1069,11 +1077,35 @@ export function SupplierBillDetail({
             />
             <div className="bill-balance">
               <span>
-                Dibayar <strong>{exactMoney(bill.paid)}</strong>
+                Kas pembayaran dikurangi refund aktual{" "}
+                <strong>
+                  {exactMoney(
+                    documentSettlement(bill.paid, bill.payments, bill.returns)
+                      .cash,
+                  )}
+                </strong>
+              </span>
+              <span>
+                Saldo pihak dialokasikan{" "}
+                <strong>
+                  {exactMoney(
+                    documentSettlement(bill.paid, bill.payments, bill.returns)
+                      .allocated,
+                  )}
+                </strong>
+              </span>
+              <span>
+                Total penyelesaian <strong>{exactMoney(bill.paid)}</strong>
               </span>
               <span>
                 Sisa utang <strong>{exactMoney(bill.outstanding)}</strong>
               </span>
+              <a
+                className="text-button"
+                href={`?side=supplier&party=${bill.supplier_id}#balances`}
+              >
+                Buku pembantu dan saldo supplier
+              </a>
             </div>
             <div className="purchase-detail-notes">
               {bill.notes && (

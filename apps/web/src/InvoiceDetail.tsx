@@ -11,7 +11,7 @@ import {
   Modal,
   Status,
 } from "./components";
-import { date, lineTotal, money, number } from "./format";
+import { date, dateTime, lineTotal, money, number } from "./format";
 import { useResource } from "./hooks";
 import type { Company, Customer, Invoice, Order, Session } from "./types";
 import { exactMoney, moneyCents } from "./dashboard-charts";
@@ -19,6 +19,12 @@ import { JournalPreview } from "./JournalPreview";
 import { ReturnsPanel } from "./ReturnsPanel";
 import type { ReturnableDocument, ReturnableItem } from "./returns-model";
 import { AttachmentsPanel } from "./AttachmentsPanel";
+import { documentSettlement } from "./document-settlement";
+import { InvoiceTermsForm } from "./InvoiceTermsForm";
+import {
+  DocumentAllocations,
+  type DocumentAllocation,
+} from "./DocumentAllocations";
 
 type DetailedInvoice = Omit<Invoice, "items"> &
   Omit<ReturnableDocument, "items"> & {
@@ -29,6 +35,19 @@ type DetailedInvoice = Omit<Invoice, "items"> &
     })[];
     can_reverse?: boolean;
     reversal_blocked_reason?: string | null;
+    invoice_date?: string | null;
+    due_date?: string | null;
+    terms_history?: {
+      id: string;
+      invoice_date: string | null;
+      due_date: string | null;
+      reason: string;
+      created_at: string;
+    }[];
+    cash_paid?: string;
+    allocated_paid?: string;
+    credit_transferred?: string;
+    fund_allocations?: DocumentAllocation[];
   };
 
 interface Payment {
@@ -66,6 +85,23 @@ export default function InvoiceDetail({
     title: string;
   } | null>(null);
   const [journal, setJournal] = useState<string | null>(null);
+  const [terms, setTerms] = useState(false);
+  const computedSettlement = documentSettlement(
+    invoice.paid,
+    payments.data?.items ?? [],
+    detail.data?.returns ?? [],
+  );
+  const settlement = {
+    cash: detail.data?.cash_paid
+      ? moneyCents(detail.data.cash_paid)
+      : computedSettlement.cash,
+    allocated: detail.data?.allocated_paid
+      ? moneyCents(detail.data.allocated_paid)
+      : computedSettlement.allocated,
+    transferred: detail.data?.credit_transferred
+      ? moneyCents(detail.data.credit_transferred)
+      : computedSettlement.transferred,
+  };
   const customer = customers.data?.items.find(
     (customer) =>
       customer.id === invoice.customer_id ||
@@ -141,6 +177,19 @@ export default function InvoiceDetail({
               <p className="invoice-reference">
                 Pesanan: {order.data?.number ?? "—"}
               </p>
+              <p>
+                Tanggal dokumen: {detail.data?.invoice_date ?? "Belum diisi"} ·
+                Jatuh tempo: {detail.data?.due_date ?? "Belum diketahui"}
+              </p>
+              {canManage && invoice.status !== "void" && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setTerms(true)}
+                >
+                  Kelola tanggal dan jatuh tempo
+                </button>
+              )}
             </div>
             <div className="table-scroll">
               <table>
@@ -197,7 +246,21 @@ export default function InvoiceDetail({
                 </>
               )}
               <div>
-                <span>Pembayaran bersih</span>
+                <span>Kas pembayaran dikurangi refund aktual</span>
+                <strong>{exactMoney(settlement.cash)}</strong>
+              </div>
+              <div>
+                <span>Saldo pihak yang dialokasikan</span>
+                <strong>{exactMoney(settlement.allocated)}</strong>
+              </div>
+              {settlement.transferred > 0n && (
+                <div>
+                  <span>Dialihkan menjadi kredit pihak</span>
+                  <strong>−{exactMoney(settlement.transferred)}</strong>
+                </div>
+              )}
+              <div>
+                <span>Total penyelesaian tagihan</span>
                 <strong>{exactMoney(invoice.paid)}</strong>
               </div>
               <div className="invoice-due">
@@ -222,6 +285,32 @@ export default function InvoiceDetail({
             documentId={invoice.id}
             title="Lampiran invoice penjualan"
           />
+          <DocumentAllocations
+            items={detail.data?.fund_allocations}
+            onJournal={setJournal}
+          />
+          <p className="party-help">
+            <a
+              className="text-button"
+              href={`?side=customer&party=${invoice.customer_id ?? order.data?.customer_id ?? ""}#balances`}
+            >
+              Buka buku pembantu, uang muka, dan kredit pelanggan
+            </a>
+          </p>
+          {!!detail.data?.terms_history?.length && (
+            <details className="form-body">
+              <summary>Riwayat perubahan tanggal dan jatuh tempo</summary>
+              <ul>
+                {detail.data.terms_history.map((entry) => (
+                  <li key={entry.id}>
+                    {dateTime(entry.created_at)} · Tanggal dokumen{" "}
+                    {entry.invoice_date ?? "Belum diketahui"} · Jatuh tempo{" "}
+                    {entry.due_date ?? "Belum diketahui"} · {entry.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <section className="invoice-payments">
             <h3>
               <CreditCard size={17} /> Riwayat pembayaran
@@ -347,6 +436,22 @@ export default function InvoiceDetail({
       )}
       {journal && (
         <JournalPreview id={journal} onClose={() => setJournal(null)} />
+      )}
+      {terms && detail.data && (
+        <InvoiceTermsForm
+          invoice={{
+            id: invoice.id,
+            number: invoice.number,
+            version: detail.data.version,
+            invoice_date: detail.data.invoice_date ?? null,
+            due_date: detail.data.due_date ?? null,
+          }}
+          onClose={() => setTerms(false)}
+          onSaved={() => {
+            setTerms(false);
+            refreshed();
+          }}
+        />
       )}
     </Modal>
   );

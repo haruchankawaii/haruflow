@@ -219,8 +219,8 @@ function ReceivablesChart({ data }: { data: DashboardInsights["receivables"] }) 
       <div className="insight-card-heading">
         <div>
           <span className="insight-kicker">PENAGIHAN</span>
-          <h3>Pembayaran invoice</h3>
-          <p>Posisi invoice aktif saat ini · seluruh waktu</p>
+          <h3>Penyelesaian invoice</h3>
+          <p>Invoice penjualan aktif saat ini · seluruh waktu</p>
         </div>
         <span className="insight-snapshot">Tidak mengikuti rentang grafik</span>
       </div>
@@ -228,21 +228,21 @@ function ReceivablesChart({ data }: { data: DashboardInsights["receivables"] }) 
         <div className="insight-donut-wrap">
           <svg viewBox="0 0 180 180" className="insight-donut" role="img" aria-labelledby={`${id}-title`}>
             <title id={`${id}-title`}>
-              {empty ? "Belum ada invoice aktif" : `Pembayaran diterima ${exactMoney(data.paid)}; sisa piutang ${exactMoney(data.outstanding)}; total invoice aktif ${exactMoney(data.invoiced)}`}
+              {empty ? "Belum ada invoice penjualan aktif" : `Nilai diselesaikan melalui pembayaran atau kredit ${exactMoney(data.paid)}; sisa invoice ${exactMoney(data.outstanding)}; total invoice aktif ${exactMoney(data.invoiced)}`}
             </title>
             <circle cx={90} cy={90} r={66} fill="none" stroke={empty ? "#e9ede5" : "#e4b865"} strokeWidth={19} />
             {!empty && <circle cx={90} cy={90} r={66} fill="none" stroke="#295d46" strokeWidth={19} strokeDasharray={`${fraction * circumference} ${circumference}`} transform="rotate(-90 90 90)" />}
             <text x={90} y={86} textAnchor="middle" className="insight-donut-value">{empty ? "—" : `${paid.toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`}</text>
-            <text x={90} y={109} textAnchor="middle" className="insight-donut-label">{empty ? "Belum ada invoice" : "nilai terbayar"}</text>
+            <text x={90} y={109} textAnchor="middle" className="insight-donut-label">{empty ? "Belum ada invoice" : "diselesaikan"}</text>
           </svg>
         </div>
         <dl className="insight-receivable-values">
           <div>
-            <dt><span className="insight-key paid" />Pembayaran diterima</dt>
+            <dt><span className="insight-key paid" />Nilai diselesaikan</dt>
             <dd>{exactMoney(data.paid)}</dd>
           </div>
           <div>
-            <dt><span className="insight-key outstanding" />Sisa piutang</dt>
+            <dt><span className="insight-key outstanding" />Sisa invoice</dt>
             <dd>{exactMoney(data.outstanding)}</dd>
           </div>
           <div className="insight-invoiced-total">
@@ -252,10 +252,10 @@ function ReceivablesChart({ data }: { data: DashboardInsights["receivables"] }) 
         </dl>
         <div className="insight-invoice-counts">
           <span>{count.toLocaleString("id-ID")} invoice aktif</span>
-          <p><b>{data.unpaid_count.toLocaleString("id-ID")}</b> belum dibayar</p>
-          <p><b>{data.partial_count.toLocaleString("id-ID")}</b> dibayar sebagian</p>
+          <p><b>{data.unpaid_count.toLocaleString("id-ID")}</b> belum diselesaikan</p>
+          <p><b>{data.partial_count.toLocaleString("id-ID")}</b> diselesaikan sebagian</p>
           <p><b>{data.paid_count.toLocaleString("id-ID")}</b> lunas</p>
-          <small>Invoice yang dibatalkan tidak dihitung.</small>
+          <small>Penyelesaian mencakup pembayaran dan pemakaian uang muka/kredit, bukan hanya kas diterima. Invoice yang dibatalkan dan saldo awal piutang tidak dihitung; lihat Saldo pihak untuk seluruh tagihan.</small>
         </div>
       </div>
     </article>

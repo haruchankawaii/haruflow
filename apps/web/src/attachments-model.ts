@@ -9,7 +9,10 @@ export type DocumentKind =
   | "supplier_payment"
   | "journal"
   | "sales_return"
-  | "supplier_return";
+  | "supplier_return"
+  | "party_fund"
+  | "party_refund"
+  | "opening_item";
 export const attachmentLimits = {
   max_file_bytes: 5242880,
   max_files: 20,

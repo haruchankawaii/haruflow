@@ -1,11 +1,17 @@
 import { expect, test } from "bun:test";
 import {
   previewReturn,
+  returnSettlementCash,
   quantityMillis,
   returnEndpoint,
   returnReversalEndpoint,
   type ReturnableItem,
 } from "./returns-model";
+test("retained or deferred return credits never imply actual cash movement", () => {
+  expect(returnSettlementCash(2000n, "immediate")).toBe(2000n);
+  expect(returnSettlementCash(2000n, "credit")).toBe(0n);
+  expect(returnSettlementCash(2000n, "deferred")).toBe(0n);
+});
 const line = (overrides: Partial<ReturnableItem> = {}): ReturnableItem => ({
   id: "line",
   name: "Produk",

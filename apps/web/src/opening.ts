@@ -1,6 +1,7 @@
 import { lineTotal } from "./format";
 import { isControlAccount } from "./account-controls";
 import type { Account, Product } from "./types";
+import { openingPartyPreview, type OpeningParty } from "./opening-parties";
 
 export interface OpeningItem {
   product_id: string;
@@ -16,6 +17,7 @@ export interface OpeningLine {
   account_name: string;
   debit: string;
   credit: string;
+  generated?: boolean;
 }
 export interface OpeningSnapshot {
   description: string;
@@ -24,6 +26,7 @@ export interface OpeningSnapshot {
   inventory_total: string;
   total_debit: string;
   total_credit: string;
+  parties?: OpeningParty[];
 }
 export interface OpeningHistory extends OpeningSnapshot {
   id: string;
@@ -51,6 +54,7 @@ export interface OpeningDraft {
   description: string;
   items: { product_id: string; quantity: string; unit_cost: string }[];
   lines: { account_code: string; debit: string; credit: string }[];
+  parties?: OpeningParty[];
 }
 
 export const openingAccounts = (accounts: Account[]) =>
@@ -74,12 +78,31 @@ export function openingDraft(document: OpeningDocument | null): OpeningDraft {
     ),
     // The server returns the generated inventory control line as well.
     lines: (document?.lines ?? [])
-      .filter((line) => line.account_code !== "1300")
+      .filter((line) => !line.generated && line.account_code !== "1300")
       .map(({ account_code, debit, credit }) => ({
         account_code,
         debit,
         credit,
       })),
+    parties: (document?.parties ?? []).map(
+      ({
+        kind,
+        party_id,
+        reference,
+        document_date,
+        due_date,
+        amount,
+        party_name,
+      }) => ({
+        kind,
+        party_id,
+        reference,
+        document_date,
+        due_date,
+        amount,
+        party_name,
+      }),
+    ),
   };
 }
 
@@ -148,6 +171,10 @@ export function openingPreview(draft: OpeningDraft, accounts: Account[] = []) {
     inventory += value;
   }
   debit += inventory;
+  const partyPreview = openingPartyPreview(draft.parties ?? []);
+  debit += partyPreview.debit;
+  credit += partyPreview.credit;
+  if (partyPreview.errors.length) valid = false;
   for (const line of draft.lines) {
     const dr = cents(line.debit);
     const cr = cents(line.credit);

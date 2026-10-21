@@ -7,6 +7,8 @@ import { dateTime } from "./format";
 import { requestIdentity, type RequestIdentity } from "./purchasing-model";
 import {
   previewReturn,
+  returnRefundNames,
+  returnSettlementCash,
   quantityMillis,
   returnEndpoint,
   returnItemName,
@@ -15,6 +17,7 @@ import {
   type ReturnKind,
   type ReturnableItem,
   type ReturnRecord,
+  type ReturnRefundMode,
 } from "./returns-model";
 import "./returns.css";
 
@@ -52,6 +55,7 @@ export function ReturnsPanel({
   const [reason, setReason] = useState("");
   const [review, setReview] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [refundMode, setRefundMode] = useState<ReturnRefundMode>("immediate");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -65,6 +69,7 @@ export function ReturnsPanel({
     setReason("");
     setReview(false);
     setConfirmed(false);
+    setRefundMode("immediate");
     setError("");
   }
   async function submit(event: FormEvent) {
@@ -74,7 +79,11 @@ export function ReturnsPanel({
       setError("Isi alasan minimal tiga karakter.");
       return;
     }
-    if (!selected && (preview.error || (preview.refund > 0n && !confirmed))) {
+    if (
+      !selected &&
+      (preview.error ||
+        (returnSettlementCash(preview.refund, refundMode) > 0n && !confirmed))
+    ) {
       setError(
         preview.error || "Konfirmasikan pengembalian uang yang sudah terjadi.",
       );
@@ -100,6 +109,7 @@ export function ReturnsPanel({
           version: formVersion,
           reason: reason.trim(),
           refund_confirmed: confirmed,
+          refund_mode: refundMode,
           items: preview.items.map((item) => ({
             [supplier ? "bill_line_id" : "invoice_line_id"]: item.id,
             quantity: item.quantity,
@@ -162,6 +172,16 @@ export function ReturnsPanel({
             </span>
           </header>
           <p className="purchase-prewrap">Alasan: {record.reason}</p>
+          {(record.refund_mode || record.settlement_mode) && (
+            <p className="muted">
+              Penyelesaian saat retur dicatat:{" "}
+              {
+                returnRefundNames[
+                  record.refund_mode ?? record.settlement_mode ?? "immediate"
+                ]
+              }
+            </p>
+          )}
           <div className="returns-amounts">
             <span>
               Kredit <strong>{exactMoney(record.credit_total)}</strong>
@@ -173,6 +193,21 @@ export function ReturnsPanel({
               <strong>{exactMoney(record.refund)}</strong>
             </span>
           </div>
+          {moneyCents(record.settlement_credit ?? "0") > 0n && (
+            <p>
+              Kredit pihak dari kelebihan pembayaran:{" "}
+              <strong>{exactMoney(record.settlement_credit!)}</strong>. Kas
+              belum berpindah untuk bagian ini.{" "}
+              {record.credit_fund_id && (
+                <a
+                  className="text-button"
+                  href={`?fund=${record.credit_fund_id}#balances`}
+                >
+                  Lihat saldo dan penyelesaian
+                </a>
+              )}
+            </p>
+          )}
           <details>
             <summary>{record.items.length} jenis barang/jasa</summary>
             <div className="table-scroll">
@@ -319,8 +354,16 @@ export function ReturnsPanel({
                   <strong>{exactMoney(preview.outstandingAfter)}</strong>
                 </span>
                 <span>
-                  Pengembalian uang{" "}
+                  Kelebihan setelah kredit{" "}
                   <strong>{exactMoney(preview.refund)}</strong>
+                </span>
+                <span>
+                  Kas aktual{" "}
+                  <strong>
+                    {exactMoney(
+                      returnSettlementCash(preview.refund, refundMode),
+                    )}
+                  </strong>
                 </span>
               </div>
               {review && (
@@ -341,6 +384,31 @@ export function ReturnsPanel({
                   : "Barang stok kembali memakai biaya historis pengiriman. Retur jasa mengurangi tagihan tanpa mutasi stok."}
               </p>
               {preview.refund > 0n && (
+                <FormField label="Penyelesaian kelebihan pembayaran *">
+                  <select
+                    value={refundMode}
+                    disabled={busy || review}
+                    onChange={(e) => {
+                      setRefundMode(e.target.value as ReturnRefundMode);
+                      setConfirmed(false);
+                    }}
+                  >
+                    {Object.entries(returnRefundNames).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="muted">
+                    {refundMode === "immediate"
+                      ? "Catat perpindahan kas yang sudah benar-benar terjadi."
+                      : refundMode === "credit"
+                        ? "Kas tidak berubah. Kredit tersedia untuk tagihan lain milik pihak yang sama atau refund berikutnya."
+                        : "Kas tidak berubah. Dana disisihkan untuk permintaan refund dan tidak dapat dipakai pada tagihan lain sampai permintaan dibatalkan."}
+                  </p>
+                </FormField>
+              )}
+              {returnSettlementCash(preview.refund, refundMode) > 0n && (
                 <label className="returns-confirm">
                   <input
                     type="checkbox"

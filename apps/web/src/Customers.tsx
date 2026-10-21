@@ -18,6 +18,7 @@ import { downloadCsv } from "./export";
 import { DeleteMaster } from "./MasterActions";
 import type { Customer, Role } from "./types";
 import { ImportShortcut } from "./DataImports";
+import { CustomerTermsForm } from "./InvoiceTermsForm";
 
 export default function Customers({
   role,
@@ -34,6 +35,7 @@ export default function Customers({
   const [selected, setSelected] = useState<Customer | null>(null);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [deleting, setDeleting] = useState<Customer | null>(null);
+  const [terms, setTerms] = useState<Customer | null>(null);
   const canEdit = ["admin", "sales"].includes(role);
   const customers = (data?.items ?? []).filter((item) =>
     `${item.name} ${item.email ?? ""} ${item.phone ?? ""}`
@@ -178,6 +180,13 @@ export default function Customers({
         >
           <div className="detail-list">
             <div>
+              <span>
+                <small>Jatuh tempo invoice baru</small>
+                {selected.payment_terms_days ?? 0} hari setelah tanggal invoice.
+                Invoice lama tetap memakai tanggal yang sudah tersimpan.
+              </span>
+            </div>
+            <div>
               <Mail size={18} />
               <span>
                 <small>Alamat email</small>
@@ -200,6 +209,23 @@ export default function Customers({
             </div>
           </div>
           <div className="form-actions">
+            {["admin", "finance"].includes(role) && (
+              <button
+                className="button secondary"
+                onClick={() => {
+                  setTerms(selected);
+                  setSelected(null);
+                }}
+              >
+                Syarat pembayaran
+              </button>
+            )}
+            <a
+              className="text-button"
+              href={`?side=customer&party=${selected.id}#balances`}
+            >
+              Buku pembantu
+            </a>
             {canEdit && (
               <>
                 <button
@@ -242,6 +268,17 @@ export default function Customers({
           }}
         />
       )}
+      {terms && (
+        <CustomerTermsForm
+          customer={terms}
+          onClose={() => setTerms(null)}
+          onSaved={() => {
+            setTerms(null);
+            reload();
+            changed();
+          }}
+        />
+      )}
       {deleting && (
         <DeleteMaster
           path={`/customers/${deleting.id}`}
@@ -274,9 +311,15 @@ function CustomerForm({
     setBusy(true);
     setError("");
     try {
+      const fields = Object.fromEntries(new FormData(event.currentTarget));
       await api(customer ? `/customers/${customer.id}` : "/customers", {
         method: customer ? "PATCH" : "POST",
-        body: Object.fromEntries(new FormData(event.currentTarget)),
+        body: customer
+          ? fields
+          : {
+              ...fields,
+              payment_terms_days: Number(fields.payment_terms_days ?? 0),
+            },
       });
       onSaved();
     } catch (error) {
@@ -334,6 +377,22 @@ function CustomerForm({
               placeholder="Alamat lengkap pelanggan"
             />
           </FormField>
+          {!customer && (
+            <FormField
+              label="Jatuh tempo invoice (hari)"
+              hint="0 berarti jatuh tempo pada tanggal invoice. Berlaku untuk invoice baru; dapat diubah oleh keuangan."
+            >
+              <input
+                name="payment_terms_days"
+                type="number"
+                min="0"
+                max="3650"
+                step="1"
+                required
+                defaultValue="0"
+              />
+            </FormField>
+          )}
           <FormError error={error} />
         </div>
         <FormActions onClose={onClose} busy={busy} label="Simpan pelanggan" />
