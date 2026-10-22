@@ -1,39 +1,34 @@
-# Haruflow Community
+<p align="center">
+  <img src="docs/images/hero.svg" alt="Haruflow Community — kenali usaha, rapikan alurnya" width="1280" />
+</p>
 
-ERP gratis yang di-host sendiri, dengan frontend React/TypeScript dan backend Rust/Axum + PostgreSQL. Satu aplikasi Rust melayani UI dan API; instalasi default hanya menjalankan aplikasi dan PostgreSQL.
+<p align="center">
+  <a href="LICENSE"><img alt="Lisensi AGPL-3.0-only" src="https://img.shields.io/badge/License-AGPL--3.0--only-295d46?style=flat-square&amp;labelColor=193d31" /></a>
+  <img alt="Community: 10 akun aktif" src="https://img.shields.io/badge/Community-10%20akun%20aktif-d4ecba?style=flat-square&amp;labelColor=193d31" />
+  <img alt="Satu perusahaan, mata uang IDR" src="https://img.shields.io/badge/Satu%20perusahaan-IDR-d4ecba?style=flat-square&amp;labelColor=193d31" />
+  <a href="docs/MCP.md"><img alt="MCP lokal untuk Codex" src="https://img.shields.io/badge/Codex-MCP%20baca-295d46?style=flat-square&amp;labelColor=193d31" /></a>
+</p>
 
-Community untuk usaha kecil: satu perusahaan, mata uang IDR, maksimal 10 akun aktif, serta pilihan beberapa gudang dan kas/bank. Tidak memerlukan akun Haruflow Cloud atau layanan lisensi. Lihat [cakupan lengkap dan batas paket](./docs/COMMUNITY_SMALL_BUSINESS.md) serta [instalasi Windows](./docs/WINDOWS.md).
+<p align="center">
+  <a href="#mulai">Mulai</a> ·
+  <a href="#ruang-kerja">Ruang kerja</a> ·
+  <a href="docs/GUIDE.md">Panduan bergambar</a> ·
+  <a href="docs/MCP.md">Hubungkan Codex</a> ·
+  <a href="#untuk-pengembang">Pengembang</a>
+</p>
 
-## Fitur
+**Haruflow Community adalah ERP gratis untuk usaha kecil yang dijalankan sendiri.** Catat penjualan dan pembelian, kelola stok serta kas, lalu telusuri laporan ke transaksi sumbernya. Satu perusahaan, IDR, maksimal 10 akun aktif termasuk admin. Tidak memerlukan akun Haruflow Cloud atau server lisensi.
 
-- Setup perusahaan dan admin, login lokal, role, pengelolaan pengguna, penggantian password, pencabutan sesi, dan audit aktivitas.
-- MCP lokal untuk insight di Codex: enam tool baca, izin per pengguna, kunci pribadi yang dapat dicabut, serta menu Pengaturan → Integrasi AI. Lihat [panduan MCP](./docs/MCP.md).
-- Maksimal 10 akun aktif per instalasi, termasuk administrator. Akun nonaktif menyimpan riwayat dan melepaskan slot; batas diperiksa di backend/database. Lihat [batas pengguna dan perlindungan kode](./docs/USER_LIMIT.md).
-- Profil perusahaan, kontak, zona waktu sebelum posting pertama, serta awalan nomor pesanan dan invoice yang dapat dikonfigurasi. Mata uang tetap IDR.
-- Pelanggan, produk, penerimaan stok, biaya rata-rata bergerak, penyesuaian, dan riwayat stok.
-- Sales order → konfirmasi → pengiriman sebagian/penuh untuk barang → invoice sebagian/penuh → pembayaran sebagian/penuh.
-- Produk jasa/nonstok dapat ditagih langsung setelah konfirmasi, tanpa pergerakan stok; pesanan campuran tetap mengirim barang terlebih dahulu.
-- Jurnal otomatis, jurnal manual seimbang, neraca saldo, dan penutupan periode.
-- Saldo awal kas/aset/modal, stok, piutang/utang per dokumen, serta sisa uang muka/kredit pelanggan dan supplier melalui draf seimbang. Rincian pihak dapat diisi manual atau melalui CSV dengan preview; posting tetap satu kali sebelum operasi. Lihat [panduan saldo awal](./docs/OPENING_BALANCES.md).
-- Buku pembantu **Saldo pihak** untuk piutang/utang, uang muka, kredit, alokasi lintas tagihan pihak yang sama, serta refund tertunda/sebagian. Chart aging, posisi per tanggal, rekonsiliasi ke ledger, CSV, dan cetak tersedia. Lihat [panduan saldo pihak](./docs/PARTY_BALANCES.md).
-- Koreksi pembayaran, invoice, dan pengiriman melalui reversal dengan alasan; riwayat posted dipertahankan.
-- Pembalikan jurnal manual dan penerimaan stok terbaru yang memiliki snapshot biaya; dokumen asal dan alasan koreksi tetap tersimpan. Lihat [panduan koreksi dan chart](./docs/CORRECTIONS_AND_CHARTS.md).
-- Dashboard, pencarian, ekspor CSV, dan tampilan cetak invoice. **Riwayat lengkap** menyediakan pencarian/filter dan pagination server untuk data di luar daftar ringkas; ekspor mengambil seluruh hasil filter sampai 10.000 baris. Lihat [panduan riwayat](./docs/HISTORY.md).
-- Chart pendapatan/HPP dan mutasi kas dengan pilihan 3/6/12 bulan, serta posisi invoice terbayar/piutang saat ini.
-- Laporan laba rugi, neraca, dan arus kas dengan rentang tanggal, chart, CSV, rincian akun/jurnal, serta klasifikasi arus kas beralasan. Lihat [panduan laporan](./docs/FINANCIAL_REPORTS.md).
-- Retur pelanggan dan supplier sebagian/penuh, kredit tagihan, pilihan refund aktual/simpan kredit/menunggu refund, jurnal biaya persediaan, serta pembalikan beralasan. Lihat [panduan retur](./docs/RETURNS.md).
-- Impor pelanggan, supplier, dan produk dari CSV UTF-8, dengan template, preview wajib, validasi per baris, perlindungan duplikasi, serta penyimpanan atomik. Lihat [panduan impor](./docs/IMPORTS.md).
-- Lampiran bukti PDF/PNG/JPEG pada dokumen dan pembayaran, unduhan setelah login, arsip/pemulihan beralasan, serta riwayat. Isi file ikut backup database. Lihat [panduan lampiran](./docs/ATTACHMENTS.md).
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="Tampilan asli dashboard Haruflow dengan ringkasan dan chart; menggunakan data simulasi" width="1280" />
+  <br /><sub>Tampilan aplikasi dengan data simulasi. Angka pada gambar bukan data usaha pengguna.</sub>
+</p>
 
-Menu Pembelian menyediakan supplier, PO draf/edit/konfirmasi/pembatalan, penerimaan dan penagihan sebagian/penuh, pembayaran supplier, koreksi beralasan, serta chart status PO, umur utang, dan pembayaran. Penerimaan memperbarui stok dan jurnal persediaan/barang diterima belum ditagih; tagihan memindahkan kewajiban tersebut ke utang supplier. Pembayaran mengurangi kas serta utang. Jumlah tersisa tetap terlacak; lihat [panduan pembelian](./docs/PURCHASING.md).
+## Mulai
 
-Pembelian barang/jasa mendukung harga invoice berbeda, ongkir, diskon dan pajak eksplisit; arus kas mencakup seluruh rekening terdaftar dan mengecualikan transfer internal. Impor mutasi bank memakai pencocokan manual. Periode/tutup tahun, stok lokasi/lot/seri/reservasi, serta impor transaksi historis tersedia sebagai kandidat. Multicurrency, multi-company, payroll, produksi, POS khusus, koneksi bank langsung dan pelaporan pajak otomatis di luar cakupan ini. Detail dan bukti ada di [status implementasi](./docs/IMPLEMENTATION_STATUS.md).
+**Windows:** siapkan PostgreSQL, gunakan paket yang sudah diverifikasi, jalankan installer per pengguna, lalu buka **Start-Haruflow.ps1**. Buat perusahaan dan admin pertama dengan kode setup pribadi. Ikuti [instalasi Windows](docs/WINDOWS.md), kemudian [panduan pemakaian bergambar](docs/GUIDE.md).
 
-## Menjalankan dengan Docker Compose
-
-Prasyarat: Docker Engine/Desktop dengan Compose v2, serta Node.js 22+ atau Bun untuk membuat konfigurasi lokal dan menjalankan utilitas backup.
-
-Jalankan dari root repository:
+**Docker Compose:** jalankan dari root repository; perlu Docker dengan Compose v2 serta Node.js 22+ atau Bun untuk utilitas konfigurasi.
 
 ```sh
 node scripts/configure.mjs
@@ -43,73 +38,56 @@ docker compose --env-file .env -f deploy/community/compose.yml run --rm migrate
 docker compose --env-file .env -f deploy/community/compose.yml up -d app
 ```
 
-Buka http://localhost:8080. Salin `HARUFLOW_SETUP_TOKEN` dari `.env` ke formulir setup, lalu buat perusahaan dan admin pertama dengan password minimal 12 karakter. Token setup tidak dapat digunakan untuk membuat perusahaan kedua. Script konfigurasi tidak menimpa `.env` yang sudah ada dan tidak mencetak secrets.
+Buka [localhost:8080](http://localhost:8080). Gunakan `HARUFLOW_SETUP_TOKEN` dari `.env` secara pribadi untuk setup pertama. Konfigurasi tidak menimpa `.env` yang sudah ada atau mencetak secrets. Migrasi merupakan langkah eksplisit; server memeriksa kecocokan schema sebelum siap.
 
-Port aplikasi hanya dipublikasikan pada loopback; PostgreSQL tidak dipublikasikan. Untuk akses jaringan/produksi gunakan reverse proxy HTTPS, atur `HARUFLOW_SECURE_COOKIES=true`, dan ikuti [panduan operasi](./docs/OPERATIONS.md).
+<p>
+  <a href="docs/GUIDE.md"><strong>→ Panduan pengguna</strong></a> &nbsp;
+  <a href="docs/WINDOWS_BACKUP.md"><strong>→ Backup Windows</strong></a> &nbsp;
+  <a href="docs/OPERATIONS.md"><strong>→ Runbook Docker &amp; server</strong></a>
+</p>
 
-## Pengembangan lokal
+## Ruang kerja
 
-Prasyarat: Rust 1.98.1, Bun 1.3.14, dan PostgreSQL 14 atau lebih baru. CI juga menguji PostgreSQL 18.1. Buat database dan user pengembangan tersendiri; jangan gunakan database produksi untuk tes.
+- **Jual dan beli.** Pesanan barang/jasa, pengiriman/penerimaan bertahap, invoice/tagihan, pembayaran sebagian, retur dan koreksi dengan riwayat.
+- **Stok yang dapat ditelusuri.** Beberapa gudang, transfer, satuan, lot/seri, kedaluwarsa dan reservasi; jumlah serta nilai terkait pembukuan.
+- **Kas dan saldo pihak.** Rekening kas/bank, transfer internal, rekonsiliasi CSV bank, piutang/utang, uang muka, kredit dan refund.
+- **Pembukuan dan laporan.** Saldo awal, jurnal berpasangan, laba rugi, neraca, arus kas, chart, periode serta tutup tahun.
+- **Data dan bukti.** Impor CSV dengan preview, transaksi historis, PDF/PNG/JPEG, pencarian dan riwayat terpaginasikan.
+- **Akses dan insight.** Peran pengguna, audit, batas akun serta enam tool MCP baca untuk Codex dengan izin dan kunci pribadi.
 
-```sh
-node scripts/configure.mjs
-# Sesuaikan DATABASE_URL pada .env dengan PostgreSQL lokal.
-bun install --cwd apps/web
-bun run build:web
-cargo run --locked -- migrate
-cargo run --locked -- serve
-```
+<p align="center"><img src="docs/images/workflow.svg" alt="Alur penjualan dan pembelian hingga stok, jurnal, laporan dan insight Codex" width="1280" /></p>
 
-Aplikasi tersedia pada http://localhost:8080. Saat mengerjakan UI, jalankan `bun run dev:web` di terminal lain; Vite mem-proxy `/api` ke server Rust. Semua perubahan bisnis tetap disimpan di PostgreSQL.
+Lihat [cakupan Community](docs/COMMUNITY_SMALL_BUSINESS.md) untuk aturan dan batas setiap alur. Pembayaran mencatat perpindahan uang yang sudah terjadi; Haruflow tidak mentransfer uang melalui bank secara otomatis. Pajak eksplisit tidak menggantikan e-faktur atau pelaporan pajak.
 
-## Pengujian
+## Dari laporan ke insight
 
-```sh
-cargo fmt --all --check
-cargo clippy --locked --all-targets -- -D warnings
-# Set DATABASE_URL di environment shell ke server PostgreSQL untuk tes.
-# User tes memerlukan CREATEDB; sqlx membuat database terpisah per integration test.
-cargo test --locked -- --test-threads=1
-bun run --cwd apps/web test
-bun run build:web
-node --test scripts/backup-manifest.test.mjs
-```
+<p align="center"><img src="docs/images/accounting.png" alt="Laporan keuangan asli Haruflow pada data simulasi" width="1280" /></p>
 
-`.env` hanya dibaca otomatis oleh executable, sehingga untuk `cargo test` tetap set `DATABASE_URL` di environment shell. Gunakan format `postgres://user:password@127.0.0.1:5432/postgres`; tes tidak memakai database aplikasi sebagai tempat fixture. Database tes yang gagal mungkin disimpan SQLx untuk investigasi.
+Gunakan laporan untuk mencocokkan angka, lalu bertanya di Codex, misalnya:
 
-Tes mencakup perhitungan decimal, setup bersamaan, permission dan pencabutan sesi, alur ERP, idempotensi, perebutan stok, jurnal seimbang, ledger yang tidak bisa diedit, reversal, dan periode tutup. Workflow GitHub Actions menjalankan pemeriksaan backend, frontend, serta build container.
+> “Ringkas kondisi usaha bulan ini. Bedakan laba dan perubahan kas; tunjukkan piutang yang perlu ditinjau, sumber angka, periode dan batas kesimpulannya.”
 
-## Pemulihan administrator
+Percakapan berlangsung **di Codex**. Admin mengatur izin dalam **Pengaturan → Integrasi AI**; pengguna membuat kunci pribadi sesuai lingkupnya. Koneksi MCP lokal hanya membaca data yang diizinkan. `haruflow.exe mcp check` memeriksa akun, lingkup dan katalog tanpa membuka laporan. [Hubungkan Codex](docs/MCP.md) · [Pemecahan masalah](docs/MCP_TROUBLESHOOTING.md).
 
-Jika seluruh akses admin hilang karena lupa password, operator lokal dapat memulihkan administrator aktif dari terminal:
+Data yang diberikan ke Codex dapat diproses layanan AI yang digunakannya. Pemilik menentukan data yang dibagikan; kunci tidak ditempel ke chat atau Git.
 
-```sh
-docker compose --env-file .env -f deploy/community/compose.yml exec app haruflow admin reset-password admin@example.com
-# Native: cargo run --locked -- admin reset-password admin@example.com
-```
+## Jalankan dengan tenang
 
-Password diminta dua kali melalui prompt tersembunyi. Perintah ini memerlukan akses server/database, mencabut seluruh sesi admin tersebut, dan tidak dapat menaikkan role pengguna biasa atau mengaktifkan akun nonaktif. Untuk otomasi yang memakai input terlindungi tersedia `--password-stdin`; jangan menulis password sebagai argumen command atau ke shell history.
+Simpan backup di perangkat terpisah dan latihan pemulihan pada database uji. Paket Windows menyediakan helper backup dengan metadata dan SHA-256; Docker menyediakan utilitas backup/restore. Setelah restore, cabut kunci MCP lama sebelum aplikasi dibuka kembali. [Backup Windows](docs/WINDOWS_BACKUP.md) · [Pemulihan dan upgrade](docs/OPERATIONS.md#restore-ke-instalasi-pengujian).
 
-## Backup dan restore data
+Validasi paket Community menggunakan **simulasi transaksi, instalasi, pemulihan dan percakapan Codex**, dengan hasil pada [status implementasi](docs/IMPLEMENTATION_STATUS.md). Pilot usaha nyata merupakan pilihan deployment terpisah dan tidak dianggap sudah dilakukan. [Skenario latihan](docs/SMALL_BUSINESS_PILOT.md) · [Identitas paket dan pengukuran](docs/RELEASE_CANDIDATE.md).
 
-```sh
-node scripts/database.mjs backup
-node scripts/database.mjs restore backups/nama-file.backup --confirm-restore
-```
+**Rencana Enterprise:** HR/payroll, produksi, POS khusus, multi-company, multicurrency dan AI lanjutan seperti chat tertanam atau MCP jarak jauh. Ini rencana pengembangan Enterprise, bukan fitur yang sudah tersedia atau syarat Community selesai. MCP lokal baca tetap bagian Community.
 
-Backup menggunakan `pg_dump` dalam container PostgreSQL, disertai manifest versi aplikasi/schema, ukuran, dan SHA-256. Utilitas memeriksa manifest serta arsip sebelum restore. Restore mengganti isi database, menghentikan aplikasi, dan memakai satu transaksi. Aplikasi tetap berhenti setelah restore untuk memberi kesempatan verifikasi versi dan migrasi eksplisit. Cadangkan `.env` dengan enkripsi secara terpisah dan uji restore pada instalasi lain. Lihat [runbook operasi](./docs/OPERATIONS.md).
+## Untuk pengembang
 
-Perintah `haruflow version` dan endpoint `/version` menampilkan identitas build tanpa konfigurasi rahasia. Readiness memeriksa kecocokan migrasi sebelum aplikasi dinyatakan siap. Panduan [kandidat rilis](./docs/RELEASE_CANDIDATE.md) menjelaskan pembuatan paket berisi binary, web, source yang sesuai, dan checksum; workflow kandidat tidak menerbitkan tag atau image registry otomatis. Pilot usaha nyata tetap memerlukan hasil penggunaan yang dicatat.
+Rust/Axum + SQLx/PostgreSQL menyajikan API dan frontend React/TypeScript dari satu aplikasi. Instalasi default cukup aplikasi dan PostgreSQL; Redis, broker dan Kubernetes tidak diperlukan.
 
-## Struktur dan dokumen
+- [Setup lokal, perintah tes dan kontrak API](docs/OPERATIONS.md#pengembangan-dan-verifikasi).
+- [Status implementasi dan bukti](docs/IMPLEMENTATION_STATUS.md), [arsitektur awal](haruflow.md), [rencana Community](docs/COMMUNITY_PLAN.md).
+- Source: [frontend](apps/web/src), [backend](crates/server/src), [migrasi](migrations), [Docker Compose](deploy/community).
+- Panduan modul: [penjualan](docs/SALES_FULFILLMENT.md), [pembelian](docs/PURCHASING.md), [inventori](docs/INVENTORY_LOCATIONS.md), [saldo pihak](docs/PARTY_BALANCES.md), [laporan](docs/FINANCIAL_REPORTS.md), [impor](docs/TRANSACTION_IMPORTS.md).
 
-- `apps/web`: React, TypeScript, Vite, dan UI Bahasa Indonesia.
-- `crates/server`: server, autentikasi, domain, transaksi bisnis, dan pengujian.
-- `migrations`: migrasi schema PostgreSQL yang berurutan.
-- `deploy/community`: Docker Compose untuk instalasi mandiri.
-- [Rencana Community](./docs/COMMUNITY_PLAN.md), [proposal arsitektur](./haruflow.md), dan [operasi](./docs/OPERATIONS.md).
-- [Status implementasi dan batas fitur](./docs/IMPLEMENTATION_STATUS.md), [saldo pihak](./docs/PARTY_BALANCES.md), [riwayat lengkap](./docs/HISTORY.md), dan [kandidat rilis](./docs/RELEASE_CANDIDATE.md).
+## Lisensi
 
-## License
-
-Haruflow Community is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0-only). See [LICENSE](./LICENSE).
+Haruflow Community menggunakan **GNU Affero General Public License v3.0 (AGPL-3.0-only)**. Source yang sesuai disertakan dalam paket kandidat; ketentuan lengkap ada di [LICENSE](LICENSE). Batas 10 akun ditegakkan aplikasi/database; pemilik yang menguasai source dan database tetap dapat mengubah instalasinya sesuai lisensi.

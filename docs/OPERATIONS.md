@@ -2,7 +2,7 @@
 
 ## Konfigurasi dan batas instalasi
 
-Setiap instalasi memiliki satu perusahaan, satu gudang logis, satu database, dan mata uang IDR. Zona waktu perusahaan awal adalah Asia/Jakarta. Nominal API menggunakan string decimal, bukan floating point. Kuantitas mendukung tiga tempat desimal, biaya unit empat, dan nominal uang dua. Aplikasi belum menghitung pajak atau dokumen perpajakan.
+Setiap instalasi memiliki satu perusahaan, satu database, mata uang IDR dan maksimal 10 akun aktif. Beberapa gudang dan rekening kas/bank dapat digunakan; Gudang utama dan Kas 1100 menjadi bawaan. Zona waktu perusahaan awal adalah Asia/Jakarta. Nominal API menggunakan string decimal, bukan floating point. Kuantitas mendukung tiga tempat desimal, biaya unit empat, dan nominal uang dua. Pembelian mendukung pajak eksplisit inklusif/eksklusif yang direview pengguna; e-faktur serta pelaporan pajak otomatis tidak tersedia. Panduan ringkas dengan gambar ada di [panduan pengguna](GUIDE.md).
 
 Administrator dapat memperbarui profil perusahaan, alamat, email, telepon, nomor pajak, dan awalan nomor pesanan/invoice melalui Pengaturan. Zona waktu dapat diganti sebelum jurnal pertama; sesudahnya perubahan ditolak agar tanggal pembukuan historis tetap konsisten. Mata uang tetap IDR. Mengubah awalan nomor tidak menomori ulang dokumen lama dan tidak mereset urutan nomor.
 
@@ -38,7 +38,7 @@ Form setup memerlukan token lokal dan membuat satu perusahaan sekaligus admin pe
 - Finance: saldo awal, invoice penjualan, tagihan supplier, pembayaran/reversal pelanggan dan supplier, retur kedua pihak, jurnal manual, periode pembukuan, serta klasifikasi arus kas beralasan.
 - Viewer: akses baca; tidak dapat mengubah data.
 
-Perubahan role, penonaktifan, dan reset password mencabut sesi pengguna. Admin tidak dapat menonaktifkan atau menurunkan role dirinya sendiri. Pengguna dapat mengganti password sendiri dengan password saat ini; sesi lama dicabut.
+Perubahan role, penonaktifan, dan reset password mencabut sesi serta kunci AI lama pengguna. Admin tidak dapat menonaktifkan atau menurunkan role dirinya sendiri. Pengguna dapat mengganti password sendiri dengan password saat ini; sesi dan kunci AI lama dicabut. Akses MCP memerlukan opt-in terpisah dan selalu merupakan irisan peran, izin admin dan lingkup kunci; role admin tidak melewati pembatasan MCP.
 
 Jika lupa password semua administrator, jalankan `haruflow admin reset-password admin@example.com` pada host dengan konfigurasi database, atau gunakan Compose `exec app haruflow admin reset-password admin@example.com`. Password baru diminta dua kali secara tersembunyi. Pemulihan hanya berlaku pada admin aktif, mencabut sesi lama, dan membuat audit `user.password_reset_local`. Untuk otomasi, flag `--password-stdin` menerima satu baris password 12–128 byte dari stdin; jangan memasukkan password ke argumen proses atau file yang dilacak Git.
 
@@ -47,10 +47,10 @@ Jika lupa password semua administrator, jalankan `haruflow admin reset-password 
 1. Buat pelanggan, produk, dan akun yang diperlukan.
 2. Buka **Akuntansi → Saldo awal** sebelum transaksi pertama. Isi stok dan saldo akun dalam draf; nilai stok otomatis menjadi debit persediaan. Lengkapi akun lawan sampai total debit dan kredit seimbang.
 3. Simpan, tinjau, lalu posting. Stok, biaya rata-rata, jurnal, dan audit tersimpan bersama. Baca [panduan saldo awal](./OPENING_BALANCES.md) untuk batas pembukaan piutang dan utang. Instalasi yang sudah bertransaksi tidak menerima pembukaan tambahan.
-4. Buat sales order lalu konfirmasi. Konfirmasi belum mereservasi stok.
+4. Buat sales order lalu konfirmasi. Konfirmasi tidak otomatis mereservasi stok; buat reservasi eksplisit di Inventori → Gudang, lot & reservasi bila diperlukan.
 5. Posting pengiriman sebagian atau penuh. Sistem mengunci stok, menolak stok negatif, membukukan HPP, serta menyimpan sisa kirim pada pesanan yang sama.
-6. Buat invoice sebagian atau penuh dari jumlah yang sudah dikirim; baris jasa dapat ditagih sesudah konfirmasi. Catat pembayaran sebagian/penuh sampai sisa piutang. Uang muka dan overpayment belum didukung. Lihat [pemenuhan penjualan](./SALES_FULFILLMENT.md).
-7. Untuk pembelian, buat supplier dan PO; terima barang sebagian/penuh; catat tagihan atas bagian yang diterima beserta invoice/jatuh tempo; kemudian bayar sebagian/penuh dari tagihan. Sisa penerimaan, penagihan, dan utang tetap terlacak.
+6. Buat invoice sebagian atau penuh dari jumlah yang sudah dikirim; baris jasa dapat ditagih sesudah konfirmasi. Catat pembayaran sebagian/penuh sampai sisa piutang pada rekening terdaftar. Untuk uang muka atau dana berlebih, catat sumber dana di Saldo pihak lalu alokasikan secara eksplisit; alokasi tidak mencatat kas kedua kali. Lihat [pemenuhan penjualan](./SALES_FULFILLMENT.md) dan [saldo pihak](PARTY_BALANCES.md).
+7. Untuk pembelian, buat supplier dan PO barang/jasa; terima sebagian/penuh; catat tagihan atas bagian yang diterima beserta invoice/jatuh tempo serta harga/ongkir/diskon/pajak yang direview; kemudian bayar sebagian/penuh dari rekening yang benar. Sisa penerimaan, penagihan, dan utang tetap terlacak.
 8. Catat pengembalian komersial dari invoice/tagihan asal melalui Retur. Periksa kredit dan konfirmasi pengembalian uang aktual bila diperlukan; lihat [panduan retur](./RETURNS.md).
 9. Periksa kartu stok, piutang, kewajiban penerimaan belum ditagih, utang supplier/umur utang, neraca saldo, serta **Akuntansi → Laporan keuangan** sebelum menutup periode.
 
@@ -58,19 +58,19 @@ Penerimaan stok manual tetap mengkredit modal awal; jangan gunakan sebagai pengg
 
 ## Pembelian dan pembayaran supplier
 
-Pembuatan/konfirmasi PO tidak mengubah stok atau jurnal dan dapat dilakukan saat periode tertutup. Supplier aktif diperlukan saat membuat/mengubah draf dan konfirmasi. PO dikonfirmasi dikunci; penerimaan boleh sebagian atau penuh memakai biaya serta satuan tersimpan, termasuk ketika supplier kemudian nonaktif. Satuan katalog yang berbeda ditolak. Penerimaan memposting debit Persediaan 1300/kredit Barang diterima belum ditagih, tanpa mengubah kas. Status PO menjadi Diterima sebagian sampai seluruh jumlah diterima.
+Pembuatan/konfirmasi PO tidak mengubah stok atau jurnal dan dapat dilakukan saat periode tertutup. Supplier aktif diperlukan saat membuat/mengubah draf dan konfirmasi. PO dikonfirmasi dikunci; penerimaan boleh sebagian atau penuh memakai biaya serta satuan tersimpan, termasuk ketika supplier kemudian nonaktif. PO/SO memakai satuan dasar; konversi eksak tersedia pada penerimaan lokasi/transfer yang mendukungnya. Penerimaan barang mendebit Persediaan 1300 dan mengkredit Barang diterima belum ditagih; penerimaan jasa memakai akun beban tanpa stok. Keduanya tidak mengubah kas. Status PO menjadi Diterima sebagian sampai seluruh jumlah diterima.
 
-Finance/Admin dapat mencatat beberapa tagihan untuk suatu penerimaan sampai seluruh jumlahnya ditagih. Tagihan tidak boleh melampaui sisa penerimaan atau memakai baris dari penerimaan lain. Barang/biaya/nilai berasal dari snapshot penerimaan; stok yang sudah bergerak tidak menghalangi penagihan. Jurnal debit Barang diterima belum ditagih/kredit Utang supplier memindahkan kewajiban tanpa menambah stok atau mengurangi kas. Pembulatan kumulatif menjaga seluruh alokasi tetap sesuai nilai dokumen asal; setiap bagian harus memiliki nilai positif, dan sisa jumlah tetap mendapat minimal Rp0,01 sebelum bagian terakhir diproses.
+Finance/Admin dapat mencatat beberapa tagihan untuk suatu penerimaan sampai seluruh jumlahnya ditagih. Tagihan tidak boleh melampaui sisa penerimaan atau memakai baris dari penerimaan lain. Kuantitas serta nilai dasar memakai snapshot penerimaan; harga invoice dapat berbeda dan ongkir/diskon/pajak eksplisit mempunyai perhitungan serta akun tersendiri. Stok yang sudah bergerak tidak menghalangi penagihan dasar. Tagihan memindahkan kewajiban penerimaan ke Utang supplier tanpa mengurangi kas. Pembulatan kumulatif menjaga seluruh alokasi tetap sesuai nilai dokumen asal; setiap bagian harus memiliki nilai positif, dan sisa jumlah tetap mendapat minimal Rp0,01 sebelum bagian terakhir diproses. Lihat [pembelian](PURCHASING.md) untuk detail biaya dan pembalikannya.
 
 Nomor invoice supplier unik per supplier untuk seluruh tagihan yang belum dibatalkan, termasuk yang sudah lunas, setelah trim dan tanpa membedakan huruf besar/kecil. Tanggal invoice/jatuh tempo memakai `YYYY-MM-DD` tahun 0001–9999; jatuh tempo tidak sebelum invoice dan tanggal invoice tidak melewati hari perusahaan. Invoice lampau tetap memposting jurnal saat ini pada periode terbuka.
 
-Pembayaran supplier mengurangi Kas 1100 dan Utang supplier, dengan nominal positif sampai sisa tagihan dan maksimal Rp1 triliun per pembayaran. Saldo kas harus cukup. Aplikasi mencatat dana yang dibayarkan, bukan mentransfer uang otomatis. Pembayaran berulang memakai kunci yang sama tidak mencatat dua transaksi. Riwayat dokumen, jurnal, referensi, dan pembalikan beralasan tetap tersedia.
+Pembayaran supplier mengurangi rekening kas/bank yang dipilih dan Utang supplier, dengan nominal positif sampai sisa tagihan dan maksimal Rp1 triliun per pembayaran. Saldo rekening harus cukup. Aplikasi mencatat dana yang dibayarkan, bukan mentransfer uang otomatis. Pembayaran berulang memakai kunci yang sama tidak mencatat dua transaksi. Pembalikan kembali ke rekening sumber; riwayat dokumen, jurnal dan referensi tetap tersedia.
 
 Retur supplier mengurangi stok pada biaya rata-rata saat retur; kredit mengikuti nilai tagihan asal. Selisih nilai persediaan dan kredit masuk akun sistem beban **Selisih nilai retur pembelian**. Kelebihan pembayaran dapat menjadi kredit pihak, refund tertunda, atau refund langsung setelah konfirmasi kas aktual. Alokasi kredit tidak memindahkan kas lagi. Retur tetap tidak membuka kembali pemenuhan PO atau penagihan asal. Lihat [saldo pihak](./PARTY_BALANCES.md).
 
 Daftar PO/tagihan utama dibatasi 500 terbaru. **Riwayat lengkap** menyediakan pencarian server, halaman catatan lama, dan CSV seluruh hasil filter sampai 10.000 baris; hasil lebih besar ditolak dengan petunjuk mempersempit filter. Ringkasan/chart tetap memakai seluruh data. Umur utang menyediakan kelompok belum terlambat, 1–30, 31–60, 61–90, dan lebih dari 90 hari. Buku pembantu saldo pihak juga mencakup tagihan pembukaan dan posisi historis menurut tanggal perusahaan; jatuh tempo yang tidak diketahui ditandai terpisah. Lihat [pembelian](./PURCHASING.md) dan [saldo pihak](./PARTY_BALANCES.md).
 
-Produk jasa/nonstok tidak memiliki saldo persediaan, biaya rata-rata, atau HPP stok. Jasa penjualan dapat ditagih sesudah konfirmasi tanpa pengiriman; barang hanya dapat ditagih sampai jumlah yang dikirim. Pesanan campuran mendukung pemilihan baris yang memenuhi syarat. Jenis produk tidak dapat diganti setelah digunakan pada pesanan, PO, atau mutasi. Pembelian jasa belum tersedia.
+Produk jasa/nonstok tidak memiliki saldo persediaan, biaya rata-rata, atau HPP stok. Jasa penjualan dapat ditagih sesudah konfirmasi tanpa pengiriman; barang hanya dapat ditagih sampai jumlah yang dikirim. PO dapat mencampur barang/jasa; penerimaan jasa merupakan pengakuan jasa diterima dan tidak membuat mutasi stok. Pesanan campuran mendukung pemilihan baris yang memenuhi syarat. Jenis produk tidak dapat diganti setelah digunakan pada pesanan, PO, atau mutasi.
 
 Jurnal manual tidak dapat langsung mengisi akun kontrol piutang 1200, persediaan 1300, atau akun dengan peran sistem. Saldo awal menghasilkan kontrol dari rincian stok/piutang/utang/kredit yang sesuai, bukan baris akun kontrol bebas. Akun penampung PO dipilih dari kode bebas 2110–2199, utang supplier 2200–2299, kredit pelanggan 2300–2399, uang muka/kredit supplier 1400–1499, dan selisih retur pembelian 5900–5999; rentang penuh memakai kode sepuluh digit kosong. Akun pengguna tidak diambil alih. Gunakan alur operasional dan periksa rekonsiliasi buku pembantu terhadap ledger.
 
@@ -90,13 +90,13 @@ Finance dapat membalik jurnal manual melalui Jurnal umum; seluruh baris dibalik 
 
 Saldo awal hanya dapat dibalik sebelum jurnal atau mutasi lain. Pembalikan memulihkan saldo ke nol, menyimpan alasan/snapshot, dan mengembalikan dokumen pembukaan yang sama menjadi draf. Setelah operasional berjalan, koreksi tidak dilakukan dengan mereset saldo.
 
-Penutupan periode menolak posting baru sampai tanggal yang ditutup, menurut zona waktu perusahaan. Tanggal tutup hanya maju dan tidak dapat dibuka kembali melalui UI. Jurnal memakai waktu saat transaksi diposting; tanggal invoice lampau tidak melakukan backdating. Menutup hari ini menghentikan posting sampai hari berikutnya. Periksa pembukuan dan buat backup sebelum penutupan.
+Penutupan periode menolak posting baru sampai tanggal yang ditutup, menurut zona waktu perusahaan. Administrator dapat membuka ulang periode dengan versi, alasan dan konfirmasi; tindakan mempunyai audit dan tidak menghapus jurnal. Jurnal manual bertanggal memerlukan tanggal tidak melewati hari ini, periode terbuka, alasan serta review. Tanggal finansial menentukan laporan, sedangkan `posted_at` mempertahankan waktu pencatatan. Tanggal invoice supplier lampau sendiri tidak memundurkan jurnal operasional. Tutup tahun memindahkan pendapatan/beban ke laba ditahan tanpa menghapus aktivitas laporan; koreksi dimulai dari pembalikan penutupan aktif terbaru. Lihat [periode dan tahun buku](FISCAL_PERIODS.md).
 
 ## Laporan keuangan dan pemeriksaan saldo
 
 **Akuntansi → Laporan keuangan** menyediakan laba rugi, neraca, arus kas, CSV, dan rincian sumber. Laba rugi serta arus kas memakai rentang tanggal posting dalam zona waktu perusahaan. Neraca memakai seluruh jurnal sampai tanggal akhir, termasuk saldo awal dan transaksi sebelum tanggal awal filter.
 
-Laba rugi mencakup seluruh akun pendapatan/beban, termasuk akun tambahan dan selisih retur pembelian. Pembayaran utang tidak menjadi beban untuk kedua kali. Neraca memeriksa aset terhadap liabilitas, ekuitas tercatat, dan laba/rugi akumulasi. Arus kas metode langsung mencakup Kas 1100; akun bank/aset tambahan belum otomatis termasuk kas/setara kas.
+Laba rugi mencakup seluruh akun pendapatan/beban, termasuk akun tambahan dan selisih retur pembelian; jurnal `year_close` dikecualikan dari aktivitas laba rugi. Pembayaran utang tidak menjadi beban untuk kedua kali. Neraca memeriksa aset terhadap liabilitas, ekuitas tercatat dan laba/rugi akumulasi, termasuk efek penutupan. Arus kas metode langsung mencakup seluruh rekening kas/bank yang didaftarkan dan mengecualikan transfer internal. Akun aset lain tidak otomatis menjadi rekening kas.
 
 Finance/Admin dapat memberi klasifikasi arus kas dengan alasan dan versi. Klasifikasi tidak mengubah jurnal atau nominal dan menyimpan riwayat, termasuk ketika periode sudah tertutup. Kelompok belum terklasifikasi tetap masuk rekonsiliasi kas. CSV laporan tidak dibatasi 500 dokumen operasional. Baca [panduan laporan keuangan](./FINANCIAL_REPORTS.md) untuk cakupan dan cara menelusuri angka.
 
@@ -133,7 +133,7 @@ Secara default file Compose menggunakan nama proyek `haruflow`. Untuk latihan pa
 5. Jalankan aplikasi, periksa readiness dan alur transaksi representatif.
 6. Simpan versi yang diterapkan dan hasil pemeriksaan.
 
-Readiness memeriksa seluruh migrasi dan checksum, bukan hanya koneksi PostgreSQL. `/version` atau `haruflow version` menunjukkan identitas build/schema tanpa secrets. Lihat [kandidat rilis dan pengukuran](./RELEASE_CANDIDATE.md) untuk artefak, checksum, runner performa, dan syarat pilot usaha nyata.
+Readiness memeriksa seluruh migrasi dan checksum, bukan hanya koneksi PostgreSQL. `/version` atau `haruflow version` menunjukkan identitas build/schema tanpa secrets. Lihat [kandidat rilis dan pengukuran](./RELEASE_CANDIDATE.md) untuk artefak, checksum, runner performa dan pemisahan penerimaan simulasi dari pemakaian usaha nyata.
 
 Jangan mengedit migrasi yang sudah diterapkan. Tambahkan migrasi baru berurutan. Rollback executable hanya aman bila schema masih kompatibel. Jika tidak, pulihkan backup dengan versi aplikasi yang cocok dan perhitungkan perubahan setelah waktu backup.
 
@@ -169,10 +169,47 @@ Migrasi `0021_community_user_limit.sql` membatasi penambahan/pengaktifan akun ke
 ## Health, log, dan troubleshooting
 
 - `/health/live`: proses HTTP hidup.
-- `/health/ready`: koneksi database dapat melakukan query.
+- `/health/ready`: koneksi database, seluruh versi migrasi dan checksum cocok dengan build; schema tertinggal/berbeda tidak dinyatakan siap.
 - `haruflow healthcheck`: probe readiness untuk container.
 - `docker compose --env-file .env -f deploy/community/compose.yml logs --tail=100 app`: log aplikasi.
 
 Jika tabel tidak ditemukan, jalankan migrasi sesuai prosedur. Jika setup ditolak, periksa token lokal dan apakah perusahaan sudah dibuat. Jika login berhasil tetapi sesi tidak bertahan pada HTTP lokal, pastikan cookie Secure tidak diaktifkan untuk lingkungan HTTP itu. Jika posting ditolak karena periode tertutup, periksa tanggal tutup; sistem tidak mengubahnya diam-diam.
 
 Saat melaporkan bug sertakan versi commit/image, langkah reproduksi, request ID bila tersedia, dan pesan error yang sudah disanitasi. Jangan melampirkan `.env`, password, cookie sesi, atau dump data pelanggan ke issue publik.
+
+## Pengembangan dan verifikasi
+
+Prasyarat source: Rust 1.98.1, Bun 1.3.14 dan PostgreSQL 14 atau lebih baru; CI juga menguji PostgreSQL 18.1. Gunakan database serta pengguna pengembangan tersendiri.
+
+```sh
+node scripts/configure.mjs
+# Sesuaikan DATABASE_URL pada .env secara pribadi untuk PostgreSQL lokal.
+bun install --cwd apps/web
+bun run build:web
+cargo run --locked -- migrate
+cargo run --locked -- serve
+```
+
+Buka `http://localhost:8080`. Untuk mengembangkan UI, jalankan `bun run dev:web` di terminal lain; Vite mem-proxy `/api` ke server Rust. Source frontend ada di `apps/web/src`, backend di `crates/server/src`, dan migrasi berurutan di `migrations`. Jangan mengedit migrasi yang telah diterapkan.
+
+```sh
+cargo fmt --all --check
+cargo clippy --locked --all-targets -- -D warnings
+# Set DATABASE_URL pada environment shell untuk server PostgreSQL pengujian.
+# Pengguna tes memerlukan CREATEDB; SQLx membuat database terpisah per tes.
+cargo test --locked -- --test-threads=1
+bun run --cwd apps/web test
+bun run build:web
+node --test scripts/backup-manifest.test.mjs
+node scripts/test-mcp-stdio.mjs target/debug/haruflow.exe
+```
+
+Pada platform lain sesuaikan suffix executable. `.env` dibaca oleh executable, tetapi `cargo test` memerlukan `DATABASE_URL` pada environment shell. Database SQLx yang gagal mungkin dipertahankan untuk investigasi. Tes dan smoke memakai fixture terpisah; jangan arahkan ke database bisnis.
+
+### Kontrak API
+
+API HTTP/JSON berada di `/api`; router dan payload sebenarnya mengikuti modul dalam `crates/server/src`, dengan kontrak frontend di `apps/web/src`. OpenAPI serta client TypeScript yang dihasilkan otomatis belum tersedia. Nominal finansial dikirim sebagai string decimal. Endpoint tulis memakai sesi login, pemeriksaan peran, `X-Haruflow-Request: 1`, versi dokumen dan/atau idempotency key sesuai operasi. Mutasi posted dilakukan melalui pembalikan yang mempertahankan audit, bukan penghapusan baris.
+
+Permukaan `/api/ai/mcp/profile`, `/api/ai/mcp/tools` dan `/api/ai/mcp/call` memakai bearer MCP pribadi; cookie browser tidak menggantikannya. Bearer MCP juga tidak diterima sebagai sesi transaksi biasa. Tool serta scope ditentukan server dan tidak menerima SQL/path HTTP bebas. Mode CLI `mcp`/`mcp check` tidak memuat `.env` atau memerlukan database. Lihat [MCP](MCP.md) serta [tes penerimaannya](MCP_ACCEPTANCE.md).
+
+Paket source menyertakan `LICENSE` AGPL-3.0-only. Build, corresponding source, frontend dan checksum harus berasal dari commit yang sama; [panduan kandidat](RELEASE_CANDIDATE.md) mencatat prosedurnya.

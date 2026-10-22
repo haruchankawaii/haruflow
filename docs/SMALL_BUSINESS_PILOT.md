@@ -1,6 +1,8 @@
-# Pilot Community: usaha kecil di Windows
+# Latihan penerimaan Community di Windows
 
-Status: fixture sintetis dapat diuji otomatis; penerimaan oleh usaha nyata belum dilakukan. Nama usaha, jenis usaha, volume, dan data nyata belum diberikan. Jangan menandai pilot diterima hanya dari CI atau screenshot demo.
+Penerimaan untuk lingkup pengembangan Community memakai **simulasi transaksi, instalasi, backup/restore dan percakapan Codex**. Simulasi cukup untuk penyelesaian tugas ini; pilot usaha nyata tidak menjadi prasyarat. Hasil aktual dicatat pada [status implementasi](IMPLEMENTATION_STATUS.md). Panduan bergambar ada di [GUIDE](GUIDE.md).
+
+Dokumen ini juga menyediakan formulir opsional bila suatu usaha nanti menerapkannya. Nama/jenis usaha, volume dan data nyata belum diberikan; jangan menganggap formulir kosong sebagai bukti persetujuan pemilik atau pilot nyata yang sudah selesai.
 
 ## Persiapan operator
 
@@ -9,7 +11,7 @@ Status: fixture sintetis dapat diuji otomatis; penerimaan oleh usaha nyata belum
 - Pilih rekening/gudang seperlunya. Gunakan gudang utama bila hanya satu lokasi. Tetapkan unit dasar; lot/seri hanya pada produk yang memang memerlukannya.
 - Pulihkan backup ke database uji kosong dan cocokkan saldo serta bukti sebelum memakai data nyata.
 
-## Uji penerimaan bersama pemilik
+## Skenario penerimaan simulasi
 
 - Beli barang/jasa, terima sebagian, tagih dengan selisih/ongkir/diskon/pajak yang disetujui, bayar sebagian melalui rekening yang benar, lalu koreksi/retur.
 - Jual barang/jasa, kirim/tagih sebagian, terima DP/pembayaran, alokasikan kredit dan refund; cocokkan stok, kas dan sisa tagihan.
@@ -18,9 +20,9 @@ Status: fixture sintetis dapat diuji otomatis; penerimaan oleh usaha nyata belum
 - Review laba rugi/neraca/arus kas; lakukan tutup tahun di database uji, pembalikan dan koreksi, pastikan laporan tetap cocok.
 - Restart server, ulangi permintaan yang terputus, backup → perubahan → restore. Pastikan satu efek transaksi dan byte bukti tetap sama.
 
-## Catatan penerimaan yang harus diisi manusia
+## Pembagian tugas latihan
 
-Pemilik menunjuk penanggung jawab sebelum mulai: operator penjualan/pembelian mengisi transaksi, petugas kas memeriksa uang/bank, petugas gudang menghitung barang, admin/IT memeriksa akses dan pemulihan, lalu pemilik memutuskan penerimaan. Pada usaha kecil satu orang boleh merangkap; nama dan hasil setiap pemeriksaan tetap dicatat. Gunakan perusahaan/port/database latihan dan data sintetis terlebih dahulu.
+Dalam latihan, operator penjualan/pembelian mengisi transaksi, petugas kas memeriksa saldo, petugas gudang memeriksa barang, dan admin/IT memeriksa akses serta pemulihan. Satu orang boleh menjalankan semua peran pada fixture simulasi; hasil setiap pemeriksaan tetap dicatat. Gunakan perusahaan/port/database latihan. Pada deployment usaha nyata, pemilik menunjuk penanggung jawab dan memutuskan penerimaan data usahanya sendiri.
 
 ### Skenario minimal dengan angka pembanding
 
@@ -34,7 +36,9 @@ Lakukan dengan tanggal dalam periode terbuka, satuan dasar pcs, tanpa pajak/disk
 6. Operator menjalankan [backup Windows](WINDOWS_BACKUP.md), menyimpan salinan di perangkat terpisah dan memverifikasinya. IT memulihkan ke database kosong lain, mencabut kunci MCP hasil restore sebelum aplikasi hidup, lalu membuktikan saldo/langkah 4 dan byte/SHA256 lampiran contoh sama. Kunci MCP lama harus tetap ditolak setelah pemulihan. Catat durasi, titik data terakhir dan lokasi salinan.
 7. Operator mencoba sekali alur koreksi/retur/pembayaran terputus di perusahaan latihan terpisah, mengikuti aturan dokumen terkait. Kriteria lulus: tidak ada jurnal atau mutasi ganda, laporan akhir sesuai peristiwa yang benar, dan tindakan tercatat dalam riwayat. Jangan mengubah urutan skenario angka di atas tanpa menyesuaikan nilai pembanding.
 
-Masalah selisih saldo, akses lintas lingkup, transaksi ganda atau gagal pemulihan menghentikan penerimaan sampai diperbaiki dan diuji ulang. Tahap berikutnya adalah salinan kecil data usaha yang sudah disetujui pemilik, lalu pendampingan minimal satu siklus pembelian–penjualan–penagihan. Lama pilot disesuaikan siklus usaha; hasil sintetis tidak menggantikannya.
+Masalah selisih saldo, akses lintas lingkup, transaksi ganda atau gagal pemulihan menghentikan penerimaan skenario yang bersangkutan sampai diperbaiki dan diuji ulang. Untuk tugas Community ini hasil simulasi yang tercatat merupakan batas penerimaan. Jika nantinya diterapkan pada usaha nyata, salinan kecil data yang disetujui pemilik dan pendampingan satu siklus pembelian–penjualan–penagihan dapat dipakai sebagai latihan deployment terpisah. Hasil simulasi tidak dilabeli sebagai pilot nyata.
+
+## Formulir opsional untuk deployment usaha nyata
 
 Nama usaha: ____; pemilik/operator: ____; tanggal: ____; build/schema: ____.
 
@@ -46,7 +50,7 @@ Keputusan pemilik (diterima/perlu perbaikan), batas pemakaian, dan persetujuan m
 
 Persetujuan berbagi data ke AI/lingkup/pengguna: ____; pemeriksaan kunci lama setelah restore: ____; pemilik backup dan jadwal/perangkat cadangan: ____.
 
-Status penerimaan usaha nyata: **menunggu pengisian dan persetujuan pemilik**. Tidak ada persetujuan pemilik, jadwal backup PC usaha, atau hasil data usaha nyata yang dianggap sudah diberikan oleh dokumen ini.
+Status formulir usaha nyata: **belum diisi**. Tidak ada persetujuan pemilik, jadwal backup PC usaha atau hasil data usaha nyata yang dianggap sudah diberikan oleh dokumen ini. Formulir ini bukan pekerjaan tertunda yang menghalangi penerimaan pengembangan Community berbasis simulasi.
 
 ## Uji sintetis pengembang
 

@@ -1,6 +1,6 @@
 # Kandidat rilis dan pengukuran Community
 
-Kandidat teknis, pengukuran sintetis, pilot usaha nyata, dan publikasi adalah hasil berbeda. Keberhasilan satu tahap tidak menyatakan semua tahap selesai.
+Paket teknis, pengukuran simulasi, deployment usaha nyata dan publikasi adalah hasil berbeda. Lingkup pengerjaan Community saat ini diterima melalui simulasi yang hasilnya dicatat; pilot usaha nyata tidak menjadi syarat penyelesaiannya. Keberhasilan simulasi tidak diberi label sebagai persetujuan pemilik bisnis atau SLA.
 
 ## Identitas build dan readiness
 
@@ -22,7 +22,7 @@ node scripts/package-release.mjs
 
 Script menolak working tree kotor dan executable dari commit berbeda. Folder kandidat dibuat eksklusif dalam `output/releases/`, tanpa menimpa kandidat lain. `HARUFLOW_RELEASE_BINARY` memilih executable. Pada Linux, pulihkan izin executable dengan `chmod +x ./haruflow` setelah mengunduh artefak Actions. Panduan native memakai `./haruflow` pada Linux dan `.\haruflow.exe` pada PowerShell. Verifikasi checksum dan uji instalasi pada lingkungan baru sebelum distribusi.
 
-Paket Windows menyertakan `Install-Haruflow.ps1`, `Connect-Codex.ps1`, `Backup-Haruflow.ps1` dan panduan [Windows](WINDOWS.md). Installer per pengguna memeriksa manifest, membuat backup sebelum upgrade, menyimpan konfigurasi pribadi dan menyediakan start/stop. `scripts/windows/Test-Install.ps1` memeriksa instalasi pada database acak/folder workspace tanpa pintasan desktop. [Alat backup Windows](WINDOWS_BACKUP.md) dan [penerimaan MCP sintetis](MCP_ACCEPTANCE.md) dapat diuji terpisah. Runner [kesiapan usaha kecil](SMALL_BUSINESS_PILOT.md) mencakup gangguan proses, retry/restart dan restore.
+Paket Windows menyertakan `Install-Haruflow.ps1`, `Connect-Codex.ps1`, `Backup-Haruflow.ps1` dan panduan [Windows](WINDOWS.md). Installer per pengguna memeriksa manifest, membuat backup sebelum upgrade, menyimpan konfigurasi pribadi dan menyediakan start/stop. `scripts/windows/Test-Install.ps1` memeriksa instalasi pada database acak/folder workspace tanpa pintasan desktop. [Alat backup Windows](WINDOWS_BACKUP.md) dan [penerimaan MCP sintetis](MCP_ACCEPTANCE.md) dapat diuji terpisah. Runner [kesiapan usaha kecil](SMALL_BUSINESS_PILOT.md) mencakup gangguan proses, retry/restart dan restore. [Panduan pengguna](GUIDE.md) dan gambar aplikasi menggunakan data simulasi, bukan screen mockup.
 
 ## Pengukuran sintetis berulang
 
@@ -38,8 +38,12 @@ Prasyarat: executable, PostgreSQL pengujian yang mengizinkan pembuatan database,
 
 JSON pada `output/performance/` mencatat perangkat/OS/RAM, profile dan commit, PostgreSQL, dataset, jumlah permintaan, konkurensi, error, p50/p95, backup/restore, serta kecocokan kas/jurnal/checksum file. Angka dari perangkat, build, atau workload berbeda tidak dapat dibandingkan sebagai ukuran setara. Hasil loopback sintetis bukan SLA produksi atau bukti pilot bisnis.
 
-## Pilot usaha nyata
+## Penerimaan simulasi dan deployment
+
+Penerimaan simulasi mencakup transaksi barang/jasa, saldo/jurnal yang cocok, pembatasan akses, restart/retry, backup/restore, instalasi/upgrade serta insight MCP. Pengujian model Codex sebenarnya dan koneksi demo 8081 tercatat pada `output/readiness/codex-model-demo-d1b1c76ae5f8.json` dan `output/readiness/codex8081-live-check.json`; [status implementasi](IMPLEMENTATION_STATUS.md) membedakan fixture beserta angka masing-masing. Tidak ada persetujuan data bisnis nyata yang disimpulkan dari dua bukti tersebut.
+
+Langkah berikut hanya berlaku ketika pemilik memilih deployment usaha nyata:
 
 Siapkan usaha sasaran, tanggal mulai pencatatan, saldo stok/piutang/utang/kredit yang direkonsiliasi, operator/hak akses hingga 10 akun aktif, perangkat server, HTTPS, dan backup terpisah. Tentukan kehilangan data maksimum serta sasaran durasi pemulihan.
 
-Jalankan pembukaan → transaksi sebagian → DP/pembayaran → retur/kredit → refund → koreksi → laporan, lalu latihan restore di lingkungan lain. Beberapa gudang, rekening/rekonsiliasi CSV, pajak eksplisit, impor historis dan tutup tahun sudah tersedia. Pelaporan pajak otomatis serta koneksi bank langsung belum tersedia. Pilot baru selesai setelah data nyata dan hasilnya diperiksa serta diterima pemilik; gunakan [form penerimaan usaha kecil](SMALL_BUSINESS_PILOT.md).
+Jalankan pembukaan → transaksi sebagian → DP/pembayaran → retur/kredit → refund → koreksi → laporan, lalu latihan restore di lingkungan lain. Beberapa gudang, rekening/rekonsiliasi CSV, pajak eksplisit, impor historis dan tutup tahun sudah tersedia. Pelaporan pajak otomatis serta koneksi bank langsung belum tersedia. Bila pilot nyata dipilih, gunakan [form deployment usaha kecil](SMALL_BUSINESS_PILOT.md) dan catat hasil serta keputusan pemilik secara terpisah.

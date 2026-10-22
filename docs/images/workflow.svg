@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="438" viewBox="0 0 1280 438" role="img" aria-labelledby="title desc">
+  <title id="title">Alur kerja Haruflow</title>
+  <desc id="desc">Penjualan mengikuti pesanan, pengiriman barang, invoice dan penerimaan pembayaran. Pembelian mengikuti PO, penerimaan barang atau jasa, tagihan dan pembayaran. Posting yang relevan menghasilkan perubahan stok dan jurnal; laporan dan insight membaca data tersebut.</desc>
+  <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="m1 1 5 3-5 3" fill="none" stroke="#78906e" stroke-width="1.2"/></marker></defs>
+  <rect x="1" y="1" width="1278" height="436" rx="20" fill="#f7f8f4" stroke="#e6e9e1"/>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <text x="40" y="44" fill="#295d46" font-size="11" font-weight="700" letter-spacing="2">DARI TRANSAKSI KE KEPUTUSAN</text>
+    <text x="40" y="83" fill="#25382c" font-size="28" font-weight="650" letter-spacing="-.7">Satu kejadian. Saldo yang saling terhubung.</text>
+    <text x="40" y="146" fill="#526b54" font-size="12" font-weight="700">PENJUALAN</text>
+    <text x="40" y="248" fill="#526b54" font-size="12" font-weight="700">PEMBELIAN</text>
+    <g fill="none" stroke="#78906e" stroke-width="1.3" marker-end="url(#arrow)"><path d="M395 145h37"/><path d="M660 145h37"/><path d="M925 145h37"/><path d="M395 247h37"/><path d="M660 247h37"/><path d="M925 247h37"/></g>
+    <g fill="#fff" stroke="#e0e6d9"><rect x="171" y="112" width="224" height="65" rx="12"/><rect x="436" y="112" width="224" height="65" rx="12"/><rect x="701" y="112" width="224" height="65" rx="12"/><rect x="966" y="112" width="274" height="65" rx="12"/><rect x="171" y="214" width="224" height="65" rx="12"/><rect x="436" y="214" width="224" height="65" rx="12"/><rect x="701" y="214" width="224" height="65" rx="12"/><rect x="966" y="214" width="274" height="65" rx="12"/></g>
+    <g fill="#25382c" font-size="17" font-weight="650"><text x="190" y="140">Pesanan</text><text x="455" y="140">Pengiriman</text><text x="720" y="140">Invoice</text><text x="985" y="140">Terima pembayaran</text><text x="190" y="242">PO</text><text x="455" y="242">Penerimaan</text><text x="720" y="242">Tagihan supplier</text><text x="985" y="242">Bayar supplier</text></g>
+    <g fill="#7c857e" font-size="11"><text x="190" y="159">Draf → konfirmasi</text><text x="455" y="159">Barang, sebagian / penuh</text><text x="720" y="159">Mencatat piutang</text><text x="985" y="159">Kas bertambah; piutang berkurang</text><text x="190" y="261">Draf → konfirmasi</text><text x="455" y="261">Barang atau jasa diterima</text><text x="720" y="261">Mencatat utang</text><text x="985" y="261">Kas berkurang; utang berkurang</text></g>
+    <path d="M40 308H1240" stroke="#e0e6d9"/>
+    <rect x="40" y="331" width="341" height="51" rx="12" fill="#193d31"/><text x="61" y="363" fill="#f7f8f4" font-size="16" font-weight="650">Stok + jurnal dari posting</text>
+    <path d="M397 357h44" fill="none" stroke="#78906e" marker-end="url(#arrow)"/>
+    <rect x="458" y="331" width="342" height="51" rx="12" fill="#d4ecba"/><text x="479" y="363" fill="#193d31" font-size="16" font-weight="650">Laporan + bukti sumber</text>
+    <path d="M816 357h44" fill="none" stroke="#78906e" marker-end="url(#arrow)"/>
+    <rect x="877" y="331" width="363" height="51" rx="12" fill="#fff" stroke="#e0e6d9"/><text x="898" y="363" fill="#295d46" font-size="16" font-weight="650">Insight di Codex melalui MCP</text>
+    <text x="40" y="411" fill="#7c857e" font-size="11">Draf tidak mengubah saldo. Jasa penjualan tidak memerlukan pengiriman stok. Pembayaran, retur dan koreksi mempertahankan jejak dokumen.</text>
+  </g>
+</svg>
