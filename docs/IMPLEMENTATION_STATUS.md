@@ -50,6 +50,14 @@ GitHub Actions menjalankan Rust formatting/Clippy/tests, frontend tests/build, b
 
 ## Bukti verifikasi
 
+### MCP untuk Codex (schema 31)
+
+- Pengujian lokal PostgreSQL 14.5: seluruh **192 tes Rust** lulus, termasuk 18 tes khusus MCP; formatting dan Clippy semua target dengan warnings-as-errors lulus. Tes mencakup opt-in, pemisahan bearer/sesi, irisan lingkup/peran, batas dan konkurensi kunci, kedaluwarsa, pencabutan, perubahan/reset password, pemulihan admin, serta tidak bertambahnya akun ERP. Laporan diuji terhadap ledger penuh, saldo pembukaan/impor, cutoff historis, dan total utuh saat rincian dipotong.
+- Seluruh **87 tes frontend/435 assertions** dan build TypeScript/Vite lulus. Browser pada fixture sintetis memverifikasi akses awal nonaktif, pemberian/pencabutan izin, pembatasan pilihan lingkup, dan formulir kunci. Penerbitan kunci persisten dari browser tidak dijalankan karena ditolak review persetujuan otomatis; penerbitan/pencabutan sudah diuji dalam database SQLx sementara. Fixture ditutup dengan nol kunci dan nol izin aktif. Bukti tampilan lokal: `output/mcp-integration-settings.png`.
+- Smoke executable Windows melalui STDIO lulus: initialize, katalog, pemanggilan tool, tool tidak dikenal, pencabutan, ping dan EOF bersih. Menggunakan HTTP API tiruan berautentikasi, DATABASE_URL sengaja tidak valid, logging/proxy environment induk, dan memeriksa tidak ada log/rahasia pada stdout. Origin ERP yang sebenarnya diberikan ke Codex agar tautan sumber memakai port yang benar. Setelah penambahan origin tersebut, enam tes transport dan Clippy diulang dan lulus. Skrip yang sama ditambahkan ke CI backend.
+- Helper `Connect-Codex.ps1` lulus fixture Windows PowerShell 5: prompt tersembunyi, ACL hanya akun saat ini, 71 byte UTF-8 tanpa BOM/newline, konfigurasi/output tanpa rahasia, penimpaan berkas lama dan URL nonloopback ditolak. Tes menggunakan kunci dummy.
+- Kedua preview lokal telah backup dan migrasi **30 → 31**. Seluruh isi pada **73 tabel lama per database** tetap identik menurut hash serialisasi sebelum/sesudah; tabel izin/kunci AI baru kosong. Bukti backup dan hash: `.local/preview-upgrade-30-to-31-2026-10-22T03-53-20.655Z-f0739b/verified.json`. Preview 8080/8081 kembali siap; izin AI pada data pengguna belum diaktifkan. Ini bukan bukti bahwa konfigurasi/koneksi pribadi Codex telah diaktifkan atau bahwa pilot usaha nyata selesai.
+
 ### Enam prioritas usaha kecil (schema 30)
 
 - Pada commit kandidat `5d8ed7e2f93e9ee7cb1bc9e01e0c3c7a31221f5b`, job backend GitHub Actions lulus seluruh **174 tes Rust** pada PostgreSQL 18.1, Rust formatting dan Clippy seluruh target dengan warnings-as-errors. Perbaikan regresi meliputi ongkir/diskon nol, pembalikan pengiriman setelah mutasi lain, preservasi kolom asli pada upgrade, serta kas historis setelah mutasi terakhir. Cakupan mencakup pembelian barang/jasa, pembulatan, role/versi/idempotensi, reservasi, seri/expiry, tutup tahun, dan buku pembantu historis.

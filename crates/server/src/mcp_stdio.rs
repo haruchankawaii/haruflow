@@ -271,7 +271,7 @@ impl Session {
                         "protocolVersion":version,
                         "capabilities":{"tools":{"listChanged":false}},
                         "serverInfo":{"name":"haruflow-community","version":env!("CARGO_PKG_VERSION")},
-                        "instructions":INSTRUCTIONS
+                        "instructions":format!("ERP origin: {}. Resolve returned source paths and links against this origin. {}",bridge.base,INSTRUCTIONS)
                     }),
                 ))
             }

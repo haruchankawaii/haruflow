@@ -80,6 +80,7 @@ try {
   const handshake = await request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'haruflow-smoke', version: '1' } });
   assert.equal(handshake.result.protocolVersion, '2025-11-25');
   assert.equal(handshake.result.serverInfo.name, 'haruflow-community');
+  assert.ok(handshake.result.instructions.includes(environment.HARUFLOW_MCP_URL), 'Source links need the actual ERP origin, including its port');
   child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
   assert.equal((await request('tools/list')).result.tools[0].name, 'cash_position');
   assert.equal((await request('tools/call', { name: 'cash_position', arguments: {} })).result.structuredContent.cash, '100000');
