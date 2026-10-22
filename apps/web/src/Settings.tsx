@@ -7,6 +7,7 @@ import {
   UserRound,
   Users,
   FileUp,
+  Plug,
 } from "lucide-react";
 import { api, ApiError, errorMessage } from "./api";
 import {
@@ -25,6 +26,7 @@ import { useResource } from "./hooks";
 import type { Company, Role, Session, User } from "./types";
 import Audit from "./Audit";
 import DataImports from "./DataImports";
+import AiConnections from "./AiConnections";
 import { importKinds } from "./imports-model";
 import {
   userActivationAllowed,
@@ -98,6 +100,14 @@ export default function Settings({
           >
             <UserRound size={16} /> Akun saya
           </button>
+          <button
+            role="tab"
+            aria-selected={tab === "ai"}
+            className={tab === "ai" ? "active" : ""}
+            onClick={() => setTab("ai")}
+          >
+            <Plug size={16} /> Integrasi AI
+          </button>
           {importKinds(session.user.role).length > 0 && (
             <button
               role="tab"
@@ -120,6 +130,8 @@ export default function Settings({
           <UsersView currentUser={session.user} />
         ) : tab === "audit" ? (
           <Audit />
+        ) : tab === "ai" ? (
+          <AiConnections user={session.user} />
         ) : (
           <div className="settings-body">
             <div className="settings-section-heading">

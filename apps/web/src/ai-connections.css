@@ -1,0 +1,130 @@
+.ai-settings {
+  max-width: none;
+}
+.ai-settings .settings-section-heading p,
+.ai-settings .muted,
+.ai-settings .ai-example {
+  max-width: 850px;
+  line-height: 1.8;
+}
+.ai-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #52783d;
+}
+.ai-flow span:not([aria-hidden]) {
+  padding: 9px 13px;
+  background: #f3f7ec;
+  border: 1px solid #e1e9d6;
+  border-radius: 7px;
+}
+.ai-section {
+  padding: 26px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ai-section-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+.ai-section-title h3 {
+  font-size: 14px;
+  margin-bottom: 7px;
+}
+.ai-section-title .button {
+  flex-shrink: 0;
+}
+.ai-description {
+  margin: 12px 0;
+}
+.ai-token-detail {
+  display: block;
+  font-size: 10px;
+  line-height: 1.8;
+  color: #7d8f6b;
+  margin-top: 4px;
+}
+.ai-connections-table td {
+  vertical-align: top;
+}
+.ai-scope-fields {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+  display: grid;
+  gap: 10px;
+}
+.ai-scope-fields legend {
+  padding: 0 5px;
+  font-size: 11px;
+  color: #6b7d5b;
+}
+.ai-scope-fields input:disabled + span {
+  opacity: 0.65;
+}
+.ai-notice {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #eef5e7;
+  color: #486c34;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.ai-setup {
+  margin-top: 25px;
+  max-width: 900px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.ai-setup summary {
+  cursor: pointer;
+  color: #52783d;
+  font-weight: 600;
+}
+.ai-setup ol {
+  padding-left: 22px;
+  margin: 17px 0;
+}
+.ai-setup li {
+  margin: 8px 0;
+}
+.ai-config {
+  padding: 17px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f9f3;
+  overflow-x: auto;
+  font-size: 11px;
+  line-height: 1.8;
+  color: #455d35;
+  margin: 15px 0;
+}
+.ai-example {
+  background: #f7f9f3;
+  padding: 15px;
+  border-radius: 8px;
+  margin: 15px 0 0;
+}
+.ai-secret {
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .ai-section-title {
+    flex-direction: column;
+  }
+  .ai-flow {
+    font-size: 10px;
+    gap: 7px;
+  }
+  .ai-flow span:not([aria-hidden]) {
+    padding: 7px 8px;
+  }
+}

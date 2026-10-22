@@ -35,6 +35,10 @@ const actionNames: Record<string, string> = {
   "user.password_reset_local": "Kata sandi direset melalui server",
   "auth.login": "Pengguna masuk",
   "auth.logout": "Pengguna keluar",
+  "ai.access.updated": "Izin integrasi AI diperbarui",
+  "ai.token.created": "Kunci integrasi AI dibuat",
+  "ai.token.revoked": "Kunci integrasi AI dicabut",
+  "ai.tool.read": "Laporan dibaca melalui integrasi AI",
   "user.create": "Pengguna ditambahkan",
   "user.update": "Akses pengguna diperbarui",
   "user.password_reset": "Kata sandi direset administrator",
@@ -73,6 +77,7 @@ const resourceNames: Record<string, string> = {
   journal_entry: "Jurnal",
   accounting_period: "Periode akuntansi",
   account: "Akun pembukuan",
+  ai_token: "Koneksi AI",
 };
 
 function detailsText(details: unknown): string {
