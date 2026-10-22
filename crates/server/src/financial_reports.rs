@@ -110,9 +110,9 @@ async fn classify(
 
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Filter {
-    from: Option<String>,
-    to: Option<String>,
+pub(crate) struct Filter {
+    pub from: Option<String>,
+    pub to: Option<String>,
 }
 
 fn calendar(value: &str) -> AppResult<NaiveDate> {
@@ -156,7 +156,7 @@ fn counterpart_category(code: &str, kind: &str, role: Option<&str>) -> Option<&'
     }
 }
 
-async fn reports(
+pub(crate) async fn reports(
     State(state): State<AppState>,
     _user: AuthUser,
     Query(filter): Query<Filter>,

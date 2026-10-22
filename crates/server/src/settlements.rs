@@ -116,7 +116,10 @@ pub(crate) async fn party_control_account(
             .await?,
     )
 }
-async fn obligation_account(tx: &mut Transaction<'_, Postgres>, kind: &str) -> AppResult<String> {
+pub(crate) async fn obligation_account(
+    tx: &mut Transaction<'_, Postgres>,
+    kind: &str,
+) -> AppResult<String> {
     if kind == "customer" {
         Ok("1200".into())
     } else {
@@ -984,7 +987,7 @@ async fn reverse_refund(
 }
 
 // Read models below include immutable legacy events; no old cash is posted again.
-fn events_sql(kind: &str) -> String {
+pub(crate) fn events_sql(kind: &str) -> String {
     let (
         docs,
         party,
@@ -1083,14 +1086,14 @@ struct StatementFilter {
     as_of: Option<String>,
     from: Option<String>,
 }
-async fn report_connection(pool: &PgPool) -> AppResult<Transaction<'_, Postgres>> {
+pub(crate) async fn report_connection(pool: &PgPool) -> AppResult<Transaction<'_, Postgres>> {
     let mut tx = pool.begin().await?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         .execute(&mut *tx)
         .await?;
     Ok(tx)
 }
-async fn cutoff(
+pub(crate) async fn cutoff(
     tx: &mut Transaction<'_, Postgres>,
     as_of: Option<&str>,
 ) -> AppResult<(String, NaiveDate, chrono::DateTime<chrono::Utc>)> {
@@ -1119,7 +1122,7 @@ fn field(row: &sqlx::postgres::PgRow, key: &str) -> Decimal {
 fn money_string(value: Decimal) -> String {
     format!("{value:.2}")
 }
-async fn target_rows(
+pub(crate) async fn target_rows(
     tx: &mut Transaction<'_, Postgres>,
     kind: &str,
     party: Option<Uuid>,

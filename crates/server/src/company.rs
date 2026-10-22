@@ -234,6 +234,8 @@ pub async fn reset_admin_password(pool: &PgPool, email: &str, password: String) 
         .bind(actor.id)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("UPDATE ai_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1 AND revoked_at IS NULL")
+        .bind(actor.id).execute(&mut *tx).await?;
     audit(
         &mut tx,
         &actor,

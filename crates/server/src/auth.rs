@@ -309,6 +309,8 @@ async fn change_password(
         .bind(actor.id)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("UPDATE ai_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1 AND revoked_at IS NULL")
+        .bind(actor.id).execute(&mut *tx).await?;
     let token = create_session(&mut tx, actor.id).await?;
     write_audit(
         &mut tx,
@@ -496,6 +498,8 @@ async fn update_user(
         .bind(id)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("UPDATE ai_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1 AND revoked_at IS NULL")
+        .bind(id).execute(&mut *tx).await?;
     write_audit(
         &mut tx,
         actor.id,
@@ -541,6 +545,8 @@ async fn reset_password(
         .bind(id)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("UPDATE ai_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1 AND revoked_at IS NULL")
+        .bind(id).execute(&mut *tx).await?;
     write_audit(
         &mut tx,
         actor.id,

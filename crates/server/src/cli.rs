@@ -7,12 +7,15 @@ pub const HELP: &str = "Haruflow Community
   haruflow serve                           Serve the ERP and frontend (default)
   haruflow healthcheck                     Probe application readiness
   haruflow version                         Print build/schema identity as JSON
+  haruflow mcp                             Run the read-only Codex MCP bridge over STDIO
   haruflow admin reset-password EMAIL      Recover an active administrator locally
       [--password-stdin]                   Read one password line from stdin instead of a hidden prompt
 
 Recovery requires direct database access. Passwords are never accepted as command-line arguments.
 Configuration: DATABASE_URL, HARUFLOW_SETUP_TOKEN, HARUFLOW_BIND,
-HARUFLOW_STATIC_DIR, HARUFLOW_SECURE_COOKIES. See README.md.";
+HARUFLOW_STATIC_DIR, HARUFLOW_SECURE_COOKIES. See README.md.
+MCP: HARUFLOW_MCP_URL (HTTP loopback only), HARUFLOW_MCP_TOKEN_FILE (preferred)
+or HARUFLOW_MCP_TOKEN. MCP tokens are never accepted as command-line arguments.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -21,6 +24,7 @@ pub enum Command {
     Version,
     Migrate,
     Serve,
+    Mcp,
     ResetAdmin { email: String, password_stdin: bool },
 }
 
@@ -33,6 +37,7 @@ pub fn parse(args: &[String]) -> Result<Command> {
             "migrate" => Ok(Command::Migrate),
             "healthcheck" => Ok(Command::Healthcheck),
             "version" | "--version" => Ok(Command::Version),
+            "mcp" => Ok(Command::Mcp),
             _ => bail!("Unknown command. Use haruflow --help."),
         },
         [admin, reset, email] if admin == "admin" && reset == "reset-password" => {
@@ -103,6 +108,7 @@ mod tests {
     fn recovery_cli_never_accepts_password_arguments() {
         assert_eq!(parse(&[]).unwrap(), Command::Serve);
         assert_eq!(parse(&args(&["--help"])).unwrap(), Command::Help);
+        assert_eq!(parse(&args(&["mcp"])).unwrap(), Command::Mcp);
         assert_eq!(
             parse(&args(&[
                 "admin",
@@ -125,6 +131,7 @@ mod tests {
                 "plaintext-secret",
             ]),
             args(&["serve", "ignored"]),
+            args(&["mcp", "secret-token"]),
         ] {
             assert!(parse(&invalid).is_err());
         }

@@ -31,6 +31,13 @@ mod inventory_extensions;
 #[cfg(test)]
 mod inventory_extensions_tests;
 mod master_data;
+mod mcp_access;
+#[cfg(test)]
+mod mcp_access_tests;
+mod mcp_reports;
+#[cfg(test)]
+mod mcp_reports_tests;
+mod mcp_stdio;
 mod opening;
 #[cfg(test)]
 mod opening_party_tests;
@@ -109,6 +116,11 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // MCP needs neither database credentials nor .env. Stdout is protocol-only.
+    let command = cli::parse(&env::args().skip(1).collect::<Vec<_>>())?;
+    if command == cli::Command::Mcp {
+        return mcp_stdio::run().await;
+    }
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -116,7 +128,6 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "haruflow=info,tower_http=info".into()),
         )
         .init();
-    let command = cli::parse(&env::args().skip(1).collect::<Vec<_>>())?;
     if command == cli::Command::Help {
         println!("{}", cli::HELP);
         return Ok(());
@@ -236,6 +247,8 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(inventory_extensions::router())
         .merge(treasury::router())
         .merge(transaction_imports::router())
+        .merge(mcp_access::router())
+        .merge(mcp_reports::router())
         .fallback(|| async { error::AppError::not_found() })
         .layer(middleware::from_fn(api_guard));
     Router::new()

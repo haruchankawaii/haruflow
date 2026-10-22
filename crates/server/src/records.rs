@@ -22,13 +22,13 @@ pub fn router() -> Router<AppState> {
 }
 
 #[derive(Default, Deserialize)]
-struct Filters {
-    q: Option<String>,
-    status: Option<String>,
-    from: Option<NaiveDate>,
-    to: Option<NaiveDate>,
-    page: Option<u32>,
-    page_size: Option<u32>,
+pub(crate) struct Filters {
+    pub q: Option<String>,
+    pub status: Option<String>,
+    pub from: Option<NaiveDate>,
+    pub to: Option<NaiveDate>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
 }
 struct Source {
     sql: &'static str,
@@ -127,7 +127,7 @@ const WHERE: &str = r#" WHERE ($1::text IS NULL OR search ILIKE $1 ESCAPE E'\\')
 AND ($3::date IS NULL OR (created_at AT TIME ZONE (SELECT timezone FROM company))::date >= $3)
 AND ($4::date IS NULL OR (created_at AT TIME ZONE (SELECT timezone FROM company))::date <= $4)
 AND ($5::uuid IS NULL OR owner_id=$5)"#;
-async fn read(
+pub(crate) async fn read(
     state: &AppState,
     user: &AuthUser,
     kind: &str,
@@ -178,9 +178,10 @@ async fn read(
         .fetch_all(&mut *tx)
         .await?;
     let items:Vec<Value>=rows.iter().map(|row|json!({"id":row.get::<Uuid,_>("id"),"label":row.get::<String,_>("label"),"party":row.get::<String,_>("party"),"amount":row.get::<Option<String>,_>("amount"),"status":row.get::<String,_>("status"),"created_at":row.get::<chrono::DateTime<chrono::Utc>,_>("created_at"),"url":row.get::<Option<String>,_>("url")})).collect();
+    let metadata: Value = sqlx::query_scalar("SELECT jsonb_build_object('company_name',name,'timezone',timezone,'as_of',now(),'currency',currency) FROM company").fetch_one(&mut *tx).await?;
     tx.commit().await?;
     Ok(
-        json!({"items":items,"pagination":{"page":page,"page_size":size,"total":total,"pages":((total+i64::from(size)-1)/i64::from(size)).max(1)}}),
+        json!({"items":items,"metadata":metadata,"pagination":{"page":page,"page_size":size,"total":total,"pages":((total+i64::from(size)-1)/i64::from(size)).max(1)}}),
     )
 }
 async fn list(
