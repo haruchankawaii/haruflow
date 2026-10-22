@@ -17,3 +17,5 @@ Start-Haruflow.ps1 memulai proses tersembunyi, memeriksa readiness/commit, dan m
 Backup installer memakai metadata `haruflow-windows-pre-upgrade-v1`, berbeda dari manifest `database.mjs`. Periksa SHA-256 dan `pg_restore --list`, lalu restore ke database kosong yang disiapkan operator. Pastikan jumlah/saldo/bukti sesuai sebelum mengganti koneksi. Jangan menjalankan dua server berbeda terhadap database yang sedang dipulihkan. Untuk backup rutin, uji pemulihan dan simpan salinan di perangkat terpisah; lihat [operasi](OPERATIONS.md).
 
 HTTP loopback hanya untuk komputer lokal. Akses LAN/internet memerlukan konfigurasi HTTPS dan secure cookie menurut panduan operasi. Paket kandidat dan uji sintetis bukan persetujuan pemilik untuk menjalankan data produksi.
+
+Schema 31 menambahkan integrasi baca MCP untuk Codex melalui executable yang sama (`haruflow.exe mcp`). Installer menyertakan `Connect-Codex.ps1` untuk menyimpan kunci pribadi dengan ACL akun Windows dan menyiapkan contoh konfigurasi. Aktifkan izin melalui Pengaturan → Integrasi AI sebelum pengguna membuat kunci; akses awal nonaktif. Percakapan berlangsung di Codex. Lihat [panduan MCP](MCP.md).

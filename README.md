@@ -7,6 +7,7 @@ Community untuk usaha kecil: satu perusahaan, mata uang IDR, maksimal 10 akun ak
 ## Fitur
 
 - Setup perusahaan dan admin, login lokal, role, pengelolaan pengguna, penggantian password, pencabutan sesi, dan audit aktivitas.
+- MCP lokal untuk insight di Codex: enam tool baca, izin per pengguna, kunci pribadi yang dapat dicabut, serta menu Pengaturan → Integrasi AI. Lihat [panduan MCP](./docs/MCP.md).
 - Maksimal 10 akun aktif per instalasi, termasuk administrator. Akun nonaktif menyimpan riwayat dan melepaskan slot; batas diperiksa di backend/database. Lihat [batas pengguna dan perlindungan kode](./docs/USER_LIMIT.md).
 - Profil perusahaan, kontak, zona waktu sebelum posting pertama, serta awalan nomor pesanan dan invoice yang dapat dikonfigurasi. Mata uang tetap IDR.
 - Pelanggan, produk, penerimaan stok, biaya rata-rata bergerak, penyesuaian, dan riwayat stok.

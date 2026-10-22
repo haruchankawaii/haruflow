@@ -54,7 +54,7 @@ const snapshot = () => json(`SELECT json_build_object('journals',(SELECT json_ag
 try {
   await sql(`CREATE DATABASE ${database}`, 'postgres'); created = true;
   await command(binary, ['migrate'], { ...process.env, DATABASE_URL: connection.href }); await start();
-  const build = await fetch(`${base}/version`).then(r => r.json()); assert.equal(build.schema_version, 30);
+  const build = await fetch(`${base}/version`).then(r => r.json()); assert.equal(build.schema_version, 31);
   await api('/setup', { token: setup, company_name: 'READINESS synthetic small business', name: 'Readiness administrator', email: 'readiness@example.test', password });
   await post('/accounting/journals', { description: 'Modal uji sintetis', lines: [{ account_code: '1100', debit: '2000', credit: '0' }, { account_code: '3000', debit: '0', credit: '2000' }] });
   await post('/treasury/accounts', { account_code: '1110', name: 'Bank operasional uji', kind: 'bank' });

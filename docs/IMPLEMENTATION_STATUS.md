@@ -1,6 +1,6 @@
 # Status implementasi Community
 
-Community v0.1 development, 21 Oktober 2026. Paket enam prioritas usaha kecil pada migrasi 0026–0030 menambahkan pembelian barang/jasa dan penyesuaian invoice, kas/bank dan rekonsiliasi, stok per lokasi/lot/seri/reservasi, periode/tutup tahun, impor transaksi historis, serta installer Windows. Lihat [cakupan usaha kecil](COMMUNITY_SMALL_BUSINESS.md) dan panduan modul di sana. Satu perusahaan, IDR, dan 10 akun aktif tetap berlaku. Hasil pengujian dicatat per paket/commit; penerimaan pilot usaha nyata dan rilis stabil belum selesai.
+Community v0.1 development, 22 Oktober 2026. Paket enam prioritas usaha kecil pada migrasi 0026–0030 menambahkan pembelian barang/jasa dan penyesuaian invoice, kas/bank dan rekonsiliasi, stok per lokasi/lot/seri/reservasi, periode/tutup tahun, impor transaksi historis, serta installer Windows. Migrasi 0031 menambahkan MCP lokal baca untuk Codex. Lihat [cakupan usaha kecil](COMMUNITY_SMALL_BUSINESS.md) dan panduan modul di sana. Satu perusahaan, IDR, dan 10 akun aktif tetap berlaku. Hasil pengujian dicatat per paket/commit; penerimaan pilot usaha nyata dan rilis stabil belum selesai.
 
 ## Alur operasional yang tersedia
 
@@ -31,6 +31,12 @@ Community v0.1 development, 21 Oktober 2026. Paket enam prioritas usaha kecil pa
 - **Laba rugi** berdasarkan aktivitas akun pendapatan/beban selama periode, mengecualikan jurnal tutup tahun. **Neraca** memakai saldo kumulatif termasuk tutup tahun dengan sisa laba akumulasi. **Arus kas** merekonsiliasi seluruh rekening kas/bank terdaftar, mengecualikan transfer internal, dengan aktivitas operasi/investasi/pendanaan/belum terklasifikasi.
 - Laporan menyediakan chart, tanggal inklusif menurut kalender perusahaan, CSV, tautan buku besar/jurnal, serta klasifikasi arus kas berversi dengan alasan dan riwayat. Klasifikasi mengubah metadata laporan tanpa mengubah jurnal. Lihat [panduan laporan keuangan](./FINANCIAL_REPORTS.md).
 - Dashboard pendapatan/HPP serta mutasi kas 3/6/12 bulan berasal dari jurnal dalam satu snapshot. Pembalikan mengikuti bulan posting, termasuk nominal negatif dan bulan kosong. KPI piutang memakai saldo kontrol termasuk pembukaan; chart penyelesaian invoice tetap mencakup invoice operasional dan membedakan cakupannya. Alokasi mengubah penyelesaian tagihan tanpa menambah arus kas.
+
+## Integrasi AI melalui MCP
+
+Executable menyediakan `haruflow mcp` melalui STDIO menuju API loopback, tanpa kredensial database atau runtime tambahan. Menu Pengaturan → Integrasi AI mengelola izin admin dan kunci pribadi pengguna. Akses awal nonaktif; peran, izin, lingkup kunci, status aktif, kedaluwarsa dan pencabutan diperiksa server setiap permintaan. Penggantian/reset password, pemulihan admin dan perubahan akun mencabut kunci lama. Audit tidak menyimpan rahasia, argumen atau isi laporan.
+
+Enam tool baca mencakup laba rugi/neraca, kas, piutang/utang lengkap termasuk saldo awal/impor, invoice operasional, persediaan saat ini, dan pencarian bukti terpaginasikan. Laporan membawa waktu/kalender perusahaan, definisi metrik, sumber dan cakupan; total tetap lengkap ketika rincian dipotong. Chat berada di Codex dan data yang dibaca dapat diproses penyedia AI. Chat tertanam, perubahan transaksi oleh agen, dan akses MCP jarak jauh belum termasuk. Lihat [panduan MCP](MCP.md).
 
 ## Akses riwayat besar
 

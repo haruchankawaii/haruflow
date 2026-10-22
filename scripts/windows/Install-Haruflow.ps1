@@ -142,6 +142,7 @@ if (-not (Test-Path -LiteralPath $setupGuide)) {[IO.File]::WriteAllText($setupGu
 @{commit=$build.commit;schema_version=$build.schema_version;port=$Port;installed_at=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath $currentFile -Encoding UTF8
 Copy-Item -LiteralPath (Join-Path $versionPath 'source/scripts/windows/Start-Haruflow.ps1') -Destination (Join-Path $install 'Start-Haruflow.ps1') -Force
 Copy-Item -LiteralPath (Join-Path $versionPath 'source/scripts/windows/Stop-Haruflow.ps1') -Destination (Join-Path $install 'Stop-Haruflow.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $versionPath 'source/scripts/windows/Connect-Codex.ps1') -Destination (Join-Path $install 'Connect-Codex.ps1') -Force
 if (-not $NoShortcuts) {
     $shell=New-Object -ComObject WScript.Shell; $shortcut=$shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Haruflow Community.lnk'))
     $shortcut.TargetPath=(Get-Command powershell.exe).Source; $shortcut.Arguments='-NoProfile -WindowStyle Hidden -File "'+(Join-Path $install 'Start-Haruflow.ps1')+'"'; $shortcut.WorkingDirectory=$install; $shortcut.Description='ERP usaha kecil Haruflow Community'; $shortcut.Save()
