@@ -20,6 +20,22 @@ Status: fixture sintetis dapat diuji otomatis; penerimaan oleh usaha nyata belum
 
 ## Catatan penerimaan yang harus diisi manusia
 
+Pemilik menunjuk penanggung jawab sebelum mulai: operator penjualan/pembelian mengisi transaksi, petugas kas memeriksa uang/bank, petugas gudang menghitung barang, admin/IT memeriksa akses dan pemulihan, lalu pemilik memutuskan penerimaan. Pada usaha kecil satu orang boleh merangkap; nama dan hasil setiap pemeriksaan tetap dicatat. Gunakan perusahaan/port/database latihan dan data sintetis terlebih dahulu.
+
+### Skenario minimal dengan angka pembanding
+
+Lakukan dengan tanggal dalam periode terbuka, satuan dasar pcs, tanpa pajak/diskon/ongkir, satu kas, satu gudang, dan produk uji baru yang tidak memiliki transaksi lain. Nilai rupiah berikut adalah angka latihan, bukan saldo awal usaha:
+
+1. Pemilik mencatat kas awal Rp1.000.000 dan stok/piutang/utang produk uji nol. Kas awal harus diposting lewat saldo awal resmi agar neraca seimbang.
+2. Operator membeli dan menerima 10 pcs dengan harga Rp20.000, membuat tagihan supplier Rp200.000, lalu membayar Rp100.000 melalui kas. Gudang memeriksa stok 10 pcs/nilai Rp200.000, finance memeriksa kas Rp900.000 dan utang Rp100.000.
+3. Operator menjual, mengirim, dan menagih 4 pcs dengan harga Rp35.000, lalu menerima Rp100.000. Kriteria lulus: stok 6 pcs/nilai Rp120.000, kas Rp1.000.000, piutang Rp40.000, utang Rp100.000, penjualan Rp140.000, HPP Rp80.000 dan laba kotor Rp60.000. Laba bersih sama bila tidak ada biaya/transaksi lain pada perusahaan latihan. Seluruh jurnal harus seimbang.
+4. Finance menagih sisa piutang Rp40.000 dan melunasi utang Rp100.000. Kriteria lulus: kas Rp940.000, stok 6 pcs/nilai Rp120.000, piutang dan utang nol; laba tidak bertambah hanya karena pelunasan. Cocokkan laporan, buku pembantu dan transaksi sumber, bukan hanya kartu dashboard.
+5. Admin memberi finance hanya lingkup AI yang dibutuhkan dan gudang hanya persediaan. Pengguna bertanya melalui Codex tentang saldo pada langkah 3 atau 4. Jawaban harus menyebut periode/sumber, cocok dengan angka di ERP, dan tidak menyimpulkan sebab yang tidak ada buktinya. Kunci gudang harus ditolak saat meminta laporan keuangan; pencabutan kunci harus membuat permintaan berikutnya gagal. Percakapan dapat mengirim data ke penyedia model Codex, jadi pemilik menyetujui data yang dibagikan.
+6. Operator menjalankan [backup Windows](WINDOWS_BACKUP.md), menyimpan salinan di perangkat terpisah dan memverifikasinya. IT memulihkan ke database kosong lain, mencabut kunci MCP hasil restore sebelum aplikasi hidup, lalu membuktikan saldo/langkah 4 dan byte/SHA256 lampiran contoh sama. Kunci MCP lama harus tetap ditolak setelah pemulihan. Catat durasi, titik data terakhir dan lokasi salinan.
+7. Operator mencoba sekali alur koreksi/retur/pembayaran terputus di perusahaan latihan terpisah, mengikuti aturan dokumen terkait. Kriteria lulus: tidak ada jurnal atau mutasi ganda, laporan akhir sesuai peristiwa yang benar, dan tindakan tercatat dalam riwayat. Jangan mengubah urutan skenario angka di atas tanpa menyesuaikan nilai pembanding.
+
+Masalah selisih saldo, akses lintas lingkup, transaksi ganda atau gagal pemulihan menghentikan penerimaan sampai diperbaiki dan diuji ulang. Tahap berikutnya adalah salinan kecil data usaha yang sudah disetujui pemilik, lalu pendampingan minimal satu siklus pembelian–penjualan–penagihan. Lama pilot disesuaikan siklus usaha; hasil sintetis tidak menggantikannya.
+
 Nama usaha: ____; pemilik/operator: ____; tanggal: ____; build/schema: ____.
 
 Jumlah transaksi uji: ____; saldo stok/kas/piutang/utang sebelum dan sesudah: ____.
@@ -27,6 +43,10 @@ Jumlah transaksi uji: ____; saldo stok/kas/piutang/utang sebelum dan sesudah: __
 Backup yang dipulihkan dan hasil pencocokan: ____; masalah tersisa dan penanggung jawab: ____.
 
 Keputusan pemilik (diterima/perlu perbaikan), batas pemakaian, dan persetujuan mulai operasional: ____.
+
+Persetujuan berbagi data ke AI/lingkup/pengguna: ____; pemeriksaan kunci lama setelah restore: ____; pemilik backup dan jadwal/perangkat cadangan: ____.
+
+Status penerimaan usaha nyata: **menunggu pengisian dan persetujuan pemilik**. Tidak ada persetujuan pemilik, jadwal backup PC usaha, atau hasil data usaha nyata yang dianggap sudah diberikan oleh dokumen ini.
 
 ## Uji sintetis pengembang
 

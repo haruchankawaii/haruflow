@@ -22,7 +22,7 @@ node scripts/package-release.mjs
 
 Script menolak working tree kotor dan executable dari commit berbeda. Folder kandidat dibuat eksklusif dalam `output/releases/`, tanpa menimpa kandidat lain. `HARUFLOW_RELEASE_BINARY` memilih executable. Pada Linux, pulihkan izin executable dengan `chmod +x ./haruflow` setelah mengunduh artefak Actions. Panduan native memakai `./haruflow` pada Linux dan `.\haruflow.exe` pada PowerShell. Verifikasi checksum dan uji instalasi pada lingkungan baru sebelum distribusi.
 
-Paket Windows menyertakan `Install-Haruflow.ps1` dan panduan [Windows](WINDOWS.md). Installer per pengguna memeriksa manifest, membuat backup sebelum upgrade, menyimpan konfigurasi pribadi dan menyediakan start/stop. `scripts/windows/Test-Install.ps1` memeriksa instalasi pada database acak/folder workspace tanpa pintasan desktop. Runner [kesiapan usaha kecil](SMALL_BUSINESS_PILOT.md) mencakup gangguan proses, retry/restart dan restore.
+Paket Windows menyertakan `Install-Haruflow.ps1`, `Connect-Codex.ps1`, `Backup-Haruflow.ps1` dan panduan [Windows](WINDOWS.md). Installer per pengguna memeriksa manifest, membuat backup sebelum upgrade, menyimpan konfigurasi pribadi dan menyediakan start/stop. `scripts/windows/Test-Install.ps1` memeriksa instalasi pada database acak/folder workspace tanpa pintasan desktop. [Alat backup Windows](WINDOWS_BACKUP.md) dan [penerimaan MCP sintetis](MCP_ACCEPTANCE.md) dapat diuji terpisah. Runner [kesiapan usaha kecil](SMALL_BUSINESS_PILOT.md) mencakup gangguan proses, retry/restart dan restore.
 
 ## Pengukuran sintetis berulang
 
