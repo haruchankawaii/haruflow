@@ -60,8 +60,15 @@ function Pg-Tool([string]$Name) {
     throw "Utilitas $Name tidak ditemukan. Isi -PostgresBin dengan folder bin PostgreSQL yang terpasang."
 }
 $savedEnvironment=@{}
-foreach ($name in @('PGHOST','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGCONNECT_TIMEOUT','DATABASE_URL')) {$savedEnvironment[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
+$databaseEnvironment=@('PGHOST','PGHOSTADDR','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGCONNECT_TIMEOUT','PGOPTIONS','PGSERVICE','PGSERVICEFILE','PGPASSFILE','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY','PGREQUIRESSL','PGCHANNELBINDING','PGAPPNAME','DATABASE_URL')
+# Also isolate additional libpq variables supplied by the parent process. A
+# PGHOSTADDR/service/options override must never redirect an installer backup
+# or migration away from the explicit connection being installed.
+$databaseEnvironment+=@(Get-ChildItem Env: | Where-Object { $_.Name -like 'PG*' } | ForEach-Object { $_.Name })
+$databaseEnvironment=@($databaseEnvironment | Select-Object -Unique)
+foreach ($name in $databaseEnvironment) {$savedEnvironment[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 try {
+foreach ($name in $databaseEnvironment) {[Environment]::SetEnvironmentVariable($name,$null,'Process')}
 $verified=Verify-Package $package
 $build=Get-Content -LiteralPath (Join-Path $package 'BUILD.json') -Raw | ConvertFrom-Json
 if ($build.application -ne 'Haruflow Community' -or $build.platform -ne 'win32' -or $build.commit -notmatch '^[a-f0-9]{40}$') { throw 'Identitas paket Windows tidak valid.' }
@@ -82,10 +89,19 @@ if (-not $DatabaseUrl) {
 }
 if ($DatabaseUrl -match '[\r\n\x00]') {throw 'Koneksi database mengandung karakter tidak valid.'}
 $dbUri=[Uri]$DatabaseUrl
-if ($dbUri.Scheme -notin @('postgres','postgresql') -or -not $dbUri.Host -or $dbUri.AbsolutePath -eq '/') { throw 'Koneksi harus postgres://pengguna:password@host:port/database.' }
+if ($dbUri.Scheme -notin @('postgres','postgresql') -or -not $dbUri.Host -or $dbUri.AbsolutePath -eq '/' -or $dbUri.Fragment) { throw 'Koneksi harus postgres://pengguna:password@host:port/database tanpa fragment.' }
 $psql=Pg-Tool 'psql'; $dump=Pg-Tool 'pg_dump'; $restore=Pg-Tool 'pg_restore'
-$env:PGHOST=$dbUri.Host; $env:PGPORT=if ($dbUri.Port -gt 0) { [string]$dbUri.Port } else { '5432' }
+$env:PGHOST=$dbUri.DnsSafeHost.Trim('[',']'); $env:PGPORT=if ($dbUri.Port -gt 0) { [string]$dbUri.Port } else { '5432' }
 $credentials=$dbUri.UserInfo.Split(':',2); $env:PGUSER=[Uri]::UnescapeDataString($credentials[0]); $env:PGPASSWORD=if ($credentials.Length -gt 1) {[Uri]::UnescapeDataString($credentials[1])} else {''}; $env:PGDATABASE=[Uri]::UnescapeDataString($dbUri.AbsolutePath.TrimStart('/')); $env:PGCONNECT_TIMEOUT='5'
+$queryOptions=@{sslmode='PGSSLMODE';sslrootcert='PGSSLROOTCERT';sslcert='PGSSLCERT';sslkey='PGSSLKEY';channel_binding='PGCHANNELBINDING';connect_timeout='PGCONNECT_TIMEOUT'}
+$seen=@{}
+if ($dbUri.Query) {
+    foreach ($part in $dbUri.Query.TrimStart('?').Split('&')) {
+        $pair=$part.Split('=',2); $key=[Uri]::UnescapeDataString($pair[0]); $value=if ($pair.Length -eq 2) { [Uri]::UnescapeDataString($pair[1]) } else { '' }
+        if (-not $queryOptions.ContainsKey($key) -or $seen.ContainsKey($key) -or $value -match '[\r\n\x00]') { throw 'Opsi koneksi database tidak didukung atau ganda; periksa konfigurasi secara pribadi.' }
+        $seen[$key]=$true; [Environment]::SetEnvironmentVariable($queryOptions[$key],$value,'Process')
+    }
+}
 $present=& $psql -X -Atq -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public._sqlx_migrations') IS NOT NULL;"
 if ($LASTEXITCODE -ne 0) { throw 'Koneksi database gagal. Periksa PostgreSQL dan koneksinya.' }
 if ($present -eq 'f') {

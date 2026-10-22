@@ -37,7 +37,10 @@ try {
  if($savedEnvironment['PGPASSWORD']) {$userinfo+=':'+ [Uri]::EscapeDataString($savedEnvironment['PGPASSWORD'])}
  $uriHost=if($PostgresHost.Contains(':') -and -not $PostgresHost.StartsWith('[')) {'['+$PostgresHost+']'} else {$PostgresHost}
  $url='postgres://'+$userinfo+'@'+$uriHost+':'+$PostgresPort+'/'+$database
+ $env:PGHOSTADDR='192.0.2.1';$env:PGSERVICE='haruflow_nonexistent_install_test';$env:PGOPTIONS='invalid_installer_test_options'
  & (Join-Path $PackageRoot 'Install-Haruflow.ps1') -PackageRoot $PackageRoot -InstallRoot $install -DatabaseUrl $url -PostgresBin $PostgresBin -Port $port -NoShortcuts -NonInteractive
+ if($env:PGHOSTADDR -ne '192.0.2.1' -or $env:PGSERVICE -ne 'haruflow_nonexistent_install_test' -or $env:PGOPTIONS -ne 'invalid_installer_test_options'){throw 'Installer changed caller PostgreSQL override environment'}
+ Set-TestPgEnvironment
  $build=Get-Content (Join-Path $PackageRoot 'BUILD.json') -Raw | ConvertFrom-Json
  Check-InstalledHelpers
  if((Sql 'SELECT max(version) FROM _sqlx_migrations' $database) -ne [string]$build.schema_version){throw 'Installed schema mismatch'}
@@ -95,7 +98,7 @@ try {
  $rejected=$false;$badRoot=Join-Path $directory 'must-not-install'
  try { & (Join-Path $PackageRoot 'Install-Haruflow.ps1') -PackageRoot $corrupt -InstallRoot $badRoot -DatabaseUrl $url -PostgresBin $PostgresBin -NoShortcuts -NonInteractive } catch {$rejected=$true}
  if(-not $rejected -or (Test-Path -LiteralPath $badRoot)){throw 'Corrupted package accepted or partially installed'}
- $evidence=@{at=[DateTime]::UtcNow.ToString('o');build=$build;database=$database;scope='Disposable Windows installation, not business pilot acceptance';checks=@('manifest verification','fresh install and schema','private credential ACL','start ignoring inherited database environment','setup company','installed MCP/backup helpers equal packaged source','installed backup helper creates and verifies owned database archive','owned stop and restart','reinstall preserves company and port','pre-upgrade backup checksum','offline AI token recovery leaves credentials disabled and writes one attributed audit','caller PG and DATABASE_URL environment isolated','corrupt package rejected before install')}
+ $evidence=@{at=[DateTime]::UtcNow.ToString('o');build=$build;database=$database;scope='Disposable Windows installation, not business pilot acceptance';checks=@('manifest verification','fresh install and schema','private credential ACL','installer ignores poisoned PGHOSTADDR PGSERVICE PGOPTIONS and restores caller values','start ignoring inherited database environment','setup company','installed MCP/backup helpers equal packaged source','installed backup helper creates and verifies owned database archive','owned stop and restart','reinstall preserves company and port','pre-upgrade backup checksum','offline AI token recovery leaves credentials disabled and writes one attributed audit','caller PG and DATABASE_URL environment isolated','corrupt package rejected before install')}
  $output=Join-Path $workspace ('output/readiness/windows-install-'+$tag+'.json');New-Item -ItemType Directory -Path (Split-Path $output) -Force | Out-Null;$evidence | ConvertTo-Json -Depth 10 | Set-Content $output -Encoding UTF8
  Write-Output "Windows installer checks passed: $output"
 } finally {
