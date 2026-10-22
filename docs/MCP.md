@@ -67,7 +67,7 @@ API terpisah `/api/ai/mcp/profile`, `/tools`, `/call` hanya menerima bearer prib
 
 Pembatasan baca berlaku **melalui koneksi MCP ini**. Kewenangan lain yang pengguna berikan ke Codex, seperti terminal, filesystem atau database, tetap terpisah. Untuk pemakaian insight, gunakan ruang kerja tanpa kredensial database/administrasi.
 
-Troubleshooting: pastikan server/schema siap, origin/port benar, path binary dan berkas sesuai akun Windows, kunci belum kedaluwarsa/dicabut dan izin admin aktif. Jika scope berubah, muat ulang koneksi untuk memperbarui katalog; pemeriksaan server tetap berlaku pada setiap permintaan. Untuk pemulihan backup lama, cabut seluruh kunci AI hasil restore sebelum membuka kembali akses: restore dapat mengembalikan status kunci pada waktu backup. Ikuti [prosedur operasi](OPERATIONS.md).
+Jalankan `haruflow.exe mcp check` dengan environment MCP yang sama untuk memeriksa identitas, lingkup dan katalog tanpa membuka laporan atau database. Lihat [diagnostik dan pemecahan masalah](MCP_TROUBLESHOOTING.md). Jika scope berubah, muat ulang koneksi untuk memperbarui katalog; pemeriksaan server tetap berlaku pada setiap permintaan. Untuk pemulihan backup lama, cabut seluruh kunci AI hasil restore sebelum membuka kembali akses: restore dapat mengembalikan status kunci pada waktu backup. Ikuti [prosedur operasi](OPERATIONS.md).
 
 ## Verifikasi pengembangan
 

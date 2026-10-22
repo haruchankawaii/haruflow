@@ -34,6 +34,8 @@ mod master_data;
 mod mcp_access;
 #[cfg(test)]
 mod mcp_access_tests;
+#[cfg(test)]
+mod mcp_recovery_tests;
 mod mcp_reports;
 #[cfg(test)]
 mod mcp_reports_tests;
@@ -121,6 +123,9 @@ async fn main() -> Result<()> {
     if command == cli::Command::Mcp {
         return mcp_stdio::run().await;
     }
+    if command == cli::Command::McpCheck {
+        return mcp_stdio::run_check().await;
+    }
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -175,6 +180,15 @@ async fn main() -> Result<()> {
             .await
             .context("Database migration failed")?;
         tracing::info!("database migrations complete");
+        return Ok(());
+    }
+    if let cli::Command::RevokeAiTokens { ref email } = command {
+        let revoked = company::revoke_ai_tokens_after_restore(&db, email)
+            .await
+            .map_err(|error| anyhow::anyhow!("{}", error.message))?;
+        println!(
+            "{revoked} kunci AI dicabut. Buat kunci pengganti sebelum menyambungkan AI kembali."
+        );
         return Ok(());
     }
     if let cli::Command::ResetAdmin {

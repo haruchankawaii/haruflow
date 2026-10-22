@@ -162,6 +162,113 @@ impl Bridge {
         serde_json::from_slice(&bytes)
             .map_err(|_| anyhow::anyhow!("Haruflow returned an invalid MCP response"))
     }
+
+    async fn check(&self) -> Result<Value> {
+        // These two authenticated reads contain connection metadata only. Do not
+        // call any reporting tool or forward arbitrary server response fields.
+        let profile = self
+            .request(Method::GET, "/api/ai/mcp/profile", None)
+            .await?;
+        let tools = self.request(Method::GET, "/api/ai/mcp/tools", None).await?;
+        connection_diagnostics(&profile, &tools)
+    }
+}
+
+fn connection_diagnostics(profile: &Value, catalog: &Value) -> Result<Value> {
+    let invalid_profile = || {
+        anyhow::anyhow!(
+            "Haruflow returned an invalid MCP profile; verify that server and bridge versions match"
+        )
+    };
+    let user = profile.get("user").ok_or_else(invalid_profile)?;
+    let id = user
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(invalid_profile)?;
+    let name = user
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(invalid_profile)?;
+    let role = user
+        .get("role")
+        .and_then(Value::as_str)
+        .ok_or_else(invalid_profile)?;
+    if id.is_empty()
+        || id.len() > 128
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        || name.trim().is_empty()
+        || name.len() > 512
+        || name.chars().any(char::is_control)
+        || !["admin", "finance", "sales", "warehouse", "viewer"].contains(&role)
+        || profile.get("read_only").and_then(Value::as_bool) != Some(true)
+    {
+        return Err(invalid_profile());
+    }
+    let scopes = profile
+        .get("scopes")
+        .and_then(Value::as_array)
+        .ok_or_else(invalid_profile)?;
+    if scopes.is_empty() {
+        bail!(
+            "This MCP connection has no effective scopes; ask the Haruflow administrator to review account, grant and token permissions"
+        );
+    }
+    let mut effective = Vec::new();
+    for scope in scopes {
+        let scope = scope.as_str().ok_or_else(invalid_profile)?;
+        if !["finance", "sales", "inventory"].contains(&scope) || effective.contains(&scope) {
+            return Err(invalid_profile());
+        }
+        effective.push(scope);
+    }
+    let invalid_tools = || {
+        anyhow::anyhow!(
+            "Haruflow returned an invalid MCP tool list; verify that server and bridge versions match"
+        )
+    };
+    let tools = catalog
+        .get("tools")
+        .and_then(Value::as_array)
+        .ok_or_else(invalid_tools)?;
+    if tools.is_empty() || tools.len() > 6 {
+        return Err(invalid_tools());
+    }
+    let mut names = Vec::new();
+    for tool in tools {
+        let name = tool
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or_else(invalid_tools)?;
+        let allowed = match name {
+            "business_summary" | "cash_position" | "receivables_payables" => {
+                effective.contains(&"finance")
+            }
+            "sales_summary" => effective.contains(&"sales"),
+            "inventory_risks" => effective.contains(&"inventory"),
+            "evidence" => true,
+            _ => false,
+        };
+        if !allowed
+            || names.contains(&name)
+            || tool
+                .get("annotations")
+                .and_then(|value| value.get("readOnlyHint"))
+                .and_then(Value::as_bool)
+                != Some(true)
+        {
+            return Err(invalid_tools());
+        }
+        names.push(name);
+    }
+    Ok(json!({
+        "connected":true,
+        "read_only":true,
+        "user":{"id":id,"name":name,"role":role},
+        "scopes":effective,
+        "tools":names
+    }))
 }
 
 #[derive(Default)]
@@ -419,6 +526,17 @@ pub async fn run() -> Result<()> {
     .await
 }
 
+pub async fn run_check() -> Result<()> {
+    let diagnostics = Bridge::from_environment()?.check().await?;
+    let mut bytes = serde_json::to_vec(&diagnostics)?;
+    bytes.push(b'\n');
+    tokio::io::stdout()
+        .write_all(&bytes)
+        .await
+        .context("Cannot write MCP diagnostics")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -442,6 +560,8 @@ mod tests {
         revoked: Arc<AtomicBool>,
         redirect: Arc<AtomicBool>,
         large: Arc<AtomicBool>,
+        profile: Arc<Mutex<Option<Value>>>,
+        tools: Arc<Mutex<Option<Value>>>,
         requests: RecordedRequests,
     }
 
@@ -481,10 +601,10 @@ mod tests {
         }
         let response = match path.as_str() {
             "/api/ai/mcp/profile" => {
-                json!({"user":{"id":"user-1","name":"Owner","role":"admin"},"scopes":["finance"]})
+                state.profile.lock().unwrap().clone().unwrap_or_else(|| json!({"user":{"id":"user-1","name":"Owner","role":"admin"},"scopes":["finance"],"read_only":true}))
             }
             "/api/ai/mcp/tools" => {
-                json!({"tools":[{"name":"cash_position","description":"Read cash","inputSchema":{"type":"object"},"annotations":{"readOnlyHint":true}}]})
+                state.tools.lock().unwrap().clone().unwrap_or_else(|| json!({"tools":[{"name":"cash_position","description":"Read cash","inputSchema":{"type":"object"},"annotations":{"readOnlyHint":true}}]}))
             }
             "/api/ai/mcp/call" => {
                 json!({"content":[{"type":"text","text":"Cash: 100000 IDR"}],"structuredContent":{"cash":"100000"},"isError":false})
@@ -583,6 +703,77 @@ mod tests {
             let error = authorization(&value).unwrap_err().to_string();
             assert!(!error.contains(TOKEN));
         }
+    }
+
+    #[tokio::test]
+    async fn connection_check_reads_metadata_only_and_detects_revocation() {
+        let (bridge, state, task) = server().await;
+        *state.profile.lock().unwrap() = Some(json!({
+            "user":{"id":"user-1","name":"Owner","role":"admin","email":"private@example.test"},
+            "scopes":["finance"],"read_only":true,"token":TOKEN,"debug":{"database_password":TOKEN}
+        }));
+        let diagnostics = bridge.check().await.unwrap();
+        assert_eq!(
+            diagnostics,
+            json!({
+                "connected":true,"read_only":true,
+                "user":{"id":"user-1","name":"Owner","role":"admin"},
+                "scopes":["finance"],"tools":["cash_position"]
+            })
+        );
+        assert!(!diagnostics.to_string().contains(TOKEN));
+        assert!(!diagnostics.to_string().contains("private@example.test"));
+        let requests = state.requests.lock().unwrap().clone();
+        assert_eq!(requests.len(), 2);
+        assert!(
+            requests
+                .iter()
+                .all(|request| request.0 == "GET" && request.2.is_none())
+        );
+        assert_eq!(requests[0].1, "/api/ai/mcp/profile");
+        assert_eq!(requests[1].1, "/api/ai/mcp/tools");
+        state.revoked.store(true, Ordering::Relaxed);
+        let failure = bridge.check().await.unwrap_err().to_string();
+        assert!(failure.contains("revoked"));
+        assert!(!failure.contains(TOKEN));
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn connection_check_rejects_empty_scopes_and_malformed_server_metadata() {
+        let (bridge, state, task) = server().await;
+        let valid_profile = json!({"user":{"id":"user-1","name":"Owner","role":"admin"},"scopes":["finance"],"read_only":true});
+        let mut no_scopes = valid_profile.clone();
+        no_scopes["scopes"] = json!([]);
+        *state.profile.lock().unwrap() = Some(no_scopes);
+        let failure = bridge.check().await.unwrap_err().to_string();
+        assert!(failure.contains("no effective scopes"));
+        for profile in [
+            json!({"user":{"id":"user-1","name":TOKEN,"role":"unknown"},"scopes":["finance"],"read_only":true}),
+            json!({"user":{"id":"user-1","name":"Owner","role":"admin"},"scopes":[TOKEN],"read_only":true}),
+            json!({"user":{"id":"user-1","name":"Owner","role":"admin"},"scopes":["finance","finance"],"read_only":true}),
+            json!({"user":{"id":"user-1","name":"Owner","role":"admin"},"scopes":["finance"],"read_only":false}),
+        ] {
+            *state.profile.lock().unwrap() = Some(profile);
+            let failure = bridge.check().await.unwrap_err().to_string();
+            assert!(failure.contains("invalid MCP profile"));
+            assert!(!failure.contains(TOKEN));
+        }
+        *state.profile.lock().unwrap() = Some(valid_profile);
+        for tools in [
+            json!({"tools":null}),
+            json!({"tools":[]}),
+            json!({"tools":[{"name":TOKEN,"annotations":{"readOnlyHint":true}}]}),
+            json!({"tools":[{"name":"inventory_risks","annotations":{"readOnlyHint":true}}]}),
+            json!({"tools":[{"name":"cash_position","annotations":{"readOnlyHint":false}}]}),
+            json!({"tools":[{"name":"cash_position","annotations":{"readOnlyHint":true}},{"name":"cash_position","annotations":{"readOnlyHint":true}}]}),
+        ] {
+            *state.tools.lock().unwrap() = Some(tools);
+            let failure = bridge.check().await.unwrap_err().to_string();
+            assert!(failure.contains("invalid MCP tool list"));
+            assert!(!failure.contains(TOKEN));
+        }
+        task.abort();
     }
 
     #[tokio::test]

@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createInterface } from 'node:readline';
-import { resolve } from 'node:path';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 const executable = resolve(process.argv[2] || 'target/debug/haruflow.exe');
 const token = 'smoke-only-mcp-token-123456789';
 let revoked = false;
+let emptyScopes = false;
+let malformedProfile = false;
 let apiRequests = 0;
 const server = createServer(async (request, response) => {
   apiRequests++;
@@ -20,7 +24,7 @@ const server = createServer(async (request, response) => {
   }
   if (request.url === '/api/ai/mcp/profile') {
     assert.equal(request.method, 'GET');
-    response.end(JSON.stringify({ user: { id: 'smoke', name: 'Smoke', role: 'finance' }, scopes: ['finance'] }));
+    response.end(JSON.stringify({ user: { id: 'smoke', name: 'Smoke', role: malformedProfile ? token : 'finance' }, scopes: emptyScopes ? [] : ['finance'], read_only: true, ignored_secret: token }));
   } else if (request.url === '/api/ai/mcp/tools') {
     assert.equal(request.method, 'GET');
     response.end(JSON.stringify({ tools: [{ name: 'cash_position', description: 'Smoke report', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } }] }));
@@ -48,6 +52,24 @@ const environment = {
   NO_PROXY: '',
 };
 delete environment.HARUFLOW_MCP_TOKEN_FILE;
+const temporary = await mkdtemp(join(tmpdir(), 'haruflow-mcp-smoke-'));
+const tokenFile = join(temporary, 'smoke-token.txt');
+await writeFile(tokenFile, `${token}\n`, { encoding: 'utf8', mode: 0o600 });
+// A synthetic file wins over an invalid environment token. No real credentials
+// or application configuration are read or modified by this test.
+const checkEnvironment = { ...environment, HARUFLOW_MCP_TOKEN_FILE: tokenFile, HARUFLOW_MCP_TOKEN: 'invalid' };
+function runCheck() {
+  return new Promise((resolve, reject) => {
+    const check = spawn(executable, ['mcp', 'check'], { env: checkEnvironment, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    let output = '';
+    let error = '';
+    const timeout = setTimeout(() => check.kill(), 5000);
+    check.stdout.on('data', chunk => { output += chunk; });
+    check.stderr.on('data', chunk => { error += chunk; });
+    check.once('error', failure => { clearTimeout(timeout); reject(failure); });
+    check.once('close', (code, signal) => { clearTimeout(timeout); resolve({ code, signal, output, error }); });
+  });
+}
 const child = spawn(executable, ['mcp'], { env: environment, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
 const pending = new Map();
 let stdout = '';
@@ -77,6 +99,26 @@ function request(method, params) {
   });
 }
 try {
+  const diagnostics = await runCheck();
+  assert.equal(diagnostics.code, 0, diagnostics.error);
+  assert.equal(diagnostics.signal, null);
+  assert.equal(diagnostics.error, '', 'Diagnostics must not initialize application logging or database access');
+  assert.deepEqual(JSON.parse(diagnostics.output), {
+    connected: true, read_only: true, user: { id: 'smoke', name: 'Smoke', role: 'finance' }, scopes: ['finance'], tools: ['cash_position'],
+  });
+  assert.ok(!diagnostics.output.includes(token) && !diagnostics.error.includes(token), 'Diagnostics leaked a secret field');
+  emptyScopes = true;
+  const noScopes = await runCheck();
+  assert.notEqual(noScopes.code, 0);
+  assert.equal(noScopes.output, '');
+  assert.ok(noScopes.error.includes('no effective scopes'));
+  emptyScopes = false;
+  malformedProfile = true;
+  const malformed = await runCheck();
+  assert.notEqual(malformed.code, 0);
+  assert.equal(malformed.output, '');
+  assert.ok(malformed.error.includes('invalid MCP profile') && !malformed.error.includes(token));
+  malformedProfile = false;
   const handshake = await request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'haruflow-smoke', version: '1' } });
   assert.equal(handshake.result.protocolVersion, '2025-11-25');
   assert.equal(handshake.result.serverInfo.name, 'haruflow-community');
@@ -97,9 +139,14 @@ try {
   assert.equal(pending.size, 0);
   assert.ok(!stdout.includes(token) && !stderr.includes(token), 'Connection secret leaked');
   assert.equal(stderr, '', 'The bridge must start without application/database logging');
-  console.log(`MCP STDIO process smoke passed: initialize, list, call, unknown tool, revocation, ping, clean EOF; ${apiRequests} authenticated local requests.`);
+  const revokedCheck = await runCheck();
+  assert.notEqual(revokedCheck.code, 0);
+  assert.equal(revokedCheck.output, '');
+  assert.ok(revokedCheck.error.includes('revoked') && !revokedCheck.error.includes(token));
+  console.log(`MCP STDIO process smoke passed: initialize, list, call, unknown tool, revocation, ping, clean EOF; diagnostics metadata, token file precedence, no scopes, malformed server and revoked access; ${apiRequests} authenticated local requests.`);
 } finally {
   child.kill();
   server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));
+  await rm(temporary, { recursive: true, force: true });
 }

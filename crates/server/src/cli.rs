@@ -8,10 +8,13 @@ pub const HELP: &str = "Haruflow Community
   haruflow healthcheck                     Probe application readiness
   haruflow version                         Print build/schema identity as JSON
   haruflow mcp                             Run the read-only Codex MCP bridge over STDIO
+  haruflow mcp check                       Check MCP access without reading business reports
   haruflow admin reset-password EMAIL      Recover an active administrator locally
       [--password-stdin]                   Read one password line from stdin instead of a hidden prompt
+  haruflow admin revoke-ai-tokens EMAIL    Revoke all AI tokens after restore; attribute to an active admin
 
-Recovery requires direct database access. Passwords are never accepted as command-line arguments.
+Local recovery requires operator database access. EMAIL identifies an existing active administrator.
+Passwords and AI tokens are never accepted as command-line arguments.
 Configuration: DATABASE_URL, HARUFLOW_SETUP_TOKEN, HARUFLOW_BIND,
 HARUFLOW_STATIC_DIR, HARUFLOW_SECURE_COOKIES. See README.md.
 MCP: HARUFLOW_MCP_URL (HTTP loopback only), HARUFLOW_MCP_TOKEN_FILE (preferred)
@@ -25,7 +28,9 @@ pub enum Command {
     Migrate,
     Serve,
     Mcp,
+    McpCheck,
     ResetAdmin { email: String, password_stdin: bool },
+    RevokeAiTokens { email: String },
 }
 
 pub fn parse(args: &[String]) -> Result<Command> {
@@ -40,6 +45,12 @@ pub fn parse(args: &[String]) -> Result<Command> {
             "mcp" => Ok(Command::Mcp),
             _ => bail!("Unknown command. Use haruflow --help."),
         },
+        [command, check] if command == "mcp" && check == "check" => Ok(Command::McpCheck),
+        [admin, revoke, email] if admin == "admin" && revoke == "revoke-ai-tokens" => {
+            Ok(Command::RevokeAiTokens {
+                email: email.clone(),
+            })
+        }
         [admin, reset, email] if admin == "admin" && reset == "reset-password" => {
             Ok(Command::ResetAdmin {
                 email: email.clone(),
@@ -109,6 +120,13 @@ mod tests {
         assert_eq!(parse(&[]).unwrap(), Command::Serve);
         assert_eq!(parse(&args(&["--help"])).unwrap(), Command::Help);
         assert_eq!(parse(&args(&["mcp"])).unwrap(), Command::Mcp);
+        assert_eq!(parse(&args(&["mcp", "check"])).unwrap(), Command::McpCheck);
+        assert_eq!(
+            parse(&args(&["admin", "revoke-ai-tokens", "admin@example.test"])).unwrap(),
+            Command::RevokeAiTokens {
+                email: "admin@example.test".into(),
+            }
+        );
         assert_eq!(
             parse(&args(&[
                 "admin",
@@ -132,6 +150,20 @@ mod tests {
             ]),
             args(&["serve", "ignored"]),
             args(&["mcp", "secret-token"]),
+            args(&["mcp", "check", "secret-token"]),
+            args(&["admin", "revoke-ai-tokens"]),
+            args(&[
+                "admin",
+                "revoke-ai-tokens",
+                "admin@example.test",
+                "secret-token",
+            ]),
+            args(&[
+                "admin",
+                "revoke-ai-tokens",
+                "admin@example.test",
+                "--password-stdin",
+            ]),
         ] {
             assert!(parse(&invalid).is_err());
         }

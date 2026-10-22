@@ -38,6 +38,7 @@ const actionNames: Record<string, string> = {
   "ai.access.updated": "Izin integrasi AI diperbarui",
   "ai.token.created": "Kunci integrasi AI dibuat",
   "ai.token.revoked": "Kunci integrasi AI dicabut",
+  "ai.tokens.revoked_local": "Semua kunci AI dicabut oleh operator lokal",
   "ai.tool.read": "Laporan dibaca melalui integrasi AI",
   "user.create": "Pengguna ditambahkan",
   "user.update": "Akses pengguna diperbarui",

@@ -248,3 +248,35 @@ pub async fn reset_admin_password(pool: &PgPool, email: &str, password: String) 
     tx.commit().await?;
     Ok(())
 }
+
+/// Offline database-operator recovery. A restored backup can resurrect previously
+/// revoked credentials. EMAIL is audit attribution, not an authentication factor.
+pub async fn revoke_ai_tokens_after_restore(pool: &PgPool, email: &str) -> AppResult<u64> {
+    let email = auth::normalize_email(email)?;
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(492310718002)")
+        .execute(&mut *tx)
+        .await?;
+    let actor: AuthUser = sqlx::query_as(
+        "SELECT id, name, email, role FROM users WHERE email=$1 AND active AND role='admin' FOR UPDATE",
+    )
+    .bind(&email)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::bad_request("Administrator aktif dengan email tersebut tidak ditemukan."))?;
+    let revoked = sqlx::query("UPDATE ai_tokens SET revoked_at=now() WHERE revoked_at IS NULL")
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    audit(
+        &mut tx,
+        &actor,
+        "ai.tokens.revoked_local",
+        "user",
+        actor.id,
+        json!({"revoked_count":revoked,"source":"local_operator_recovery"}),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(revoked)
+}
