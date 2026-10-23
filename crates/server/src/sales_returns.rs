@@ -236,6 +236,17 @@ async fn create_return(
                 if used <= Decimal::ZERO {
                     continue;
                 }
+                let landed_cost_dependency: Option<String> = sqlx::query_scalar(
+                    "SELECT landed_cost_movement_dependency(movement_id) FROM shipment_allocations WHERE id=$1",
+                )
+                .bind(delivery.get::<Uuid, _>("id"))
+                .fetch_one(&mut *tx)
+                .await?;
+                if landed_cost_dependency.is_some() {
+                    return Err(AppError::conflict(
+                        "Balikkan alokasi biaya perolehan terkait sebelum menerima retur dari pengiriman historis ini.",
+                    ));
+                }
                 if delivery.get::<String, _>("product_unit")
                     != delivery.get::<String, _>("current_unit")
                 {

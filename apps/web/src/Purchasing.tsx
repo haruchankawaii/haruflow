@@ -63,6 +63,7 @@ import type { Product, Role } from "./types";
 import "./purchasing.css";
 import { ImportShortcut } from "./DataImports";
 import { AttachmentsPanel } from "./AttachmentsPanel";
+import { LandedCosts } from "./LandedCosts";
 
 export default function Purchasing({
   role,
@@ -71,8 +72,10 @@ export default function Purchasing({
   role: Role;
   changed: () => void;
 }) {
-  const [tab, setTab] = useState<"orders" | "suppliers" | "bills">(() =>
-    new URLSearchParams(window.location.search).has("bill")
+  const [tab, setTab] = useState<"orders" | "suppliers" | "bills" | "costs">(() =>
+    new URLSearchParams(window.location.search).has("landed_cost")
+      ? "costs"
+      : new URLSearchParams(window.location.search).has("bill")
       ? "bills"
       : "orders",
   );
@@ -148,7 +151,7 @@ export default function Purchasing({
     setRevision((value) => value + 1);
     changed();
   }
-  function switchTab(next: "orders" | "suppliers" | "bills") {
+  function switchTab(next: "orders" | "suppliers" | "bills" | "costs") {
     setTab(next);
     setSearch("");
     setStatus("");
@@ -160,7 +163,7 @@ export default function Purchasing({
         title="Pembelian"
         description="Kelola supplier, penerimaan barang, dan tagihan jatuh tempo."
         actions={
-          ((tab === "bills" && canBill) || (tab !== "bills" && canManage)) && (
+          tab !== "costs" && ((tab === "bills" && canBill) || (tab !== "bills" && canManage)) && (
             <button
               className="button primary"
               onClick={() =>
@@ -230,7 +233,16 @@ export default function Purchasing({
         >
           <FileText size={16} /> Tagihan
         </button>
+        <button
+          role="tab"
+          aria-selected={tab === "costs"}
+          className={tab === "costs" ? "active" : ""}
+          onClick={() => switchTab("costs")}
+        >
+          <Package size={16} /> Biaya perolehan
+        </button>
       </div>
+      {tab === "costs" && <LandedCosts role={role} revision={revision} onSaved={saved} />}
       {tab === "bills" && (
         <SupplierBills
           revision={revision}
@@ -253,7 +265,7 @@ export default function Purchasing({
             />
           )
         ))}
-      {tab !== "bills" && (
+      {(tab === "orders" || tab === "suppliers") && (
         <section className="panel purchase-panel">
           <div className="table-toolbar">
             <strong className="bill-list-title">

@@ -81,6 +81,7 @@ jobs:
       - run: node scripts/database.mjs restore backups/ci.backup --confirm-restore
       - run: docker compose --env-file .env -f deploy/community/compose.yml up -d --wait --wait-timeout 90 app
       - run: node scripts/smoke.mjs verify
+      - run: docker compose --env-file .env -f deploy/community/compose.yml run --rm --no-deps app database check
       - run: node scripts/smoke.mjs recover
       # The second scenario needs a fresh company because opening balances are startup-only.
       - run: docker compose --env-file .env -f deploy/community/compose.yml down -v
@@ -109,6 +110,7 @@ jobs:
       - run: node scripts/database.mjs restore backups/settlements-ci.backup --confirm-restore
       - run: docker compose --env-file .env -f deploy/community/compose.yml up -d --wait --wait-timeout 90 app
       - run: node scripts/settlements-smoke.mjs verify
+      - run: docker compose --env-file .env -f deploy/community/compose.yml run --rm --no-deps app database check
       - if: failure()
         run: docker compose --env-file .env -f deploy/community/compose.yml logs --tail=100
       - if: always()

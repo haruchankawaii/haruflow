@@ -64,6 +64,8 @@ const actionNames: Record<string, string> = {
   "invoice.reversed": "Invoice dibalik",
   "shipment.reversed": "Pengiriman dibalik",
   "account.created": "Akun pembukuan ditambahkan",
+  "landed_cost.created": "Biaya perolehan dialokasikan",
+  "landed_cost.reversed": "Alokasi biaya perolehan dibalik",
 };
 
 const resourceNames: Record<string, string> = {
@@ -79,6 +81,7 @@ const resourceNames: Record<string, string> = {
   accounting_period: "Periode akuntansi",
   account: "Akun pembukuan",
   ai_token: "Koneksi AI",
+  landed_cost: "Biaya perolehan",
 };
 
 function detailsText(details: unknown): string {

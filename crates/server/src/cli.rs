@@ -7,6 +7,7 @@ pub const HELP: &str = "Haruflow Community
   haruflow serve                           Serve the ERP and frontend (default)
   haruflow healthcheck                     Probe application readiness
   haruflow version                         Print build/schema identity as JSON
+  haruflow database check                  Read-only schema, ledger and stock integrity checks
   haruflow mcp                             Run the read-only Codex MCP bridge over STDIO
   haruflow mcp check                       Check MCP access without reading business reports
   haruflow admin reset-password EMAIL      Recover an active administrator locally
@@ -29,6 +30,7 @@ pub enum Command {
     Serve,
     Mcp,
     McpCheck,
+    DatabaseCheck,
     ResetAdmin { email: String, password_stdin: bool },
     RevokeAiTokens { email: String },
 }
@@ -46,6 +48,7 @@ pub fn parse(args: &[String]) -> Result<Command> {
             _ => bail!("Unknown command. Use haruflow --help."),
         },
         [command, check] if command == "mcp" && check == "check" => Ok(Command::McpCheck),
+        [command, check] if command == "database" && check == "check" => Ok(Command::DatabaseCheck),
         [admin, revoke, email] if admin == "admin" && revoke == "revoke-ai-tokens" => {
             Ok(Command::RevokeAiTokens {
                 email: email.clone(),
@@ -122,6 +125,10 @@ mod tests {
         assert_eq!(parse(&args(&["mcp"])).unwrap(), Command::Mcp);
         assert_eq!(parse(&args(&["mcp", "check"])).unwrap(), Command::McpCheck);
         assert_eq!(
+            parse(&args(&["database", "check"])).unwrap(),
+            Command::DatabaseCheck
+        );
+        assert_eq!(
             parse(&args(&["admin", "revoke-ai-tokens", "admin@example.test"])).unwrap(),
             Command::RevokeAiTokens {
                 email: "admin@example.test".into(),
@@ -151,6 +158,7 @@ mod tests {
             args(&["serve", "ignored"]),
             args(&["mcp", "secret-token"]),
             args(&["mcp", "check", "secret-token"]),
+            args(&["database", "check", "--repair"]),
             args(&["admin", "revoke-ai-tokens"]),
             args(&[
                 "admin",

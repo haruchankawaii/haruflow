@@ -1,6 +1,6 @@
 use axum::{Json, extract::State, http::StatusCode};
 use serde_json::{Value, json};
-use sqlx::{PgPool, Row};
+use sqlx::{PgConnection, PgPool, Row};
 use std::time::Duration;
 
 use crate::AppState;
@@ -14,6 +14,13 @@ pub fn version() -> Value {
 }
 
 async fn compatible(db: &PgPool) -> bool {
+    let Ok(mut connection) = db.acquire().await else {
+        return false;
+    };
+    compatible_connection(&mut connection).await
+}
+
+pub(crate) async fn compatible_connection(db: &mut PgConnection) -> bool {
     let Ok(rows) =
         sqlx::query("SELECT version,success,checksum FROM _sqlx_migrations ORDER BY version")
             .fetch_all(db)

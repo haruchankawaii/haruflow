@@ -10,6 +10,9 @@ mod company;
 #[cfg(test)]
 mod company_tests;
 mod corrections;
+mod database_health;
+#[cfg(test)]
+mod database_health_tests;
 #[cfg(test)]
 mod document_correction_tests;
 mod document_corrections;
@@ -30,6 +33,9 @@ mod insights_tests;
 mod inventory_extensions;
 #[cfg(test)]
 mod inventory_extensions_tests;
+mod landed_costs;
+#[cfg(test)]
+mod landed_costs_tests;
 mod master_data;
 mod mcp_access;
 #[cfg(test)]
@@ -182,6 +188,16 @@ async fn main() -> Result<()> {
         tracing::info!("database migrations complete");
         return Ok(());
     }
+    if command == cli::Command::DatabaseCheck {
+        let report = database_health::check(&db).await?;
+        println!("{}", serde_json::to_string(&report)?);
+        if !report.healthy {
+            bail!(
+                "Database checks found inconsistencies; no data was changed. Inspect the JSON checks before continuing."
+            );
+        }
+        return Ok(());
+    }
     if let cli::Command::RevokeAiTokens { ref email } = command {
         let revoked = company::revoke_ai_tokens_after_restore(&db, email)
             .await
@@ -246,6 +262,7 @@ fn app_router(state: AppState, static_dir: PathBuf) -> Router {
         .merge(insights::router())
         .merge(document_corrections::router())
         .merge(purchasing::router())
+        .merge(landed_costs::router())
         .merge(purchase_receipts::router())
         .merge(supplier_bills::router())
         .merge(supplier_payments::router())
