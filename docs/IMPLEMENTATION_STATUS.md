@@ -58,7 +58,8 @@ Wizard Windows menggunakan binary PostgreSQL resmi terpasang untuk cluster priva
 ### Penyelesaian biaya perolehan dan integritas (schema 33)
 
 - Tujuh tes khusus biaya perolehan lulus pada PostgreSQL 14.5, termasuk pembulatan sen, proporsi biaya stok terjual, sumber bersamaan, preview usang, peran/periode, retur dan urutan pembalikan. Tiga tes diagnostik database lulus untuk instalasi kosong/stok posted, checksum salah, guard dinonaktifkan dan selisih stok; diagnosis mempertahankan data tanpa perbaikan otomatis. Bukti: `output/readiness/landed-costs-schema33-tests.log` dan `database-schema33-tests.log`.
-- Seluruh **90 tes frontend/451 assertions** dan build TypeScript/Vite lulus. Regresi backend keseluruhan, pengujian paket final serta CI commit final dicatat ketika selesai; hasil terarah di atas tidak dianggap sebagai hasil paket final.
+- Seluruh **206 tes Rust** lulus pada PostgreSQL 14.5, diikuti Clippy seluruh target dengan warnings-as-errors, tujuh tes biaya perolehan yang diulang sesudah integrasi pencarian riwayat, serta build executable. Seluruh **90 tes frontend/451 assertions** dan build TypeScript/Vite lulus. Log: `output/readiness/community-schema33-tests.log`, `schema33-clippy.log` dan `frontend-schema33-tests.log`. Status paket dan CI tetap dicatat pada commit masing-masing.
+- QA browser pada database sementara memverifikasi preview Rp100.000 menjadi Rp60.000 persediaan/Rp40.000 HPP, perubahan nominal membatalkan review, pembukuan LC-000001, dan pembukaan kembali melalui Riwayat lengkap. Nilai stok 6 unit berubah Rp60.000 → Rp120.000. Perintah `database check` pada fixture sesudah pembukuan menghasilkan `healthy:true`, seluruh 14 pemeriksaan lulus. Gambar aktual tersedia dalam panduan biaya perolehan; kedua demo tetap tidak diberi transaksi baru oleh QA ini.
 
 ### Wizard Windows dan backup terkelola (23 Oktober 2026)
 

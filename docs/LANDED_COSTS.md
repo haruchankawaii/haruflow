@@ -4,6 +4,8 @@ Biaya perolehan (`landed cost`) memindahkan biaya pembelian yang **sudah dibukuk
 
 Gunakan menu **Biaya perolehan** untuk memilih bukti biaya, nominal yang belum dialokasikan, dan barang penerimaan yang menerima biaya. Tinjau pembagian persediaan/HPP sebelum membukukan. Finance dan admin dapat membuat serta membalik dokumen; pengguna lain yang sudah masuk dapat membaca riwayat.
 
+![Dokumen biaya perolehan dari pengujian aplikasi dengan data simulasi](images/landed-costs.png)
+
 ## Sumber biaya yang dapat dipilih
 
 - Ongkir dari tagihan supplier aktif yang sudah dibukukan.
@@ -61,7 +63,7 @@ Jika pembalikan diblokir oleh kegiatan berikutnya, jangan mengubah basis data at
 
 ## Kontrak API
 
-Semua nominal adalah string desimal; ID memakai UUID. Daftar `GET /api/landed-costs` mengembalikan `{items:[...]}` untuk 200 dokumen terbaru. `GET /api/landed-costs/options` mengembalikan `{sources:[...],targets:[...]}` dengan `eligible` dan `blocked_reason`; batas pembacaan pilihan adalah 500 sumber dan 1.000 baris penerimaan terbaru. Dokumen lama tetap dapat dibaca langsung dengan ID.
+Semua nominal adalah string desimal; ID memakai UUID. Daftar `GET /api/landed-costs` mengembalikan `{items:[...]}` untuk 200 dokumen terbaru. Gunakan **Riwayat lengkap → Biaya perolehan** untuk mencari seluruh dokumen dengan pagination server, filter status/tanggal, tautan detail dan ekspor. `GET /api/landed-costs/options` mengembalikan `{sources:[...],targets:[...]}` dengan `eligible` dan `blocked_reason`; batas pembacaan pilihan adalah 500 sumber dan 1.000 baris penerimaan terbaru. Dokumen lama tetap dapat dibaca langsung dengan ID.
 
 `POST /api/landed-costs/preview` menerima:
 

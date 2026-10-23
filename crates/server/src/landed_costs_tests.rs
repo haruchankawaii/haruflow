@@ -168,6 +168,23 @@ async fn late_cost_splits_sold_stock_reconciles_locations_and_reverses_without_r
     .await;
     assert_eq!(money(&posted, "inventory_amount"), d("60"));
     assert_eq!(money(&posted, "expense_amount"), d("40"));
+    let history = call(
+        &app,
+        &cookie,
+        "GET",
+        &format!(
+            "/api/records/landed-costs?q={}&status=posted",
+            posted["number"].as_str().unwrap()
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(history["items"].as_array().unwrap().len(), 1);
+    assert_eq!(history["items"][0]["id"], posted["id"]);
+    assert_eq!(
+        history["items"][0]["url"],
+        format!("?landed_cost={}#purchasing", uid(&posted))
+    );
     assert_eq!(money(&posted["items"][0], "remaining_ratio"), d("0.6"));
     assert_eq!(
         totals(&pool, &p).await,
@@ -269,6 +286,18 @@ async fn late_cost_splits_sold_stock_reconciles_locations_and_reverses_without_r
     let reversed = reverse(&app, &cookie, &posted).await;
     assert_eq!(reversed["status"], "reversed");
     assert_eq!(reversed["version"], 2);
+    let reversed_history = call(
+        &app,
+        &cookie,
+        "GET",
+        &format!(
+            "/api/records/landed-costs?q={}&status=reversed",
+            posted["number"].as_str().unwrap()
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(reversed_history["items"][0]["id"], posted["id"]);
     assert_eq!(totals(&pool, &p).await, (d("6"), d("60"), d("6"), d("60")));
     assert_eq!(
         money(

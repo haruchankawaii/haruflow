@@ -51,6 +51,10 @@ Admin membuat pengguna sesuai tugas: Sales, Warehouse, Finance atau Viewer. Satu
 
 **Biaya perolehan:** di **Pembelian → Biaya perolehan**, pilih ongkir, selisih harga positif, atau beban jasa yang memenuhi syarat dan sudah dibukukan. Pilih penerimaan barang tujuannya, dasar pembagian nilai/kuantitas, nominal serta alasan. Buat preview, periksa bagian persediaan dan HPP, lalu posting setelah cocok. Barang yang sudah keluar dapat menambah HPP; biaya tidak semuanya dipaksakan ke stok tersisa. Alokasi tidak membuat pembayaran/utang baru atau mengganti jurnal lama. Sumber dan riwayat yang ambigu diblokir; [baca batas sumber, retur dan pembalikannya](LANDED_COSTS.md).
 
+![Hasil alokasi biaya perolehan pada database simulasi](images/landed-costs.png)
+
+*Contoh simulasi: ongkir Rp100.000 menjadi Rp60.000 persediaan dan Rp40.000 HPP setelah 4 dari 10 unit dikirim. Dokumen lama dapat dicari melalui Riwayat lengkap → Biaya perolehan.*
+
 **Uang muka dan kredit:** catat dana aktual pada **Saldo pihak**, lalu alokasikan ke tagihan pihak yang sama. Dana melebihi invoice tidak dipaksakan sebagai pembayaran langsung; bagian yang belum dipakai tetap terlacak. Alokasi tidak mencatat arus kas lagi. Refund dicatat setelah uang benar-benar berpindah.
 
 **Koreksi:** mulai dari dokumen sumber dan baca dependensinya. Dokumen posted dipertahankan; pembalikan membuat transaksi lawan dengan alasan. Jangan membuat transaksi kedua untuk menutupi kesalahan tanpa memeriksa efek stok, kas dan jurnal. Lampirkan bukti PDF/PNG/JPEG pada dokumen yang sesuai.

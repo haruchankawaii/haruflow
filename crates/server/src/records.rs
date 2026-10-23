@@ -61,6 +61,9 @@ fn source(kind: &str, user: &AuthUser) -> AppResult<Source> {
         "purchase-bills" => {
             "SELECT id,number||' · '||supplier_invoice_number label,supplier_name party,total-credit_total-paid amount,status,created_at,'?bill='||id||'#purchasing' url,number||' '||supplier_name||' '||supplier_invoice_number search,NULL::uuid owner_id FROM purchase_bills"
         }
+        "landed-costs" => {
+            "SELECT c.id,c.number label,c.source_number party,c.amount amount,CASE WHEN EXISTS(SELECT 1 FROM posting_reversals r WHERE r.source_type='landed_cost' AND r.source_id=c.id) THEN 'reversed' ELSE 'posted' END status,c.created_at,'?landed_cost='||c.id||'#purchasing' url,c.number||' '||c.source_number||' '||COALESCE(c.reference,'')||' '||c.reason search,NULL::uuid owner_id FROM landed_costs c"
+        }
         "inventory-movements" => {
             "SELECT m.id,p.sku||' · '||COALESCE(m.reference,m.kind) label,p.name party,m.value amount,m.kind status,m.created_at,NULL::text url,p.sku||' '||p.name||' '||COALESCE(m.reference,'') search,NULL::uuid owner_id FROM inventory_movements m JOIN products p ON p.id=m.product_id"
         }

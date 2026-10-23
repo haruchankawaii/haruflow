@@ -1,6 +1,6 @@
 # Database dan pemeriksaan integritas
 
-> Status verifikasi: kontrak `database check` sudah ditambahkan pada source paket baru; hasil uji build yang memuat perintah ini masih menunggu pencatatan. Panduan ini tidak menyatakan pemeriksaan runtime telah lulus. Bukti per build akan dicatat pada [status implementasi](IMPLEMENTATION_STATUS.md).
+> Diverifikasi pada schema 33: tiga tes diagnostik lulus, dan executable memeriksa fixture transaksi serta alokasi biaya perolehan dengan seluruh pemeriksaan sehat. Hasil paket/upgrade dicatat per build pada [status implementasi](IMPLEMENTATION_STATUS.md).
 
 Haruflow menyimpan transaksi, saldo, jurnal, audit, lampiran dan hash akun/kunci dalam **satu database PostgreSQL**. Frontend dan MCP tidak memegang kredensial database. Perubahan operasional yang saling terkait disimpan dalam transaksi yang sama; jurnal posted dan audit dipertahankan, sedangkan koreksi memakai catatan pembalik.
 

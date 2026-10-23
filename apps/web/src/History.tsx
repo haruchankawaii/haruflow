@@ -36,7 +36,10 @@ interface Records {
 
 export default function History() {
   const role = useContext(SessionRoleContext);
-  const [kind, setKind] = useState("sales-orders"),
+  const [kind, setKind] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get("kind");
+    return historyKinds.some(([value]) => value === requested) ? requested! : "sales-orders";
+  }),
     [page, setPage] = useState(1);
   const [filters, setFilters] = useState(emptyHistoryFilters),
     [applied, setApplied] = useState(emptyHistoryFilters);
