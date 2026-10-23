@@ -90,7 +90,7 @@ Validasi paket Community menggunakan **simulasi transaksi, instalasi, pemulihan 
 Rust/Axum + SQLx/PostgreSQL menyajikan API dan frontend React/TypeScript dari satu aplikasi. Instalasi default cukup aplikasi dan PostgreSQL; Redis, broker dan Kubernetes tidak diperlukan.
 
 - [Setup lokal, perintah tes dan kontrak API](docs/OPERATIONS.md#pengembangan-dan-verifikasi).
-- [Status implementasi dan bukti](docs/IMPLEMENTATION_STATUS.md), [arsitektur awal](haruflow.md), [rencana Community](docs/COMMUNITY_PLAN.md).
+- [Status implementasi dan bukti](docs/IMPLEMENTATION_STATUS.md), [rencana Community](docs/COMMUNITY_PLAN.md).
 - Source: [frontend](apps/web/src), [backend](crates/server/src), [migrasi](migrations), [Docker Compose](deploy/community).
 - Panduan modul: [penjualan](docs/SALES_FULFILLMENT.md), [pembelian](docs/PURCHASING.md), [biaya perolehan](docs/LANDED_COSTS.md), [inventori](docs/INVENTORY_LOCATIONS.md), [saldo pihak](docs/PARTY_BALANCES.md), [laporan](docs/FINANCIAL_REPORTS.md), [impor](docs/TRANSACTION_IMPORTS.md).
 

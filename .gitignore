@@ -10,6 +10,7 @@
 *.pid
 *.tsbuildinfo
 /output/
+/haruflow.md
 .DS_Store
 Thumbs.db
 

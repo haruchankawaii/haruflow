@@ -2,7 +2,7 @@
 
 Status: penyelesaian Community difokuskan pada usaha kecil dan penerimaan melalui simulasi. Hasil pengujian, identitas schema, dan paket yang benar-benar diverifikasi dicatat terpisah pada status implementasi.
 Tanggal pembaruan: 23 Oktober 2026.
-Dasar: arah produk dalam `haruflow.md` dan implementasi aktual repository. Rincian hasil pengujian serta batas fitur dicatat di [status implementasi](./IMPLEMENTATION_STATUS.md).
+Dasar: arah produk Community usaha kecil dan implementasi aktual repository. Rincian hasil pengujian serta batas fitur dicatat di [status implementasi](./IMPLEMENTATION_STATUS.md).
 
 ## 1. Arah produk
 
