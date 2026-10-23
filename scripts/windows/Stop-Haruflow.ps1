@@ -1,4 +1,4 @@
-[CmdletBinding()]param()
+[CmdletBinding()]param([switch]$StopDatabase)
 $ErrorActionPreference='Stop'
 $current=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'current.json') -Raw | ConvertFrom-Json
 if ($current.commit -notmatch '^[a-f0-9]{40}$') {throw 'Identitas instalasi tidak valid.'}
@@ -12,3 +12,4 @@ if (Test-Path -LiteralPath $pidFile) {
  }
 }
 Write-Output 'Server instalasi ini sudah berhenti.'
+if($StopDatabase -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'postgres.json'))) {& (Join-Path $PSScriptRoot 'Manage-Postgres.ps1') -Action Stop -InstallRoot $PSScriptRoot}

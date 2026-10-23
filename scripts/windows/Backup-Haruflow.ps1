@@ -92,7 +92,7 @@ $environmentNames=@('PGHOST','PGHOSTADDR','PGPORT','PGUSER','PGPASSWORD','PGDATA
 $saved=@{}; foreach ($name in $environmentNames) { $saved[$name]=[Environment]::GetEnvironmentVariable($name,'Process') }
 $owned=@(); $completed=$false
 try {
-    foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name,$null,'Process') }
+    foreach ($name in $environmentNames) { Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue }
     # Uri.Host retains IPv6 brackets on .NET; libpq expects the bare address.
     $env:PGHOST=$dbUri.DnsSafeHost.Trim('[',']'); $env:PGPORT=if ($dbUri.Port -gt 0) { [string]$dbUri.Port } else { '5432' }
     $credentials=$dbUri.UserInfo.Split(':',2)
@@ -134,7 +134,7 @@ try {
     Write-Output ('Backup selesai dan terverifikasi: '+$archive)
     Write-Output 'Tidak ada backup lama yang dihapus. Salin arsip, .json dan .sha256 bersama; lakukan latihan restore terpisah.'
 } finally {
-    foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name,$saved[$name],'Process') }
+    foreach ($name in $saved.Keys) { if($null -eq $saved[$name]){Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue}else{[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')} }
     $databaseUrl=$null; $credentials=$null
     if (-not $completed) {
         # Only exact files created by this invocation are removed, never directories.

@@ -7,7 +7,8 @@ param(
     [ValidateRange(1024,65535)][int]$Port = 8080,
     [switch]$NoShortcuts,
     [switch]$Start,
-    [switch]$NonInteractive
+    [switch]$NonInteractive,
+    [switch]$VerifyOnly
 )
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Installer ini untuk Windows. Gunakan panduan Docker untuk sistem lain.' }
@@ -68,10 +69,11 @@ $databaseEnvironment+=@(Get-ChildItem Env: | Where-Object { $_.Name -like 'PG*' 
 $databaseEnvironment=@($databaseEnvironment | Select-Object -Unique)
 foreach ($name in $databaseEnvironment) {$savedEnvironment[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 try {
-foreach ($name in $databaseEnvironment) {[Environment]::SetEnvironmentVariable($name,$null,'Process')}
+foreach ($name in $databaseEnvironment) {Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue}
 $verified=Verify-Package $package
 $build=Get-Content -LiteralPath (Join-Path $package 'BUILD.json') -Raw | ConvertFrom-Json
 if ($build.application -ne 'Haruflow Community' -or $build.platform -ne 'win32' -or $build.commit -notmatch '^[a-f0-9]{40}$') { throw 'Identitas paket Windows tidak valid.' }
+if($VerifyOnly){Write-Output ('Paket terverifikasi: '+$verified+' file. Tidak ada instalasi/database diubah.');return}
 $config=Join-Path $install '.env'; $currentFile=Join-Path $install 'current.json'
 $previous=$null
 if (Test-Path -LiteralPath $currentFile) { $previous=Get-Content -LiteralPath $currentFile -Raw | ConvertFrom-Json }
@@ -156,17 +158,16 @@ $setupGuide=Join-Path $install 'Setup-pertama.txt'
 if (-not (Test-Path -LiteralPath $setupGuide)) {[IO.File]::WriteAllText($setupGuide,'')}; Private-File $setupGuide
 [IO.File]::WriteAllText($setupGuide,"Buka http://127.0.0.1:$Port lalu buat perusahaan dan administrator.`r`nKode setup: $token`r`nSimpan kode ini secara pribadi; jangan kirim file .env kepada orang lain.`r`n",[Text.UTF8Encoding]::new($false))
 @{commit=$build.commit;schema_version=$build.schema_version;port=$Port;installed_at=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath $currentFile -Encoding UTF8
-Copy-Item -LiteralPath (Join-Path $versionPath 'source/scripts/windows/Start-Haruflow.ps1') -Destination (Join-Path $install 'Start-Haruflow.ps1') -Force
-Copy-Item -LiteralPath (Join-Path $versionPath 'source/scripts/windows/Stop-Haruflow.ps1') -Destination (Join-Path $install 'Stop-Haruflow.ps1') -Force
-Copy-Item -LiteralPath (Join-Path $versionPath 'source/scripts/windows/Connect-Codex.ps1') -Destination (Join-Path $install 'Connect-Codex.ps1') -Force
-Copy-Item -LiteralPath (Join-Path $versionPath 'source/scripts/windows/Backup-Haruflow.ps1') -Destination (Join-Path $install 'Backup-Haruflow.ps1') -Force
+foreach($helper in @('Start-Haruflow.ps1','Stop-Haruflow.ps1','Connect-Codex.ps1','Backup-Haruflow.ps1','Windows.Common.ps1','Manage-Postgres.ps1','Schedule-Haruflow.ps1','Run-Backup.ps1','Status-Haruflow.ps1')) {
+    Copy-Item -LiteralPath (Join-Path $versionPath ('source/scripts/windows/'+$helper)) -Destination (Join-Path $install $helper) -Force
+}
 if (-not $NoShortcuts) {
     $shell=New-Object -ComObject WScript.Shell; $shortcut=$shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Haruflow Community.lnk'))
-    $shortcut.TargetPath=(Get-Command powershell.exe).Source; $shortcut.Arguments='-NoProfile -WindowStyle Hidden -File "'+(Join-Path $install 'Start-Haruflow.ps1')+'"'; $shortcut.WorkingDirectory=$install; $shortcut.Description='ERP usaha kecil Haruflow Community'; $shortcut.Save()
+    $shortcut.TargetPath=(Get-Command powershell.exe).Source; $shortcut.Arguments='-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+(Join-Path $install 'Start-Haruflow.ps1')+'"'; $shortcut.WorkingDirectory=$install; $shortcut.Description='ERP usaha kecil Haruflow Community'; $shortcut.Save()
 }
 Write-Host "Haruflow Community berhasil dipasang. $verified file paket lolos checksum."
 Write-Host "Folder: $install"
 Write-Host "Buka Start-Haruflow.ps1 atau pintasan desktop. Akses lokal: http://127.0.0.1:$Port"
 Write-Host 'Pada pemakaian pertama, baca Setup-pertama.txt pribadi untuk kode setup dan buat perusahaan serta administrator.'
 if ($Start) { & (Join-Path $install 'Start-Haruflow.ps1') }
-} finally {foreach ($name in $savedEnvironment.Keys) {if ([string]::IsNullOrEmpty($savedEnvironment[$name])) {Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue} else {[Environment]::SetEnvironmentVariable($name,$savedEnvironment[$name],'Process')}}}
+} finally {foreach ($name in $savedEnvironment.Keys) {if ($null -eq $savedEnvironment[$name]) {Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue} else {[Environment]::SetEnvironmentVariable($name,$savedEnvironment[$name],'Process')}}}

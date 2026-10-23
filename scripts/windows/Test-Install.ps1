@@ -16,13 +16,13 @@ $psql=Join-Path $PostgresBin 'psql.exe'
 $savedEnvironment=@{DATABASE_URL=[Environment]::GetEnvironmentVariable('DATABASE_URL','Process')}
 foreach($entry in @(Get-ChildItem Env: | Where-Object {$_.Name -like 'PG*'})) {$savedEnvironment[$entry.Name]=$entry.Value}
 function Set-TestPgEnvironment {
- foreach($entry in @(Get-ChildItem Env: | Where-Object {$_.Name -like 'PG*'})) {[Environment]::SetEnvironmentVariable($entry.Name,$null,'Process')}
+ foreach($entry in @(Get-ChildItem Env: | Where-Object {$_.Name -like 'PG*'})) {Remove-Item -LiteralPath ('Env:\'+$entry.Name) -ErrorAction SilentlyContinue}
  $env:PGHOST=$PostgresHost.Trim('[',']');$env:PGPORT=[string]$PostgresPort;$env:PGUSER=$PostgresUser;$env:PGDATABASE='postgres';$env:PGCONNECT_TIMEOUT='5'
  if($savedEnvironment.ContainsKey('PGPASSWORD')) {$env:PGPASSWORD=$savedEnvironment['PGPASSWORD']}
 }
 function Sql([string]$Query,[string]$Db='postgres') { $value=& $psql -X -w -Atq -v ON_ERROR_STOP=1 -d $Db -c $Query; if($LASTEXITCODE -ne 0){throw 'Test SQL failed'};return $value }
 function Check-InstalledHelpers {
- foreach($name in @('Connect-Codex.ps1','Backup-Haruflow.ps1')) {
+ foreach($name in @('Start-Haruflow.ps1','Stop-Haruflow.ps1','Connect-Codex.ps1','Backup-Haruflow.ps1','Windows.Common.ps1','Manage-Postgres.ps1','Schedule-Haruflow.ps1','Run-Backup.ps1','Status-Haruflow.ps1')) {
   $installedHelper=Join-Path $install $name;$packagedHelper=Join-Path $PackageRoot ('source/scripts/windows/'+$name)
   if(-not (Test-Path -LiteralPath $installedHelper -PathType Leaf) -or -not (Test-Path -LiteralPath $packagedHelper -PathType Leaf) -or (Get-FileHash -LiteralPath $installedHelper -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $packagedHelper -Algorithm SHA256).Hash) {throw 'Installed integration/backup helper differs from packaged source'}
  }
@@ -31,15 +31,17 @@ $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.
 $created=$false
 try {
  Set-TestPgEnvironment
- [Environment]::SetEnvironmentVariable('DATABASE_URL',$null,'Process')
+ Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
  Sql "CREATE DATABASE $database" | Out-Null;$created=$true
  $userinfo=[Uri]::EscapeDataString($PostgresUser)
  if($savedEnvironment['PGPASSWORD']) {$userinfo+=':'+ [Uri]::EscapeDataString($savedEnvironment['PGPASSWORD'])}
  $uriHost=if($PostgresHost.Contains(':') -and -not $PostgresHost.StartsWith('[')) {'['+$PostgresHost+']'} else {$PostgresHost}
  $url='postgres://'+$userinfo+'@'+$uriHost+':'+$PostgresPort+'/'+$database
  $env:PGHOSTADDR='192.0.2.1';$env:PGSERVICE='haruflow_nonexistent_install_test';$env:PGOPTIONS='invalid_installer_test_options'
+ [Environment]::SetEnvironmentVariable('PGSERVICEFILE','','Process');$emptyServiceFilePresent=Test-Path Env:PGSERVICEFILE
  & (Join-Path $PackageRoot 'Install-Haruflow.ps1') -PackageRoot $PackageRoot -InstallRoot $install -DatabaseUrl $url -PostgresBin $PostgresBin -Port $port -NoShortcuts -NonInteractive
  if($env:PGHOSTADDR -ne '192.0.2.1' -or $env:PGSERVICE -ne 'haruflow_nonexistent_install_test' -or $env:PGOPTIONS -ne 'invalid_installer_test_options'){throw 'Installer changed caller PostgreSQL override environment'}
+ if((Test-Path Env:PGSERVICEFILE) -ne $emptyServiceFilePresent -or ($emptyServiceFilePresent -and $env:PGSERVICEFILE -ne '') -or (Test-Path Env:PGAPPNAME)){throw 'Installer confused absent and empty libpq settings.'}
  Set-TestPgEnvironment
  $build=Get-Content (Join-Path $PackageRoot 'BUILD.json') -Raw | ConvertFrom-Json
  Check-InstalledHelpers
@@ -87,7 +89,7 @@ try {
   $env:DATABASE_URL=$url
   Push-Location -LiteralPath $install
   try {$revocationOutput=& $installedExe admin revoke-ai-tokens 'install@example.test';if($LASTEXITCODE -ne 0){throw 'Installed offline AI token recovery failed'}} finally {Pop-Location}
- } finally {[Environment]::SetEnvironmentVariable('DATABASE_URL',$previousDatabaseUrl,'Process')}
+ } finally {if($null -eq $previousDatabaseUrl){Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue}else{[Environment]::SetEnvironmentVariable('DATABASE_URL',$previousDatabaseUrl,'Process')}}
  if(($revocationOutput -join "`n") -notmatch '^0 kunci AI dicabut\.') {throw 'Offline recovery returned an unexpected token count'}
  if((Sql 'SELECT count(*) FROM ai_tokens' $database) -ne '0' -or (Sql 'SELECT count(*) FROM ai_access_grants' $database) -ne '0'){throw 'Offline recovery created AI credentials or grants'}
  if((Sql "SELECT count(*) FROM audit_events WHERE action='ai.tokens.revoked_local'" $database) -ne '1' -or (Sql "SELECT count(*) FROM audit_events e JOIN users u ON u.id=e.actor_id WHERE e.action='ai.tokens.revoked_local' AND u.email='install@example.test' AND u.active AND u.role='admin' AND e.resource_type='user' AND e.resource_id=u.id AND e.details->>'revoked_count'='0' AND e.details->>'source'='local_operator_recovery'" $database) -ne '1'){throw 'Offline recovery audit missing or attributed incorrectly'}
@@ -107,7 +109,7 @@ try {
    if($created){Set-TestPgEnvironment;if($database -notmatch '^haruflow_install_[a-f0-9]{8}$'){throw 'Unsafe database cleanup target'};Sql "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$database' AND pid<>pg_backend_pid()" | Out-Null;Sql "DROP DATABASE $database" | Out-Null}
   }
  } finally {
-  foreach($entry in @(Get-ChildItem Env: | Where-Object {$_.Name -like 'PG*'})) {[Environment]::SetEnvironmentVariable($entry.Name,$null,'Process')}
-  foreach($name in $savedEnvironment.Keys) {[Environment]::SetEnvironmentVariable($name,$savedEnvironment[$name],'Process')}
+  foreach($entry in @(Get-ChildItem Env: | Where-Object {$_.Name -like 'PG*'})) {Remove-Item -LiteralPath ('Env:\'+$entry.Name) -ErrorAction SilentlyContinue}
+  foreach($name in $savedEnvironment.Keys) {if($null -eq $savedEnvironment[$name]){Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue}else{[Environment]::SetEnvironmentVariable($name,$savedEnvironment[$name],'Process')}}
  }
 }

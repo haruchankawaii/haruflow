@@ -15,7 +15,9 @@ ERP menghubungkan pekerjaan yang biasanya dicatat terpisah. Saat barang dikirim,
 
 ## 1. Mulai dari perusahaan Anda
 
-Pasang paket Windows mengikuti [panduan instalasi](WINDOWS.md), atau jalankan Docker dari [README](../README.md#mulai). PostgreSQL diperlukan. Buka alamat yang ditampilkan installer; bawaan lokal adalah `http://127.0.0.1:8080`.
+Ekstrak paket Windows utuh, lalu jalankan `Setup-Haruflow.ps1` mengikuti [panduan instalasi](WINDOWS.md). Wizard mencari binary PostgreSQL terpasang; bila belum tersedia ia memberi arahan instalasi, tanpa mengunduh atau menjalankan installer diam-diam. Pilihan bawaan menyiapkan cluster privat di folder Haruflow, hanya loopback, autentikasi SCRAM dan akun aplikasi dengan hak terbatas. Operator juga dapat memilih koneksi PostgreSQL yang sudah ada. Docker dijelaskan pada [README](../README.md#mulai).
+
+Wizard menanyakan pilihan jam backup dan mulai otomatis saat login Windows. Pilih waktu ketika PC dan lokasi backup tersedia, atau lewati jadwal untuk menentukannya kemudian. Tidak ada password Windows yang disimpan dan task berjalan dengan izin pengguna biasa. Buka alamat yang ditampilkan installer; bawaan aplikasi lokal adalah `http://127.0.0.1:8080`.
 
 Pada instalasi kosong, gunakan kode setup pribadi untuk membuat perusahaan dan administrator pertama. Tidak ada username/password bawaan. Simpan kode dan konfigurasi secara pribadi; jangan memotretnya untuk dokumentasi. Setelah login, periksa nama perusahaan, kontak dan zona waktu di **Pengaturan**. Zona waktu hanya dapat diubah sebelum jurnal pertama.
 
@@ -47,11 +49,13 @@ Admin membuat pengguna sesuai tugas: Sales, Warehouse, Finance atau Viewer. Satu
 
 **Pembelian:** buat supplier dan PO, konfirmasi, terima barang/jasa, lalu catat tagihan supplier. Penerimaan barang menambah persediaan; penerimaan jasa tidak menambah stok. Tagihan dan pembayaran merupakan langkah berbeda. Jumlah yang belum diterima/ditagih/dibayar tetap terlihat. Ongkir, diskon, selisih harga dan pajak eksplisit perlu direview sebelum posting.
 
+**Biaya perolehan:** di **Pembelian → Biaya perolehan**, pilih ongkir, selisih harga positif, atau beban jasa yang memenuhi syarat dan sudah dibukukan. Pilih penerimaan barang tujuannya, dasar pembagian nilai/kuantitas, nominal serta alasan. Buat preview, periksa bagian persediaan dan HPP, lalu posting setelah cocok. Barang yang sudah keluar dapat menambah HPP; biaya tidak semuanya dipaksakan ke stok tersisa. Alokasi tidak membuat pembayaran/utang baru atau mengganti jurnal lama. Sumber dan riwayat yang ambigu diblokir; [baca batas sumber, retur dan pembalikannya](LANDED_COSTS.md).
+
 **Uang muka dan kredit:** catat dana aktual pada **Saldo pihak**, lalu alokasikan ke tagihan pihak yang sama. Dana melebihi invoice tidak dipaksakan sebagai pembayaran langsung; bagian yang belum dipakai tetap terlacak. Alokasi tidak mencatat arus kas lagi. Refund dicatat setelah uang benar-benar berpindah.
 
 **Koreksi:** mulai dari dokumen sumber dan baca dependensinya. Dokumen posted dipertahankan; pembalikan membuat transaksi lawan dengan alasan. Jangan membuat transaksi kedua untuk menutupi kesalahan tanpa memeriksa efek stok, kas dan jurnal. Lampirkan bukti PDF/PNG/JPEG pada dokumen yang sesuai.
 
-[Penjualan bertahap](SALES_FULFILLMENT.md) · [Pembelian](PURCHASING.md) · [Saldo pihak](PARTY_BALANCES.md) · [Retur](RETURNS.md) · [Koreksi](CORRECTIONS_AND_CHARTS.md) · [Lampiran](ATTACHMENTS.md).
+[Penjualan bertahap](SALES_FULFILLMENT.md) · [Pembelian](PURCHASING.md) · [Biaya perolehan](LANDED_COSTS.md) · [Saldo pihak](PARTY_BALANCES.md) · [Retur](RETURNS.md) · [Koreksi](CORRECTIONS_AND_CHARTS.md) · [Lampiran](ATTACHMENTS.md).
 
 ## 4. Baca angka dengan konteksnya
 
@@ -93,7 +97,11 @@ Enam tool yang tersedia mengikuti izin: `business_summary`, `cash_position`, `re
 
 ## 6. Backup dan pulihkan
 
-Pilih lokasi cadangan yang benar-benar tersedia, penanggung jawab dan jadwal. Simpan setidaknya satu salinan di perangkat lain. Backup database mencakup transaksi, lampiran serta hash akun/kunci; konfigurasi `.env` dan kunci lokal dilindungi terpisah.
+Pilih lokasi cadangan yang benar-benar tersedia, penanggung jawab dan jadwal. Wizard menyediakan pilihan jam 12:00/17:00/21:00, waktu `HH:mm` sendiri atau tanpa jadwal. Backup terkelola bawaan disimpan pada folder instalasi `backups/scheduled`; tetap salin ke perangkat lain karena folder pada disk yang sama tidak melindungi dari kerusakan disk. Backup database mencakup transaksi, lampiran serta hash akun/kunci; konfigurasi `.env` dan kunci lokal dilindungi terpisah.
+
+Sesudah instalasi, jalankan `Status-Haruflow.ps1` untuk status layanan, PostgreSQL, task dan hasil backup terakhir. `Schedule-Haruflow.ps1 -Action Configure` mengubah jam/lokasi/retensi; `Disable`, `Enable`, `Remove` dan `RunNow` mengelola task milik instalasi ini. `Run-Backup.ps1` menjalankan backup terkelola sekarang. Task hanya berjalan ketika akun tersebut login; trigger login mengejar jadwal yang terlewat dan melewati backup baru yang sudah memenuhi jadwal serta lolos verifikasi. Panduan perintah lengkap ada di [backup Windows](WINDOWS_BACKUP.md).
+
+Retensi bawaan mempertahankan 14 backup **terkelola** terbaru untuk instalasi ini, sesudah backup baru diverifikasi. Berkas manual dan backup tanpa penanda kepemilikan tidak ikut dihapus. Helper dasar berikut membuat backup tambahan tanpa memasang jadwal atau melakukan retensi:
 
 Untuk Windows, gunakan helper terpasang dengan path yang disesuaikan:
 
@@ -106,7 +114,7 @@ Untuk Windows, gunakan helper terpasang dengan path yang disesuaikan:
 
 Simpan arsip beserta metadata/checksum; verifikasi ulang sesudah menyalinnya. Lokasi `E:` dan versi PostgreSQL di atas hanyalah contoh. Panduan [backup Windows](WINDOWS_BACKUP.md) menjelaskan jadwal serta restore; [operasi](OPERATIONS.md#backup) mencakup Docker.
 
-**Restore dilakukan ke database uji terpisah dahulu.** Hentikan aplikasi tujuan, cocokkan versi/schema, pulihkan backup dan cabut seluruh kunci MCP hasil pemulihan sebelum server dibuka kembali. Backup dapat mengembalikan status kunci lama. Setelah itu periksa saldo, dokumen dan byte/SHA-256 lampiran. Pengguna membuat kunci baru sesuai izin.
+**Restore dilakukan ke database uji terpisah dahulu.** Hentikan aplikasi tujuan, cocokkan versi/schema, pulihkan backup dan cabut seluruh kunci MCP hasil pemulihan sebelum server dibuka kembali. Backup dapat mengembalikan status kunci lama. Jalankan `Status-Haruflow.ps1 -CheckDatabase`, lalu cocokkan saldo, dokumen dan byte/SHA-256 lampiran. Pemeriksaan database hanya membaca; hasil sehat bukan pengganti pemeriksaan bukti transaksi. Pengguna membuat kunci baru sesuai izin. [Rincian pemeriksaan database](DATABASE.md).
 
 Jika admin lupa password, operator lokal memakai `haruflow admin reset-password EMAIL` dengan akses database yang sah. Password diminta tersembunyi; perintah tidak menaikkan role pengguna biasa atau mengaktifkan akun nonaktif. [Pemulihan admin dan server](OPERATIONS.md#setup-dan-role).
 

@@ -1,7 +1,7 @@
 # Rencana Haruflow Community
 
-Status: enam prioritas Community usaha kecil telah diimplementasikan dan diuji sebagai kandidat schema 30. Validasi paket dicatat terpisah; penerimaan usaha nyata dan rilis stabil belum selesai.
-Tanggal pembaruan: 21 Oktober 2026.
+Status: penyelesaian Community difokuskan pada usaha kecil dan penerimaan melalui simulasi. Hasil pengujian, identitas schema, dan paket yang benar-benar diverifikasi dicatat terpisah pada status implementasi.
+Tanggal pembaruan: 23 Oktober 2026.
 Dasar: arah produk dalam `haruflow.md` dan implementasi aktual repository. Rincian hasil pengujian serta batas fitur dicatat di [status implementasi](./IMPLEMENTATION_STATUS.md).
 
 ## 1. Arah produk
@@ -12,7 +12,7 @@ Pengguna dapat menyiapkan perusahaan dan pengguna, memposting saldo awal, mengel
 
 Community tidak memerlukan akun Haruflow, layanan lisensi, atau koneksi ke Haruflow Cloud. Instalasi resmi membatasi 10 akun aktif, termasuk administrator; akun nonaktif tetap menyimpan riwayat dan melepaskan slot. Lisensi tetap mengikuti `LICENSE` dalam repository. Lihat [batas pengguna dan perlindungan kode](./USER_LIMIT.md), termasuk ketentuan upgrade akun lama serta keterbatasan perlindungan instalasi self-hosted.
 
-Pemilik instalasi mengelola server, akses jaringan/TLS, backup, secrets, dan upgrade. Source, Dockerfile/Compose, installer Windows per pengguna, panduan operasi, identitas build, manifest backup dan kandidat ber-checksum tersedia. Installer memerlukan PostgreSQL terpasang. Registry publik, penerimaan pilot bisnis dan SLA belum tersedia.
+Pemilik instalasi mengelola server, akses jaringan/TLS, backup, secrets, dan upgrade. Source, Dockerfile/Compose, installer Windows per pengguna, panduan bergambar, identitas build, manifest backup dan kandidat ber-checksum tersedia. PostgreSQL resmi tetap diperlukan. Simulasi cukup untuk penerimaan pengerjaan Community ini; penggunaan usaha nyata bukan pekerjaan yang diwajibkan. Registry publik dan SLA belum disediakan.
 
 ## 2. Lingkup yang sudah diimplementasikan
 
@@ -49,7 +49,7 @@ Alur operasional sekarang mencakup penjualan → pengiriman → invoice → pemb
 Implementasi di atas belum berarti seluruh rencana ERP atau persiapan rilis stabil selesai. Batas berikut masih berlaku:
 
 - Satu perusahaan, IDR dan 10 akun aktif. Beberapa gudang/transfer tersedia; multicurrency dan konsolidasi perusahaan belum tersedia.
-- Pembelian mendukung barang/jasa, harga invoice berbeda, ongkir/diskon dan pajak eksplisit. Biaya tambahan belum dialokasikan sebagai landed-cost persediaan; pelaporan pajak otomatis belum tersedia.
+- Pembelian mendukung barang/jasa, harga invoice berbeda, ongkir/diskon dan pajak eksplisit. Penyelesaian **Biaya perolehan** memindahkan biaya pembelian yang memenuhi syarat ke persediaan/HPP melalui preview dan jurnal terpisah; hasil validasinya mengikuti status implementasi. Pelaporan pajak otomatis belum tersedia.
 - Pembayaran langsung invoice/tagihan dibatasi sisa dokumen. Untuk dana berlebih gunakan pencatatan uang muka lalu alokasikan bagian pelunasan secara eksplisit; sisa menjadi saldo pihak. Transfer antar pihak, netting pelanggan/supplier, dan transfer bank otomatis belum tersedia.
 - Impor CSV mencakup master, draf saldo awal dan transaksi finansial historis. Impor historis tidak membuat ulang mutasi/pesanan lama. Pembukaan tetap hanya sebelum operasi; hindari saldo ganda dengan dokumen yang telah diimpor.
 - Lot/seri, kedaluwarsa, reservasi dan konversi eksak tersedia pada alur inventori lanjutan. PO/SO dan form lama tetap memakai satuan dasar.
@@ -57,7 +57,7 @@ Implementasi di atas belum berarti seluruh rencana ERP atau persiapan rilis stab
 - Belum ada HR/payroll, produksi, POS offline, aplikasi mobile native, integrasi bank/pajak, SSO, marketplace plugin, email, atau jobs/outbox. Lampiran berada di PostgreSQL; storage eksternal dan retensi otomatis belum tersedia.
 - Daftar ringkas operasional tetap membatasi jumlah dokumen terbaru. Gunakan **Riwayat lengkap** untuk pencarian dan pagination server di luar batas tersebut; ekspor maksimal 10.000 hasil filter dan menolak hasil lebih besar tanpa memotongnya. Rincian buku besar tetap memberi penanda bila terpotong; saldo dan ringkasan memakai seluruh data yang sesuai.
 
-Fitur lanjutan dapat tetap dikembangkan dalam Community. Batas di atas menjelaskan lingkup aktual serta urutan pekerjaan, bukan keputusan permanen pemisahan lisensi Enterprise.
+HR/payroll, produksi, POS khusus, multi-company, multicurrency, serta AI lanjutan seperti chat tertanam atau MCP jarak jauh adalah **rencana Enterprise**, sesuai keputusan produk. Fitur tersebut bukan kekurangan yang harus ditambahkan agar Community selesai. MCP lokal baca tetap bagian Community. Rencana Enterprise belum berarti modul-modul itu sudah tersedia; lisensi Community tidak berubah.
 
 ## 4. Arsitektur yang dipakai
 
@@ -91,44 +91,21 @@ OpenAPI dan client TypeScript yang dihasilkan dari kontrak belum tersedia. Antre
 - Saldo awal dapat dikoreksi melalui reversal sebelum aktivitas operasional dan pemakaian rinciannya. Persediaan serta saldo pihak awal berasal dari rincian yang cocok dengan akun kontrol; jurnal manual dan saldo akun umum tidak dapat melewati rincian sumber tersebut.
 - Laporan memakai ledger dengan tanggal serta zona waktu jelas. Laba rugi memakai aktivitas periode, neraca memakai akumulasi sampai tanggal akhir, dan arus kas mencakup rekening terdaftar dengan transfer internal dikecualikan.
 
-## 6. Prioritas Community yang masih perlu dikerjakan
+## 6. Penyelesaian Community usaha kecil
 
-Lingkup serta kriteria penerimaan paket saldo pihak dan persiapan kandidat rilis ada pada [catatan paket pengembangan](./COMMUNITY_NEXT_PACKAGE.md). Implementasi fitur dan bukti kelulusan validasi dicatat terpisah pada [status implementasi](./IMPLEMENTATION_STATUS.md).
+Enam prioritas utama telah berkembang menjadi alur pembelian, kas/bank, stok lokasi, periode/tahun buku, impor historis dan operasi Windows. Penerimaan pekerjaan ini memakai data demo serta database sementara. Usaha nyata, payroll, produksi, POS khusus, multi-company, multicurrency dan chat AI tertanam tidak termasuk syarat penyelesaian Community.
 
-Prioritas berikut mengikuti kebutuhan pilot pengguna setelah validasi paket tersebut. Implementasi fitur tidak menggantikan latihan operasi maupun penerimaan usaha nyata.
+Paket penyelesaian meliputi:
 
-### Prioritas 1 — Kesiapan rilis dan pemakaian nyata
+- **Biaya perolehan:** preview alokasi biaya final yang sudah dibukukan, bagian persediaan/HPP, pembulatan eksak, sumber tidak dipakai ganda, pembalikan beralasan dan pemeriksaan dependensi.
+- **Database:** migrasi eksplisit tanpa mengubah migrasi lama, indeks pada pencarian anak, serta diagnostik snapshot baca untuk mendeteksi ketidakcocokan schema, guard, stok, jurnal dan akun kontrol. Diagnosis tidak memperbaiki angka otomatis.
+- **Windows:** wizard per pengguna, database privat dari binaries PostgreSQL resmi atau koneksi tersedia, akun aplikasi terbatas, startup opsional, pilihan jam backup dan retensi arsip yang dimiliki instalasi.
+- **Dokumentasi:** README bertema, panduan bergambar aplikasi asli, panduan database, backup/pemulihan dan penjelasan akses Codex.
+- **Validasi:** regresi transaksi/konkurensi/periode, instalasi serta upgrade, eksekusi task backup, pemulihan ke lingkungan terpisah, checksum paket, CI dan percakapan Codex simulasi.
 
-- Tinjau kandidat yang telah dibangun terhadap hasil CI, instalasi bersih, upgrade, checksum, dan panduan operasi.
-- Tentukan target distribusi, lalu terbitkan versi/tag/image registry bila disetujui; tentukan kebutuhan installer untuk pengguna sasaran. Alat pembuat kandidat tidak menerbitkannya otomatis.
-- Jalankan pilot dengan usaha dagang dan dataset yang mewakili transaksi nyata. Catat perangkat, ukuran data, serta hasil pengukuran baca/posting dan akses bersamaan.
-- Jadwalkan latihan pemulihan pada lingkungan terpisah dan pemeriksaan upgrade rutin. Backup/restore dasar sudah mempunyai utilitas serta smoke test; keberhasilan itu belum menggantikan latihan operasional dan pengukuran kapasitas.
-- Uji lebih lanjut kegagalan koneksi, timeout, restart ketika posting, dan kebutuhan beberapa instance. Penambahan worker hanya diperlukan ketika ada pekerjaan latar belakang.
+Status dan hasil aktual mengikuti [status implementasi](IMPLEMENTATION_STATUS.md) dan [identitas paket](RELEASE_CANDIDATE.md). Daftar ini bukan pernyataan bahwa semua validasi sudah lulus sebelum buktinya dicatat. [Skenario latihan](SMALL_BUSINESS_PILOT.md) memisahkan hasil simulasi dari pemakaian usaha nyata.
 
-### Prioritas 2 — Migrasi data dan bukti transaksi
-
-- Validasi template, preview, duplikasi dan commit atomik impor master/transaksi historis dengan data usaha pilot. Lihat [impor master](IMPORTS.md) dan [impor historis](TRANSACTION_IMPORTS.md).
-- Validasi pemetaan saldo pembukaan dengan data usaha pilot dan cocokkan rincian piutang/utang/kredit terhadap pembukuan asal. Fitur manual/CSV dan alokasi sudah tersedia.
-- Lampiran bukti transaksi PDF/PNG/JPEG sudah tersedia dengan hak tulis per jenis dokumen, unduhan terautentikasi, arsip/pemulihan, serta isi file dalam backup PostgreSQL. Lihat [panduan lampiran](./ATTACHMENTS.md). Retensi/penghapusan permanen dan storage eksternal belum tersedia.
-- Ukur **Riwayat lengkap** dengan volume dan pola pencarian usaha sasaran; perluas sumber riwayat bila ada dokumen yang belum tercakup.
-
-### Prioritas 3 — Kelengkapan transaksi dagang
-
-- Uji penerimaan alur uang muka, kredit lintas dokumen, dan refund tertunda bersama pengguna pilot; fitur saldo serta jejak penyelesaiannya sudah tersedia.
-- Validasi pembelian jasa, selisih harga, ongkir/diskon dan pajak eksplisit yang telah tersedia sesuai kebijakan usaha pilot.
-- Penanganan barang pengganti serta retur yang lebih kompleks berdasarkan kebutuhan pilot, tanpa membuka ulang pesanan secara diam-diam.
-
-### Prioritas 4 — Inventori dan pelaporan lanjutan
-
-- Validasi gudang/transfer, konversi, lot/seri/kedaluwarsa dan reservasi yang diperlukan usaha sasaran.
-- Validasi rekening dan rekonsiliasi CSV yang tersedia; pembagian satu jurnal ke beberapa aktivitas arus kas tetap pekerjaan terpisah.
-- Validasi tutup tahun/reopen/jurnal bertanggal yang tersedia dengan pembukuan usaha, tanpa mengubah ledger historis.
-
-Integrasi, HR/payroll, produksi, POS, multi-company/multicurrency, SSO, dan plugin tetap menjadi perluasan jangka berikutnya yang memerlukan lingkup tersendiri. Tidak ada jadwal rilis atau SLA yang dijanjikan dalam rencana ini.
-
-### Pembaruan enam prioritas usaha kecil
-
-Implementasi kandidat sekarang mencakup pembelian lanjutan, beberapa kas/bank dan rekonsiliasi, stok lokasi/lot/seri/reservasi, periode/tahun buku, impor transaksi historis dan operasi Windows. Panduan serta batas implementasi ada di [cakupan usaha kecil](COMMUNITY_SMALL_BUSINESS.md). Butir prioritas di atas tetap menjadi konteks kebutuhan pilot; fitur yang tersedia tidak berarti penerimaan bisnis nyata sudah selesai. [Form pilot](SMALL_BUSINESS_PILOT.md) memisahkan hasil sintetis dari persetujuan pemilik.
+Pengembangan setelah paket ini mengikuti kebutuhan Community usaha kecil. Integrasi bank/pajak, SSO, storage eksternal, outbox dan pemecahan aktivitas arus kas masih memerlukan lingkup tersendiri. Modul besar yang telah diputuskan untuk Enterprise tetap berada pada roadmap Enterprise; tidak ada jadwal atau SLA yang dijanjikan.
 
 ## 7. Skenario penerimaan yang harus tetap terjaga
 
@@ -152,6 +129,6 @@ Skenario ini menjadi acuan regresi, bukan pernyataan bahwa seluruh skenario pilo
 - Instalasi bersih serta restart mempertahankan data; tidak ada kredensial default atau keharusan mengedit source untuk operasi biasa.
 - Dokumentasi mencakup konfigurasi produksi/TLS, pengelolaan secrets, migrasi, pemulihan, serta batas fitur yang masih ada.
 - Uji performa menggunakan dataset dan perangkat yang dicatat. Sasaran waktu respons ditetapkan dari pengukuran workload, bukan dianggap sebagai SLA sebelum ada bukti.
-- Pengguna pilot dapat menyelesaikan alur bisnis utama berdasarkan panduan dan memahami laporan, koreksi, serta batas fitur.
+- Simulasi dapat menyelesaikan alur bisnis utama berdasarkan panduan serta memeriksa laporan, koreksi dan batas fitur. Bukti usaha nyata tidak diwajibkan untuk lingkup pengerjaan ini.
 
-Fokus berikutnya adalah menuntaskan validasi kandidat dan pemakaian pilot, agar pengguna dapat memindahkan data, menjalankan alur yang tersedia, dan mengoperasikannya secara konsisten sebelum memperluas domain lagi.
+Fokus penyelesaian adalah validasi paket Community, panduan yang dapat diikuti, dan latihan pemulihan. Penyempurnaan sesudahnya didasarkan pada kebutuhan usaha kecil dan hasil simulasi yang dapat direproduksi.

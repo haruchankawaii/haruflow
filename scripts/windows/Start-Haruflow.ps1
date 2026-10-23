@@ -1,6 +1,7 @@
 [CmdletBinding()]param([switch]$NoBrowser)
 $ErrorActionPreference='Stop'
 $install=[IO.Path]::GetFullPath($PSScriptRoot)
+if(Test-Path -LiteralPath (Join-Path $install 'postgres.json')) {& (Join-Path $install 'Manage-Postgres.ps1') -Action Start -InstallRoot $install}
 $current=Get-Content -LiteralPath (Join-Path $install 'current.json') -Raw | ConvertFrom-Json
 if ($current.commit -notmatch '^[a-f0-9]{40}$') { throw 'Identitas instalasi tidak valid.' }
 $executable=Join-Path $install ('versions/'+$current.commit+'/haruflow.exe')
@@ -24,7 +25,7 @@ if (-not $existing) {
     try {
         foreach ($name in $configured.Keys) {$saved[$name]=[Environment]::GetEnvironmentVariable($name,'Process');[Environment]::SetEnvironmentVariable($name,$configured[$name],'Process')}
         $process=Start-Process -FilePath $executable -ArgumentList 'serve' -WorkingDirectory $install -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logs ($stamp+'.stdout.log')) -RedirectStandardError (Join-Path $logs ($stamp+'.stderr.log'))
-    } finally {foreach ($name in $saved.Keys) {if ([string]::IsNullOrEmpty($saved[$name])) {Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue} else {[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}}}
+    } finally {foreach ($name in $saved.Keys) {if ($null -eq $saved[$name]) {Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue} else {[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}}}
     $process.Id | Set-Content -LiteralPath $pidFile
 }
 $url='http://127.0.0.1:'+$current.port

@@ -18,7 +18,7 @@ $environmentNames=@('PGHOST','PGHOSTADDR','PGPORT','PGUSER','PGPASSWORD','PGDATA
 $saved=@{}; foreach ($name in $environmentNames) { $saved[$name]=[Environment]::GetEnvironmentVariable($name,'Process') }
 $created=@()
 function Fixture-Environment {
-    foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name,$null,'Process') }
+    foreach ($name in $environmentNames) { Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue }
     $env:PGHOST=$PostgresHost; $env:PGPORT=[string]$PostgresPort; $env:PGUSER=$PostgresUser; $env:PGDATABASE='postgres'; $env:PGPASSWORD=$saved.PGPASSWORD; $env:PGCONNECT_TIMEOUT='10'
 }
 function Sql([string]$Query,[string]$Database='postgres') {
@@ -81,7 +81,7 @@ try {
     $rejected=$false
     try { $null=& $script -InstallRoot $install -BackupDirectory $destination -PostgresBin $PostgresBin } catch { $rejected=$true }
     if (-not $rejected -or @(Get-ChildItem -LiteralPath $destination -Filter '*.backup' -Recurse).Count -ne 2) { throw 'Schema berbeda diterima atau arsip gagal dipublikasikan.' }
-    $evidence=@{format='haruflow-windows-backup-test-v1';at=[DateTime]::UtcNow.ToString('o');scope='Disposable synthetic databases only; no business pilot acceptance';checks=@('IPv6 URI host normalized for libpq (parser only)','private backup folder and files','installed version and schema metadata','custom archive SHA256 and TOC','ambient PGHOSTADDR PGSERVICE and PGOPTIONS isolated and restored','restored fixture data equals source','second backup preserves previous archive','tampered archive rejected','schema mismatch rejected before publication');source_database=$source;target_database=$target;business_signoff='pending';retention='no deletion'}
+    $evidence=@{format='haruflow-windows-backup-test-v1';at=[DateTime]::UtcNow.ToString('o');scope='Disposable synthetic databases only; no business pilot acceptance';checks=@('IPv6 URI host normalized for libpq (parser only)','private backup folder and files','installed version and schema metadata','custom archive SHA256 and TOC','ambient PGHOSTADDR PGSERVICE and PGOPTIONS isolated and restored','restored fixture data equals source','second backup preserves previous archive','tampered archive rejected','schema mismatch rejected before publication');source_database=$source;target_database=$target;business_signoff='not claimed';retention='no deletion'}
     $evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $directory 'verified.json') -Encoding UTF8
     Write-Output ('Windows backup tests passed: '+(Join-Path $directory 'verified.json'))
 } finally {
@@ -92,5 +92,5 @@ try {
             $null=Sql "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$database' AND pid<>pg_backend_pid();"
             $null=Sql "DROP DATABASE $database;"
         }
-    } finally { foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name,$saved[$name],'Process') } }
+    } finally { foreach ($name in $saved.Keys) { if($null -eq $saved[$name]){Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue}else{[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')} } }
 }

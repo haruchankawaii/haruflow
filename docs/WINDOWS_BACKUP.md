@@ -31,11 +31,35 @@ Verifikasi ulang setelah menyalin ke perangkat cadangan:
 
 Perintah memeriksa ukuran, SHA256, identitas metadata, dan `pg_restore --list` tanpa menyambung atau mengubah database. Checksum bukan tanda tangan digital dan verifikasi daftar isi bukan pembuktian bahwa seluruh data sudah dapat dipulihkan. Latihan restore berikut tetap diperlukan.
 
-Skrip tidak menghapus backup lama, termasuk ketika dipanggil berulang. Pemilik menentukan retensi setelah mengetahui ukuran dan kapasitas. Contoh kebijakan usaha kecil: simpan 14 backup harian serta satu salinan akhir bulan, lalu hapus salinan lama secara manual hanya setelah backup terbaru lolos verifikasi dan satu restore berhasil. Pisahkan minimal satu salinan dari PC ERP; sinkronisasi ke folder lain pada disk yang sama tidak melindungi dari kerusakan disk. ACL bukan enkripsi media: gunakan penyimpanan terenkripsi seperti BitLocker dan lindungi kunci pemulihannya. Simpan `.env`, kode setup, dan berkas kunci MCP secara terpisah; jangan memasukkannya ke folder berbagi atau Git.
+`Backup-Haruflow.ps1` langsung tidak menghapus backup lama. Wrapper jadwal `Run-Backup.ps1` menerapkan retensi yang dipilih wizard: default **14 backup terkelola terbaru**. Penghapusan hanya dilakukan sesudah backup baru lolos checksum/TOC, pada direktori dengan marker milik akun/instalasi ini dan tepat empat berkas terkelola yang dikenal. Backup manual, folder instalasi lain, folder symlink, dan folder berisi file tambahan dilewati. Arsip baru selalu dipertahankan. Retensi tidak menghapus cadangan perangkat eksternal yang tidak ditandai alat ini.
 
-## Jadwal harian, setelah lokasi dan jam diputuskan pemilik
+Pisahkan minimal satu salinan dari PC ERP; default `backups/scheduled` berada pada PC yang sama, sehingga tidak melindungi dari kerusakan disk/pencurian. Salin arsip, metadata dan SHA256 bersama. ACL bukan enkripsi media: gunakan penyimpanan terenkripsi seperti BitLocker dan lindungi kunci pemulihannya. Simpan `.env`, kode setup, dan berkas kunci MCP secara terpisah; jangan memasukkannya ke folder berbagi atau Git.
 
-Tidak ada scheduled task yang dipasang otomatis. Di **Task Scheduler → Create Task**, operator dapat mengisi:
+## Jadwal harian dengan jam pilihan pengguna
+
+Wizard setup menanyakan jam backup dan memakai folder privat/default retensi di atas. Pengaturan ulang dari folder instalasi:
+
+```powershell
+./Schedule-Haruflow.ps1 -Action Configure
+# Atau jam eksplisit (waktu Windows lokal):
+./Schedule-Haruflow.ps1 -Action Configure -BackupTime '17:00'
+./Schedule-Haruflow.ps1 -Action Status
+./Schedule-Haruflow.ps1 -Action Disable
+./Schedule-Haruflow.ps1 -Action Enable
+./Schedule-Haruflow.ps1 -Action Remove
+```
+
+Prompt memberi pilihan 12:00, 17:00, 21:00, jam `HH:mm` sendiri, atau tidak mengubah jadwal. Nilai di luar 00:00–23:59 ditolak sebelum membuat task. Operator lanjut boleh memilih `-BackupDirectory` dan `-KeepLatest 2..365`; pemakaian biasa tidak perlu memilihnya. Ubah waktu dengan `Configure` lagi. Perubahan jam saja mempertahankan lokasi cadangan, retensi, dan folder utilitas PostgreSQL yang sebelumnya dipilih. `Disable`/`Enable`/`Remove` hanya menyentuh dua task dengan hash instalasi dan SID akun yang cocok, mencakup backup serta pilihan start saat login. Untuk start layanan saja gunakan `-Action Startup`; tambahkan `-NoStartAtLogin` untuk mematikannya tanpa mengubah jadwal backup.
+
+Task memakai akun Windows yang sedang masuk, `Interactive`/hak terbatas, tanpa password Windows atau database di definisi task. Ada trigger harian serta catchup saat login (tertunda dua menit), `StartWhenAvailable`, dan pencegahan instance ganda. Catchup melewati backup yang sudah memenuhi jadwal terakhir. Saat PC mati/logout, task tidak berjalan; backup menyusul ketika akun masuk/Windows menjalankan task yang terlewat. Kebutuhan tanpa login memerlukan pengaturan layanan terpisah oleh IT.
+
+Untuk backup segera, jalankan `./Run-Backup.ps1`. Wrapper menyalakan cluster privat bila perlu, menulis `backup-state.json` privat dengan status sukses/gagal dan lokasi arsip, serta tidak melakukan retensi sebelum backup baru lolos verifikasi. `Status-Haruflow.ps1` menampilkan hasil terakhir. Periksa arsip bertanggal terbaru setiap hari kerja dan lakukan latihan pemulihan berkala. Pencabutan kunci MCP tidak memengaruhi backup.
+
+Sesi pengembang hanya mendaftarkan task pada instalasi/cluster acak untuk simulasi, lalu menghapusnya. Tidak ada jadwal diinstal pada PC operasional tanpa operator memilih jam. Task/pintasan menjalankan skrip lokal paket dengan `ExecutionPolicy Bypass` pada proses PowerShell saja, bukan perubahan kebijakan mesin; kebijakan organisasi tetap perlu dihormati.
+
+### Alternatif Task Scheduler manual
+
+Jika tidak memakai wizard, di **Task Scheduler → Create Task**, operator dapat mengisi:
 
 1. Nama misalnya `Haruflow backup harian`, akun Windows yang sama dengan pemilik instalasi dan lokasi backup. Pilih **Run only when user is logged on** agar tidak menyimpan password Windows di task. Tidak perlu **Run with highest privileges**.
 2. Trigger harian pada jam yang disetujui saat PC, PostgreSQL dan perangkat backup tersedia. Aktifkan **Run task as soon as possible after a scheduled start is missed**.

@@ -26,7 +26,13 @@
 
 ## Mulai
 
-**Windows:** siapkan PostgreSQL, gunakan paket yang sudah diverifikasi, jalankan installer per pengguna, lalu buka **Start-Haruflow.ps1**. Buat perusahaan dan admin pertama dengan kode setup pribadi. Ikuti [instalasi Windows](docs/WINDOWS.md), kemudian [panduan pemakaian bergambar](docs/GUIDE.md).
+**Windows:** ekstrak paket yang sudah diverifikasi dan jalankan wizard:
+
+```powershell
+./Setup-Haruflow.ps1
+```
+
+Wizard menemukan binary PostgreSQL yang terpasang dan dapat menyiapkan database privat di folder Haruflow, atau memakai koneksi yang sudah tersedia. Pilih jam backup dan apakah aplikasi dimulai saat akun Windows masuk; tidak ada jam yang ditebak atau password Windows yang disimpan. Wizard tidak mengunduh PostgreSQL otomatis atau membuat service administrator. Selanjutnya buat perusahaan/admin pertama dengan kode setup pribadi. [Instalasi Windows](docs/WINDOWS.md) · [Panduan bergambar](docs/GUIDE.md).
 
 **Docker Compose:** jalankan dari root repository; perlu Docker dengan Compose v2 serta Node.js 22+ atau Bun untuk utilitas konfigurasi.
 
@@ -48,7 +54,7 @@ Buka [localhost:8080](http://localhost:8080). Gunakan `HARUFLOW_SETUP_TOKEN` dar
 
 ## Ruang kerja
 
-- **Jual dan beli.** Pesanan barang/jasa, pengiriman/penerimaan bertahap, invoice/tagihan, pembayaran sebagian, retur dan koreksi dengan riwayat.
+- **Jual dan beli.** Pesanan barang/jasa, pengiriman/penerimaan bertahap, invoice/tagihan, pembayaran sebagian, retur dan koreksi dengan riwayat. Biaya pembelian yang memenuhi syarat dapat dialokasikan ke persediaan/HPP setelah preview.
 - **Stok yang dapat ditelusuri.** Beberapa gudang, transfer, satuan, lot/seri, kedaluwarsa dan reservasi; jumlah serta nilai terkait pembukuan.
 - **Kas dan saldo pihak.** Rekening kas/bank, transfer internal, rekonsiliasi CSV bank, piutang/utang, uang muka, kredit dan refund.
 - **Pembukuan dan laporan.** Saldo awal, jurnal berpasangan, laba rugi, neraca, arus kas, chart, periode serta tutup tahun.
@@ -73,7 +79,7 @@ Data yang diberikan ke Codex dapat diproses layanan AI yang digunakannya. Pemili
 
 ## Jalankan dengan tenang
 
-Simpan backup di perangkat terpisah dan latihan pemulihan pada database uji. Paket Windows menyediakan helper backup dengan metadata dan SHA-256; Docker menyediakan utilitas backup/restore. Setelah restore, cabut kunci MCP lama sebelum aplikasi dibuka kembali. [Backup Windows](docs/WINDOWS_BACKUP.md) · [Pemulihan dan upgrade](docs/OPERATIONS.md#restore-ke-instalasi-pengujian).
+Paket Windows menyediakan pilihan jadwal backup, status layanan dan retensi backup terkelola; jam/lokasi dapat diubah pengguna. Task memakai akun Windows saat ini tanpa password tersimpan. Simpan salinan di perangkat terpisah dan latihan pemulihan pada database uji. Setelah restore, cabut kunci MCP lama sebelum aplikasi dibuka kembali. `haruflow database check` memeriksa konsistensi melalui snapshot baca tanpa memperbaiki angka otomatis. [Backup Windows](docs/WINDOWS_BACKUP.md) · [Pemeriksaan database](docs/DATABASE.md) · [Pemulihan dan upgrade](docs/OPERATIONS.md#restore-ke-instalasi-pengujian).
 
 Validasi paket Community menggunakan **simulasi transaksi, instalasi, pemulihan dan percakapan Codex**, dengan hasil pada [status implementasi](docs/IMPLEMENTATION_STATUS.md). Pilot usaha nyata merupakan pilihan deployment terpisah dan tidak dianggap sudah dilakukan. [Skenario latihan](docs/SMALL_BUSINESS_PILOT.md) · [Identitas paket dan pengukuran](docs/RELEASE_CANDIDATE.md).
 
@@ -86,7 +92,7 @@ Rust/Axum + SQLx/PostgreSQL menyajikan API dan frontend React/TypeScript dari sa
 - [Setup lokal, perintah tes dan kontrak API](docs/OPERATIONS.md#pengembangan-dan-verifikasi).
 - [Status implementasi dan bukti](docs/IMPLEMENTATION_STATUS.md), [arsitektur awal](haruflow.md), [rencana Community](docs/COMMUNITY_PLAN.md).
 - Source: [frontend](apps/web/src), [backend](crates/server/src), [migrasi](migrations), [Docker Compose](deploy/community).
-- Panduan modul: [penjualan](docs/SALES_FULFILLMENT.md), [pembelian](docs/PURCHASING.md), [inventori](docs/INVENTORY_LOCATIONS.md), [saldo pihak](docs/PARTY_BALANCES.md), [laporan](docs/FINANCIAL_REPORTS.md), [impor](docs/TRANSACTION_IMPORTS.md).
+- Panduan modul: [penjualan](docs/SALES_FULFILLMENT.md), [pembelian](docs/PURCHASING.md), [biaya perolehan](docs/LANDED_COSTS.md), [inventori](docs/INVENTORY_LOCATIONS.md), [saldo pihak](docs/PARTY_BALANCES.md), [laporan](docs/FINANCIAL_REPORTS.md), [impor](docs/TRANSACTION_IMPORTS.md).
 
 ## Lisensi
 
