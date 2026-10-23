@@ -90,7 +90,7 @@ if (-not $DatabaseUrl) {
     try { $DatabaseUrl=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
 }
 if ($DatabaseUrl -match '[\r\n\x00]') {throw 'Koneksi database mengandung karakter tidak valid.'}
-$dbUri=[Uri]$DatabaseUrl
+try{$dbUri=[Uri]$DatabaseUrl}catch{throw 'Format koneksi database tidak valid. Periksa konfigurasi secara pribadi.'}
 if ($dbUri.Scheme -notin @('postgres','postgresql') -or -not $dbUri.Host -or $dbUri.AbsolutePath -eq '/' -or $dbUri.Fragment) { throw 'Koneksi harus postgres://pengguna:password@host:port/database tanpa fragment.' }
 $psql=Pg-Tool 'psql'; $dump=Pg-Tool 'pg_dump'; $restore=Pg-Tool 'pg_restore'
 $env:PGHOST=$dbUri.DnsSafeHost.Trim('[',']'); $env:PGPORT=if ($dbUri.Port -gt 0) { [string]$dbUri.Port } else { '5432' }

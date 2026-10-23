@@ -12,7 +12,7 @@ if($Action -eq 'Initialize'){
         if(-not $config.bootstrap_pending){throw 'Cluster privat sudah tercatat; gunakan Start. Data lama tidak diinisialisasi ulang.'}
         $bin=$config.bin;$Port=[int]$config.port
         foreach($file in @($adminConnection,$connection)){$null=Assert-HaruflowPath $file;if(-not(Test-Path -LiteralPath $file -PathType Leaf)){throw 'Kredensial bootstrap tidak lengkap; data dipertahankan. Periksa panduan pemulihan.'}}
-        $adminUri=[Uri][IO.File]::ReadAllText($adminConnection);$appUri=[Uri][IO.File]::ReadAllText($connection)
+        try{$adminUri=[Uri][IO.File]::ReadAllText($adminConnection);$appUri=[Uri][IO.File]::ReadAllText($connection)}catch{throw 'Koneksi bootstrap privat rusak; periksa konfigurasi secara pribadi. Data tidak dihapus.'}
         if($adminUri.Scheme -ne 'postgres' -or $adminUri.Host -ne '127.0.0.1' -or $adminUri.Port -ne $Port -or $adminUri.AbsolutePath -ne '/postgres' -or $adminUri.UserInfo -notmatch '^haruflow_cluster_admin:([a-f0-9]{64})$' -or $adminUri.Query -or $adminUri.Fragment){throw 'Identitas koneksi bootstrap admin tidak valid.'};$password=$Matches[1]
         if($appUri.Scheme -ne 'postgres' -or $appUri.Host -ne '127.0.0.1' -or $appUri.Port -ne $Port -or $appUri.AbsolutePath -ne '/haruflow' -or $appUri.UserInfo -notmatch '^haruflow:([a-f0-9]{64})$' -or $appUri.Query -or $appUri.Fragment){throw 'Identitas koneksi bootstrap aplikasi tidak valid.'};$appPassword=$Matches[1]
         $adminUri=$null;$appUri=$null

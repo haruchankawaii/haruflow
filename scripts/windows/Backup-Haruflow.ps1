@@ -89,6 +89,7 @@ try { $dbUri=[Uri]$databaseUrl } catch { throw 'Konfigurasi koneksi database tid
 if (-not $dbUri -or $dbUri.Scheme -notin @('postgres','postgresql') -or -not $dbUri.Host -or $dbUri.AbsolutePath -eq '/' -or $dbUri.Fragment -or $databaseUrl -match '[\r\n\x00]') { throw 'Konfigurasi koneksi database tidak valid.' }
 $dump=Pg-Tool 'pg_dump'; $psql=Pg-Tool 'psql'
 $environmentNames=@('PGHOST','PGHOSTADDR','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGCONNECT_TIMEOUT','PGOPTIONS','PGSERVICE','PGSERVICEFILE','PGPASSFILE','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY','PGREQUIRESSL','PGCHANNELBINDING','PGAPPNAME')
+$environmentNames+=@(Get-ChildItem Env: | Where-Object {$_.Name -like 'PG*'} | ForEach-Object {$_.Name});$environmentNames=@($environmentNames | Select-Object -Unique)
 $saved=@{}; foreach ($name in $environmentNames) { $saved[$name]=[Environment]::GetEnvironmentVariable($name,'Process') }
 $owned=@(); $completed=$false
 try {

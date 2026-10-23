@@ -71,8 +71,14 @@ try{
  $settings.time=$scheduledTime;Write-HaruflowPrivateJson (Join-Path $install 'backup-settings.json') $settings
  $state.completed_at=[DateTime]::UtcNow.AddDays(-2).ToString('o');Write-HaruflowPrivateJson (Join-Path $install 'backup-state.json') $state
  $started=[DateTime]::UtcNow;Start-ScheduledTask -TaskName ($identity.prefix+'-Backup');$finished=$false
- for($attempt=0;$attempt -lt 80;$attempt++){Start-Sleep -Milliseconds 500;$task=Get-ScheduledTask -TaskName ($identity.prefix+'-Backup');$info=Get-ScheduledTaskInfo -InputObject $task;if($info.LastRunTime.ToUniversalTime() -ge $started.AddSeconds(-1) -and $task.State -ne 'Running'){$finished=$true;break}}
- if(-not $finished -or $info.LastTaskResult -ne 0){throw 'Actual limited-user scheduled backup did not succeed.'}
+ for($attempt=0;$attempt -lt 120;$attempt++){
+  Start-Sleep -Milliseconds 500;$task=Get-ScheduledTask -TaskName ($identity.prefix+'-Backup');$info=Get-ScheduledTaskInfo -InputObject $task
+  # Scheduler timestamps can lag the wall clock and state/result snapshots
+  # briefly disagree. The aged fixture state requires this run's fresh,
+  # verified success marker, in addition to a stopped task and result zero.
+  if($task.State -ne 'Running' -and $info.LastTaskResult -eq 0){try{$candidate=Get-Content -LiteralPath (Join-Path $install 'backup-state.json') -Raw | ConvertFrom-Json;if($candidate.status -eq 'success' -and ([DateTimeOffset]$candidate.completed_at).UtcDateTime -ge $started){$finished=$true;break}}catch{}}
+ }
+ if(-not $finished){throw ('Actual limited-user scheduled backup did not succeed; result='+$info.LastTaskResult+'; state='+$task.State+'.')}
  $state=Get-Content -LiteralPath (Join-Path $install 'backup-state.json') -Raw | ConvertFrom-Json;if($state.status -ne 'success' -or ([DateTimeOffset]$state.completed_at).UtcDateTime -lt $started){throw 'Scheduled task did not publish a fresh successful backup.'}
  $null=& $schedule -Action Configure -InstallRoot $install -BackupTime ([DateTime]::Now.AddHours(2).ToString('HH:mm')) -NoStartAtLogin
  if((Get-ScheduledTask -TaskName ($identity.prefix+'-Login')).State -ne 'Disabled'){throw 'Disable login startup failed.'}
