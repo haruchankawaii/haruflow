@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/hero.svg" alt="Haruflow Community — alur usaha rapi, keputusan lebih pasti" width="1280" />
+  <img src="docs/images/hero-leaves.svg" alt="Haruflow Community — alur usaha rapi, keputusan lebih pasti" width="1280" />
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
 **Haruflow Community adalah ERP gratis untuk usaha kecil yang dijalankan sendiri.** Catat penjualan dan pembelian, kelola stok serta kas, lalu telusuri laporan ke transaksi sumbernya. Satu perusahaan, IDR, maksimal 10 akun aktif termasuk admin. Tidak memerlukan akun Haruflow Cloud atau server lisensi.
 
 <p align="center">
-  <img src="docs/images/dashboard.png" alt="Tampilan asli dashboard Haruflow dengan ringkasan dan chart; menggunakan data simulasi" width="1280" />
+  <img src="docs/images/dashboard-leaves.png" alt="Tampilan asli dashboard Haruflow dengan ringkasan dan chart; menggunakan data simulasi" width="1280" />
   <br /><sub>Tampilan aplikasi dengan data simulasi. Angka pada gambar bukan data usaha pengguna.</sub>
 </p>
 

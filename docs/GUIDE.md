@@ -1,4 +1,4 @@
-<p align="center"><img src="images/hero.svg" alt="Haruflow Community — panduan pengguna" width="1280" /></p>
+<p align="center"><img src="images/hero-leaves.svg" alt="Haruflow Community — panduan pengguna dengan logo dua daun" width="1280" /></p>
 
 # Panduan pemakaian Haruflow Community
 
@@ -21,7 +21,7 @@ Wizard menanyakan pilihan jam backup dan mulai otomatis saat login Windows. Pili
 
 Pada instalasi kosong, gunakan kode setup pribadi untuk membuat perusahaan dan administrator pertama. Tidak ada username/password bawaan. Simpan kode dan konfigurasi secara pribadi; jangan memotretnya untuk dokumentasi. Setelah login, periksa nama perusahaan, kontak dan zona waktu di **Pengaturan**. Zona waktu hanya dapat diubah sebelum jurnal pertama.
 
-![Dashboard asli Haruflow dengan data simulasi](images/dashboard.png)
+![Dashboard asli Haruflow dengan logo dua daun dan data simulasi](images/dashboard-leaves.png)
 
 *Beranda menunjukkan ringkasan dan chart. Nilai pada kartu tetap perlu dibaca sesuai periode serta cakupan laporan.*
 
