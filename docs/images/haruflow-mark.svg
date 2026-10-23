@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="360" viewBox="0 0 36 36" role="img" aria-labelledby="mark-title mark-desc">
+  <title id="mark-title">Haruflow</title>
+  <desc id="mark-desc">Dua daun bertumpuk melambangkan pertumbuhan dan alur usaha yang terhubung.</desc>
+  <defs>
+    <mask id="leaf-separation" maskUnits="userSpaceOnUse" x="0" y="0" width="36" height="36">
+      <rect width="36" height="36" fill="#fff" />
+      <path d="M5 32V27.5C5 17.2 11.9 11 26 11C26 23.7 19.2 32 7.7 32H5Z" fill="#000" stroke="#000" stroke-width="2.6" />
+    </mask>
+  </defs>
+  <g fill="#295d46">
+    <path d="M10 22V18C10 8.8 17.4 3 31 3C31 14.7 24 22 13.3 22H10Z" opacity=".65" mask="url(#leaf-separation)" />
+    <path d="M5 32V27.5C5 17.2 11.9 11 26 11C26 23.7 19.2 32 7.7 32H5Z" />
+  </g>
+</svg>

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/hero.svg" alt="Haruflow Community — kenali usaha, rapikan alurnya" width="1280" />
+  <img src="docs/images/hero.svg" alt="Haruflow Community — alur usaha rapi, keputusan lebih pasti" width="1280" />
 </p>
 
 <p align="center">

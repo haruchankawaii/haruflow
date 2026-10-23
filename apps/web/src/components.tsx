@@ -20,15 +20,40 @@ import {
 import { statusNames } from "./format";
 
 export function Brand({ dark = false }: { dark?: boolean }) {
+  const leafMaskId = useId();
+
   return (
     <div className={`brand ${dark ? "brand-dark" : ""}`}>
       <span className="brand-symbol" aria-hidden="true">
-        <svg viewBox="0 0 36 36">
+        <svg viewBox="0 0 36 36" focusable="false">
+          <defs>
+            <mask
+              id={leafMaskId}
+              maskUnits="userSpaceOnUse"
+              x="0"
+              y="0"
+              width="36"
+              height="36"
+            >
+              <rect width="36" height="36" fill="white" />
+              <path
+                d="M5 32V27.5C5 17.2 11.9 11 26 11C26 23.7 19.2 32 7.7 32H5Z"
+                fill="black"
+                stroke="black"
+                strokeWidth="2.6"
+              />
+            </mask>
+          </defs>
           <path
-            d="M7 6h7v12c4-7 9-7 16-7v7c-7 0-11 1-16 12H7z"
+            d="M10 22V18C10 8.8 17.4 3 31 3C31 14.7 24 22 13.3 22H10Z"
+            fill="currentColor"
+            opacity=".65"
+            mask={`url(#${leafMaskId})`}
+          />
+          <path
+            d="M5 32V27.5C5 17.2 11.9 11 26 11C26 23.7 19.2 32 7.7 32H5Z"
             fill="currentColor"
           />
-          <circle cx="27" cy="29" r="3.5" fill="currentColor" />
         </svg>
       </span>
       <span>

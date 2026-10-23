@@ -1,5 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
   <rect width="48" height="48" rx="14" fill="#193d31" />
-  <path d="M13 13h7v11c4-7 9-7 15-7v7c-6 0-9 1-15 11h-7z" fill="#d4efb9" />
-  <circle cx="32" cy="34" r="4" fill="#d4efb9" />
+  <defs>
+    <mask id="leaf-separation" maskUnits="userSpaceOnUse" x="0" y="0" width="36" height="36">
+      <rect width="36" height="36" fill="#fff" />
+      <path d="M5 32V27.5C5 17.2 11.9 11 26 11C26 23.7 19.2 32 7.7 32H5Z" fill="#000" stroke="#000" stroke-width="2.6" />
+    </mask>
+  </defs>
+  <g transform="translate(6 6)" fill="#d4ecba">
+    <path d="M10 22V18C10 8.8 17.4 3 31 3C31 14.7 24 22 13.3 22H10Z" opacity=".65" mask="url(#leaf-separation)" />
+    <path d="M5 32V27.5C5 17.2 11.9 11 26 11C26 23.7 19.2 32 7.7 32H5Z" />
+  </g>
 </svg>

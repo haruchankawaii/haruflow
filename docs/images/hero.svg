@@ -1,46 +1,54 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="430" viewBox="0 0 1280 430" role="img" aria-labelledby="title desc">
-  <title id="title">Haruflow Community — ruang kerja untuk usaha kecil</title>
-  <desc id="desc">Identitas Haruflow berwarna hijau zaitun, krem dan lime. Satu perusahaan, IDR dan sepuluh akun aktif. Alur penjualan, stok, kas dan laporan saling terhubung.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="520" viewBox="0 0 1280 520" role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">Haruflow Community — alur usaha rapi, keputusan lebih pasti</title>
+  <desc id="hero-desc">Nama haruflow besar di tengah bidang hijau hutan, dengan simbol dua daun bertumpuk berwarna lime. ERP untuk usaha kecil, dalam satu alur yang saling terhubung.</desc>
   <defs>
-    <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse"><path d="M34 0H0V34" fill="none" stroke="#d4ecba" stroke-opacity=".055"/></pattern>
+    <linearGradient id="forest" x1="0" y1="0" x2="1280" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#224d3d"/>
+      <stop offset=".5" stop-color="#193d31"/>
+      <stop offset="1" stop-color="#153329"/>
+    </linearGradient>
+    <radialGradient id="light" cx="0" cy="0" r="1" gradientTransform="translate(642 156) rotate(90) scale(361 532)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6f9d70" stop-opacity=".14"/>
+      <stop offset="1" stop-color="#6f9d70" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="banner-shape"><rect width="1280" height="520" rx="28"/></clipPath>
+    <mask id="leaf-separation" maskUnits="userSpaceOnUse" x="0" y="0" width="36" height="36">
+      <rect width="36" height="36" fill="#fff"/>
+      <path d="M5 32V27.5C5 17.2 11.9 11 26 11C26 23.7 19.2 32 7.7 32H5Z" fill="#000" stroke="#000" stroke-width="2.6"/>
+    </mask>
   </defs>
-  <rect width="1280" height="430" rx="24" fill="#193d31"/>
-  <rect width="1280" height="430" rx="24" fill="url(#grid)"/>
-  <circle cx="1190" cy="-45" r="300" fill="#295d46" fill-opacity=".48"/>
-  <circle cx="1170" cy="-40" r="223" fill="none" stroke="#d4ecba" stroke-opacity=".09"/>
-  <g font-family="Segoe UI,Arial,sans-serif">
-    <g transform="translate(58 44)" fill="#d4ecba"><path d="M0 14C0 4 9 0 19 0c0 10-6 17-16 17H0Z"/><path d="M4 21c0-7 7-11 15-11 0 9-5 15-15 15Z"/></g>
-    <text x="91" y="73" fill="#f7f8f4" font-size="35" font-weight="750" letter-spacing="-1.5">haruflow<tspan fill="#d4ecba">.</tspan></text>
-    <rect x="1072" y="44" width="148" height="31" rx="15.5" fill="#d4ecba"/>
-    <text x="1146" y="65" fill="#193d31" font-size="12" text-anchor="middle" font-weight="700" letter-spacing="1.9">COMMUNITY</text>
-    <text x="58" y="158" fill="#d4ecba" font-size="12" font-weight="650" letter-spacing="3">ERP UNTUK USAHA KECIL</text>
-    <text x="54" y="217" fill="#f7f8f4" font-size="53" font-weight="700" letter-spacing="-1.7">Kenali usaha.</text>
-    <text x="54" y="278" fill="#f7f8f4" font-size="53" font-weight="700" letter-spacing="-1.7">Rapikan alurnya.</text>
-    <text x="58" y="322" fill="#c6d4c6" font-size="17">Penjualan, pembelian, stok dan pembukuan</text>
-    <text x="58" y="348" fill="#c6d4c6" font-size="17">dalam satu ruang kerja yang Anda kelola sendiri.</text>
-    <g transform="translate(762 128)">
-      <path d="M49 30H250V120H49V211H250" fill="none" stroke="#88a587" stroke-opacity=".6" stroke-width="1.5"/>
-      <g>
-        <rect x="0" y="0" width="168" height="62" rx="13" fill="#f7f8f4"/>
-        <text x="20" y="23" fill="#7c857e" font-size="10" font-weight="650" letter-spacing="1.2">01 / KEGIATAN</text>
-        <text x="20" y="46" fill="#25382c" font-size="17" font-weight="650">Penjualan</text>
-      </g>
-      <g transform="translate(220 89)">
-        <rect width="168" height="62" rx="13" fill="#d4ecba"/>
-        <text x="20" y="23" fill="#526b54" font-size="10" font-weight="650" letter-spacing="1.2">02 / PERSEDIAAN</text>
-        <text x="20" y="46" fill="#193d31" font-size="17" font-weight="650">Stok &amp; pembelian</text>
-      </g>
-      <g transform="translate(0 180)">
-        <rect width="168" height="62" rx="13" fill="#f7f8f4"/>
-        <text x="20" y="23" fill="#7c857e" font-size="10" font-weight="650" letter-spacing="1.2">03 / PEMBUKUAN</text>
-        <text x="20" y="46" fill="#25382c" font-size="17" font-weight="650">Kas &amp; laporan</text>
-      </g>
-      <circle cx="250" cy="31" r="4" fill="#d4ecba"/><circle cx="49" cy="120" r="4" fill="#d4ecba"/>
+
+  <g clip-path="url(#banner-shape)">
+    <rect width="1280" height="520" fill="url(#forest)"/>
+    <rect width="1280" height="520" fill="url(#light)"/>
+
+    <!-- Fine contour lines suggest a continuous, growing flow. -->
+    <g fill="none" stroke="#d4ecba" stroke-width="1">
+      <path d="M-120 454C47 454 18 264 176 264S304 46 210-54" stroke-opacity=".10"/>
+      <path d="M-128 480C64 480 47 290 195 290S337 59 245-54" stroke-opacity=".075"/>
+      <path d="M-132 506C79 506 76 316 214 316S370 72 280-54" stroke-opacity=".05"/>
+      <path d="M1002 573C914 437 1009 319 1137 319S1244 104 1366 104" stroke-opacity=".10"/>
+      <path d="M1035 573C947 447 1036 346 1158 346S1267 132 1366 132" stroke-opacity=".075"/>
+      <path d="M1068 573C980 457 1063 373 1179 373S1290 160 1366 160" stroke-opacity=".05"/>
     </g>
-    <path d="M58 382H1220" stroke="#d4ecba" stroke-opacity=".16"/>
-    <text x="58" y="408" fill="#c6d4c6" font-size="11" letter-spacing="1.5">SATU PERUSAHAAN</text>
-    <text x="270" y="408" fill="#c6d4c6" font-size="11" letter-spacing="1.5">IDR</text>
-    <text x="358" y="408" fill="#c6d4c6" font-size="11" letter-spacing="1.5">10 AKUN AKTIF</text>
-    <text x="1220" y="408" fill="#d4ecba" text-anchor="end" font-size="11" letter-spacing="1.5">WINDOWS · DOCKER · MCP</text>
+    <circle cx="176" cy="264" r="3" fill="#d4ecba" fill-opacity=".30"/>
+    <circle cx="1137" cy="319" r="3" fill="#d4ecba" fill-opacity=".25"/>
+
+    <!-- The cutout is transparent; it stays crisp on every background. -->
+    <g transform="translate(602.2 74) scale(2.1)" fill="#d4ecba">
+      <path d="M10 22V18C10 8.8 17.4 3 31 3C31 14.7 24 22 13.3 22H10Z" opacity=".65" mask="url(#leaf-separation)"/>
+      <path d="M5 32V27.5C5 17.2 11.9 11 26 11C26 23.7 19.2 32 7.7 32H5Z"/>
+    </g>
+
+    <g font-family="Segoe UI,Inter,Arial,sans-serif" text-anchor="middle">
+      <text x="640" y="314" fill="#f7f8f4" font-size="180" font-weight="750" letter-spacing="-8">haruflow<tspan fill="#d4ecba">.</tspan></text>
+      <text x="640" y="369" fill="#d1ddcf" font-size="22" font-weight="400" letter-spacing=".1">Alur usaha rapi. Keputusan lebih pasti.</text>
+      <g fill="#d4ecba">
+        <path d="M489 434H545M735 434H791" stroke="#d4ecba" stroke-opacity=".32"/>
+        <text x="640" y="439" font-size="12" font-weight="600" letter-spacing="3.8">COMMUNITY</text>
+      </g>
+      <text x="640" y="471" fill="#a9bfa9" font-size="11" letter-spacing="1.6">ERP UNTUK USAHA KECIL</text>
+    </g>
+    <rect x=".5" y=".5" width="1279" height="519" rx="27.5" fill="none" stroke="#d4ecba" stroke-opacity=".12"/>
   </g>
 </svg>
