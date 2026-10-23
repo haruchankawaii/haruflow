@@ -51,8 +51,11 @@ try {
  $owner=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
  foreach($rule in $acl.Access){$sid=$rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value;if($sid -notin @($owner,'S-1-5-18')){throw 'Credentials accessible to another principal'}}
  $env:DATABASE_URL='postgres://postgres@127.0.0.1:1/invalid_parent_environment'
+ $env:PGOPTIONS='invalid_start_test_options';$env:PGPORT='1';$env:PGSSLMODE='verify-full'
  & (Join-Path $install 'Start-Haruflow.ps1') -NoBrowser
  if($env:DATABASE_URL -ne 'postgres://postgres@127.0.0.1:1/invalid_parent_environment'){throw 'Start mutated parent environment'}
+ if($env:PGOPTIONS -ne 'invalid_start_test_options' -or $env:PGPORT -ne '1' -or $env:PGSSLMODE -ne 'verify-full'){throw 'Start changed the caller libpq environment'}
+ Set-TestPgEnvironment
  $public=Invoke-RestMethod ('http://127.0.0.1:'+$port+'/version');if($public.commit -ne $build.commit){throw 'Running version mismatch'}
  $token=([IO.File]::ReadAllLines((Join-Path $install 'Setup-pertama.txt')) | Where-Object {$_.StartsWith('Kode setup: ')}).Substring(12)
  $body=@{token=$token;company_name='INSTALL synthetic small business';name='Install tester';email='install@example.test';password='local-installer-test-password-2026'} | ConvertTo-Json

@@ -7,7 +7,7 @@ if(-not $directory.StartsWith($workspace+[IO.Path]::DirectorySeparatorChar,[Stri
 function Free-Port{$listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();$number=$listener.LocalEndpoint.Port;$listener.Stop();return $number}
 $port=Free-Port;$pgPort=Free-Port;while($pgPort -eq $port){$pgPort=Free-Port};$identity=Get-HaruflowTaskIdentity $install;$registered=$false
 $parentPg=Save-HaruflowPgEnvironment
-$env:PGHOSTADDR='192.0.2.1';$env:PGSERVICE='haruflow_nonexistent_setup_fixture';[Environment]::SetEnvironmentVariable('PGSERVICEFILE','','Process')
+$env:PGHOSTADDR='192.0.2.1';$env:PGSERVICE='haruflow_nonexistent_setup_fixture';$env:PGOPTIONS='invalid_setup_start_and_status_options';[Environment]::SetEnvironmentVariable('PGSERVICEFILE','','Process')
 try{
  # Fail only pg_ctl's detached launch after initdb. The interrupted cluster
  # must keep usable protected credentials and resume without reinitialising.
@@ -18,6 +18,9 @@ try{
  $pending=Get-HaruflowManagedPostgres $install
  if(-not $interrupted -or -not $pending.bootstrap_pending -or (Test-Path -LiteralPath (Join-Path $install 'postgres/init-password.tmp'))){throw 'Interrupted cluster bootstrap did not preserve a safe retry state.'}
  $savedCredentials=@{};foreach($name in @('admin-connection.txt','connection.txt')){$file=Join-Path $install ('postgres/'+$name);if(-not(Test-Path -LiteralPath $file -PathType Leaf)){throw 'Interrupted initialization lost a generated credential.'};$savedCredentials[$name]=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash}
+ $adminFile=Join-Path $install 'postgres/admin-connection.txt';$originalAdmin=[IO.File]::ReadAllText($adminFile);$badAdmin=$originalAdmin -replace ':[0-9]+/postgres$',':bad/postgres';$sanitized=$false
+ try{[IO.File]::WriteAllText($adminFile,$badAdmin,[Text.UTF8Encoding]::new($false));try{$null=& (Join-Path $PackageRoot 'Manage-Postgres.ps1') -Action Initialize -InstallRoot $install}catch{if($_.ToString().Contains($badAdmin) -or $_.ToString().Contains(($originalAdmin -split ':')[2].Split('@')[0])){throw 'Corrupted bootstrap URL leaked a private credential.'};$sanitized=$_.Exception.Message -eq 'Koneksi bootstrap privat rusak; periksa konfigurasi secara pribadi. Data tidak dihapus.'}}finally{[IO.File]::WriteAllText($adminFile,$originalAdmin,[Text.UTF8Encoding]::new($false));$originalAdmin=$null;$badAdmin=$null}
+ if(-not $sanitized){throw 'Corrupted bootstrap URL did not fail safely.'}
  $null=& (Join-Path $PackageRoot 'Setup-Haruflow.ps1') -PackageRoot $PackageRoot -InstallRoot $install -PostgresBin $PostgresBin -DatabaseMode Private -Port $port -PostgresPort $pgPort -SkipSchedule -NoShortcuts -NonInteractive -NoStart
  if($env:PGHOSTADDR -ne '192.0.2.1' -or $env:PGSERVICE -ne 'haruflow_nonexistent_setup_fixture'){throw 'Setup changed the caller libpq environment.'}
  $config=Get-HaruflowManagedPostgres $install;if($config.port -ne $pgPort -or $config.bootstrap_pending){throw 'Private cluster bootstrap did not finish on the original port.'}

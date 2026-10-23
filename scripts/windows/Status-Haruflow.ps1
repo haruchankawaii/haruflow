@@ -10,12 +10,13 @@ try{$response=Invoke-RestMethod ('http://127.0.0.1:'+$current.port+'/version') -
 $stateFile=Join-Path $root 'backup-state.json';if(Test-Path -LiteralPath $stateFile){$state=Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json;Write-Output ('Backup terakhir: '+$state.status+'; '+$state.completed_at);if($state.status -eq 'success'){Write-Output ('Arsip: '+$state.archive)}}else{Write-Output 'Backup terkelola: belum pernah berhasil. Jalankan Run-Backup.ps1 setelah menentukan pengaturan.'}
 if($CheckDatabase){
  $saved=[Environment]::GetEnvironmentVariable('DATABASE_URL','Process')
+ $savedPg=Save-HaruflowPgEnvironment
  try{
   $configured=$false
   foreach($line in [IO.File]::ReadAllLines((Join-Path $root '.env'))){if($line -match '^DATABASE_URL=(.*)$'){if($configured){throw 'DATABASE_URL ganda dalam konfigurasi.'};$value=$Matches[1];if($value.StartsWith('"') -and $value.EndsWith('"')){$value=$value.Substring(1,$value.Length-2).Replace('\"','"').Replace('\\','\')};$env:DATABASE_URL=$value;$configured=$true}}
   if(-not $configured -or [string]::IsNullOrWhiteSpace($env:DATABASE_URL)){throw 'Koneksi database instalasi tidak lengkap.'}
   Push-Location -LiteralPath $root;try{& (Join-Path $root ('versions/'+$current.commit+'/haruflow.exe')) database check;if($LASTEXITCODE -ne 0){throw 'Pemeriksaan database gagal; periksa hasil diagnosis sebelum melanjutkan.'}}finally{Pop-Location}
- }finally{if($null -eq $saved){Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue}else{[Environment]::SetEnvironmentVariable('DATABASE_URL',$saved,'Process')}}
+ }finally{try{if($null -eq $saved){Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue}else{[Environment]::SetEnvironmentVariable('DATABASE_URL',$saved,'Process')}}finally{Restore-HaruflowPgEnvironment $savedPg}}
 }
 $guide=Join-Path $root ('versions/'+$current.commit+'/source/docs/WINDOWS_BACKUP.md');Write-Output ('Panduan pemulihan: '+$guide)
 if($OpenRecoveryGuide){Start-Process -FilePath notepad.exe -ArgumentList ('"'+$guide+'"')}

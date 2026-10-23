@@ -1,5 +1,6 @@
 [CmdletBinding()]param([switch]$NoBrowser)
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'Windows.Common.ps1')
 $install=[IO.Path]::GetFullPath($PSScriptRoot)
 if(Test-Path -LiteralPath (Join-Path $install 'postgres.json')) {& (Join-Path $install 'Manage-Postgres.ps1') -Action Start -InstallRoot $install}
 $current=Get-Content -LiteralPath (Join-Path $install 'current.json') -Raw | ConvertFrom-Json
@@ -22,10 +23,11 @@ if (-not $existing) {
         }
     }
     if ($configured.Count -ne 5) {throw 'Konfigurasi instalasi tidak lengkap.'}
+    $savedPg=Save-HaruflowPgEnvironment
     try {
         foreach ($name in $configured.Keys) {$saved[$name]=[Environment]::GetEnvironmentVariable($name,'Process');[Environment]::SetEnvironmentVariable($name,$configured[$name],'Process')}
         $process=Start-Process -FilePath $executable -ArgumentList 'serve' -WorkingDirectory $install -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logs ($stamp+'.stdout.log')) -RedirectStandardError (Join-Path $logs ($stamp+'.stderr.log'))
-    } finally {foreach ($name in $saved.Keys) {if ($null -eq $saved[$name]) {Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue} else {[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}}}
+    } finally {try{foreach ($name in $saved.Keys) {if ($null -eq $saved[$name]) {Remove-Item -LiteralPath ('Env:\'+$name) -ErrorAction SilentlyContinue} else {[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}}}finally{Restore-HaruflowPgEnvironment $savedPg}}
     $process.Id | Set-Content -LiteralPath $pidFile
 }
 $url='http://127.0.0.1:'+$current.port
